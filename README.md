@@ -1,6 +1,6 @@
 # Retention ROI Mock Dashboard
 
-## How To Implement
+## How To Implement Dashboard
 
 ```bash
 pip install -r dashboard/requirements.txt
