@@ -4,4 +4,4 @@
 
 ```bash
 pip install -r dashboard/requirements.txt
-streamlit dashboard/run app.py
+streamlit run dashboard/app.py
