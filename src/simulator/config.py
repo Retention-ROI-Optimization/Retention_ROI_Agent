@@ -15,7 +15,7 @@ class SimulationConfig:
     2) Outputs that remain small enough to run on a student machine.
     """
 
-    n_customers: int = 12000
+    n_customers: int = 20000
     start_date: str = "2025-01-01"
     end_date: str = "2025-12-31"
     signup_months: Sequence[str] = (
