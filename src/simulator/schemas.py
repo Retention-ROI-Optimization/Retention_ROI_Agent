@@ -8,6 +8,7 @@ from typing import Optional
 class CustomerRecord:
     customer_id: int
     persona: str
+    uplift_segment_true: str
     signup_date: str
     acquisition_month: str
     region: str

@@ -7,7 +7,18 @@ import numpy as np
 import pandas as pd
 
 from .config import SimulationConfig
-from .personas import DEFAULT_PERSONAS, PersonaProfile
+from .personas import (
+    DEFAULT_PERSONAS,
+    DEFAULT_UPLIFT_SEGMENTS,
+    PERSONA_TO_UPLIFT_WEIGHTS,
+    PersonaProfile,
+)
+
+
+_PERSONA_SIGNUP_MONTH_WEIGHTS = {
+    "new_signup": np.array([1, 1, 1, 1, 2, 2, 3, 5, 8, 10, 10, 8], dtype=float),
+    "churn_progressing": np.array([8, 8, 8, 7, 7, 6, 5, 4, 3, 2, 2, 2], dtype=float),
+}
 
 
 def _month_start(month_str: str) -> pd.Timestamp:
@@ -15,13 +26,27 @@ def _month_start(month_str: str) -> pd.Timestamp:
 
 
 def _random_signup_dates(
-    n: int,
+    persona: np.ndarray,
     rng: np.random.Generator,
     signup_months,
-) -> pd.Series:
-    month_choices = rng.choice(signup_months, size=n, replace=True)
-    offsets = []
+) -> tuple[pd.Series, pd.Series]:
+    month_choices = np.empty(len(persona), dtype=object)
 
+    for persona_name in np.unique(persona):
+        mask = persona == persona_name
+        count = int(mask.sum())
+        if count == 0:
+            continue
+
+        weights = _PERSONA_SIGNUP_MONTH_WEIGHTS.get(persona_name)
+        if weights is None:
+            chosen = rng.choice(signup_months, size=count, replace=True)
+        else:
+            normalized = weights / weights.sum()
+            chosen = rng.choice(signup_months, size=count, replace=True, p=normalized)
+        month_choices[mask] = chosen
+
+    offsets = []
     for month_str in month_choices:
         year, month = map(int, month_str.split("-"))
         days_in_month = calendar.monthrange(year, month)[1]
@@ -57,8 +82,23 @@ def generate_customers(
     customer_ids = np.arange(1, n + 1, dtype=int)
     persona = rng.choice(persona_names, size=n, p=persona_weights)
 
+    uplift_segment = np.empty(n, dtype=object)
+    uplift_names = list(DEFAULT_UPLIFT_SEGMENTS.keys())
+    for persona_name in persona_names:
+        mask = persona == persona_name
+        count = int(mask.sum())
+        if count == 0:
+            continue
+
+        uplift_weights = np.array(
+            [PERSONA_TO_UPLIFT_WEIGHTS[persona_name][name] for name in uplift_names],
+            dtype=float,
+        )
+        uplift_weights = uplift_weights / uplift_weights.sum()
+        uplift_segment[mask] = rng.choice(uplift_names, size=count, p=uplift_weights)
+
     signup_date, acquisition_month = _random_signup_dates(
-        n=n,
+        persona=persona,
         rng=rng,
         signup_months=config.signup_months,
     )
@@ -101,21 +141,42 @@ def generate_customers(
         if count == 0:
             continue
 
-        base_visit_prob[mask] = np.clip(rng.normal(profile.visit_prob, 0.03, size=count), 0.05, 0.75)
-        browse_prob_base[mask] = np.clip(rng.normal(profile.browse_prob, 0.05, size=count), 0.25, 0.95)
-        search_prob_base[mask] = np.clip(rng.normal(profile.search_prob, 0.05, size=count), 0.05, 0.90)
-        add_to_cart_prob_base[mask] = np.clip(rng.normal(profile.add_to_cart_prob, 0.04, size=count), 0.05, 0.80)
-        remove_from_cart_prob_base[mask] = np.clip(rng.normal(profile.remove_from_cart_prob, 0.03, size=count), 0.01, 0.70)
+        base_visit_prob[mask] = np.clip(rng.normal(profile.visit_prob, 0.03, size=count), 0.05, 0.78)
+        browse_prob_base[mask] = np.clip(rng.normal(profile.browse_prob, 0.05, size=count), 0.25, 0.96)
+        search_prob_base[mask] = np.clip(rng.normal(profile.search_prob, 0.05, size=count), 0.05, 0.92)
+        add_to_cart_prob_base[mask] = np.clip(rng.normal(profile.add_to_cart_prob, 0.04, size=count), 0.05, 0.82)
+        remove_from_cart_prob_base[mask] = np.clip(rng.normal(profile.remove_from_cart_prob, 0.03, size=count), 0.01, 0.72)
         purchase_given_cart_base[mask] = np.clip(rng.normal(profile.purchase_given_cart_prob, 0.05, size=count), 0.05, 0.95)
-        purchase_given_visit_base[mask] = np.clip(rng.normal(profile.purchase_given_visit_prob, 0.02, size=count), 0.01, 0.30)
+        purchase_given_visit_base[mask] = np.clip(rng.normal(profile.purchase_given_visit_prob, 0.02, size=count), 0.01, 0.32)
         coupon_open_prob_base[mask] = np.clip(rng.normal(profile.coupon_open_prob, 0.05, size=count), 0.01, 0.95)
         coupon_redeem_prob_base[mask] = np.clip(rng.normal(profile.coupon_redeem_prob, 0.05, size=count), 0.01, 0.90)
         avg_order_value_mean[mask] = np.clip(rng.normal(profile.avg_order_mean, profile.avg_order_std * 0.25, size=count), 25000, None)
         avg_order_value_std[mask] = np.clip(rng.normal(profile.avg_order_std, profile.avg_order_std * 0.15, size=count), 6000, None)
-        churn_sensitivity_base[mask] = np.clip(rng.normal(profile.churn_sensitivity, 0.10, size=count), 0.40, 1.80)
+        churn_sensitivity_base[mask] = np.clip(rng.normal(profile.churn_sensitivity, 0.10, size=count), 0.40, 1.90)
         price_sensitivity[mask] = np.clip(rng.normal(profile.price_sensitivity, 0.08, size=count), 0.05, 0.98)
-        recovery_prob_base[mask] = np.clip(rng.normal(profile.recovery_prob, 0.05, size=count), 0.01, 0.80)
-        treatment_lift_base[mask] = np.clip(rng.normal(profile.treatment_lift, 0.03, size=count), -0.15, 0.40)
+        recovery_prob_base[mask] = np.clip(rng.normal(profile.recovery_prob, 0.05, size=count), 0.01, 0.82)
+
+    for segment_name, profile in DEFAULT_UPLIFT_SEGMENTS.items():
+        mask = uplift_segment == segment_name
+        count = int(mask.sum())
+        if count == 0:
+            continue
+
+        treatment_lift_base[mask] = np.clip(
+            rng.normal(profile.treatment_lift, 0.025, size=count),
+            -0.18,
+            0.42,
+        )
+        coupon_open_prob_base[mask] = np.clip(
+            coupon_open_prob_base[mask] + rng.normal(profile.coupon_open_delta, 0.015, size=count),
+            0.01,
+            0.95,
+        )
+        coupon_redeem_prob_base[mask] = np.clip(
+            coupon_redeem_prob_base[mask] + rng.normal(profile.coupon_redeem_delta, 0.015, size=count),
+            0.01,
+            0.92,
+        )
 
     coupon_affinity = np.clip(
         0.55 * coupon_open_prob_base + 0.45 * coupon_redeem_prob_base + rng.normal(0, 0.04, size=n),
@@ -123,7 +184,7 @@ def generate_customers(
         0.98,
     )
     basket_size_preference = np.clip(
-        rng.normal(1.4 + 2.0 * (avg_order_value_mean / avg_order_value_mean.max()), 0.35, size=n),
+        rng.normal(1.4 + 2.0 * (avg_order_value_mean / max(avg_order_value_mean.max(), 1)), 0.35, size=n),
         1.0,
         5.0,
     )
@@ -137,6 +198,7 @@ def generate_customers(
         {
             "customer_id": customer_ids,
             "persona": persona,
+            "uplift_segment_true": uplift_segment,
             "signup_date": pd.to_datetime(signup_date),
             "acquisition_month": acquisition_month.astype(str),
             "region": region,

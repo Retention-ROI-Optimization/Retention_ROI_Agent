@@ -16,16 +16,27 @@ def assign_treatment(
     """
     Balanced treatment/control assignment.
 
-    By default assignment is stratified by persona and acquisition_month so that
-    later uplift comparisons are less biased.
+    Assignment is stratified by persona and latent uplift segment so that
+    later uplift comparisons remain balanced without over-fragmenting the data
+    into tiny month-level strata.
     """
     rng = rng or np.random.default_rng(config.random_seed)
 
-    df = customers[["customer_id", "persona", "acquisition_month", "signup_date", "price_sensitivity", "coupon_affinity"]].copy()
+    df = customers[
+        [
+            "customer_id",
+            "persona",
+            "uplift_segment_true",
+            "acquisition_month",
+            "signup_date",
+            "price_sensitivity",
+            "coupon_affinity",
+        ]
+    ].copy()
     df["treatment_flag"] = 0
 
     if config.stratify_treatment:
-        for _, idx in df.groupby(["persona", "acquisition_month"]).groups.items():
+        for _, idx in df.groupby(["persona", "uplift_segment_true"]).groups.items():
             idx = np.array(list(idx), dtype=int)
             rng.shuffle(idx)
             treated_n = int(round(len(idx) * config.treatment_share))

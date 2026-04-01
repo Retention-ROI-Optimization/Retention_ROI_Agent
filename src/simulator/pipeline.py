@@ -85,30 +85,45 @@ def _build_customer_summary(
     summary["visit_change_rate"] = _safe_div(summary["visits_last_7"] - summary["visits_prev_7"], summary["visits_prev_7"])
     summary["purchase_change_rate"] = _safe_div(summary["purchase_last_30"] - summary["purchase_prev_30"], summary["purchase_prev_30"])
 
-    observed_coupon_response = _safe_div(summary["coupon_redeem_count"], summary["coupon_exposure_count"])
+    observed_coupon_response = (summary["coupon_redeem_count"] + 1.0) / (summary["coupon_exposure_count"] + 4.0)
+    uplift_segment_adjust = np.select(
+        [
+            summary["uplift_segment_true"] == "persuadable",
+            summary["uplift_segment_true"] == "sure_thing",
+            summary["uplift_segment_true"] == "lost_cause",
+            summary["uplift_segment_true"] == "sleeping_dog",
+        ],
+        [0.05, -0.01, -0.04, -0.09],
+        default=0.0,
+    )
     latent_uplift = (
         summary["treatment_lift_base"]
-        + 0.06 * summary["coupon_affinity"]
+        + 0.05 * summary["coupon_affinity"]
         - 0.04 * summary["price_sensitivity"]
-        - 0.03 * (summary["persona"] == "sure_thing").astype(float)
-        - 0.08 * (summary["persona"] == "lost_cause").astype(float)
+        + uplift_segment_adjust
     )
     summary["uplift_score"] = np.clip(
-        0.45 * latent_uplift + 0.25 * observed_coupon_response + 0.10 * (summary["coupon_exposure_count"] > 0).astype(float),
-        -0.12,
-        0.38,
+        0.55 * latent_uplift
+        + 0.20 * observed_coupon_response
+        + 0.08 * (summary["coupon_exposure_count"] > 0).astype(float),
+        -0.15,
+        0.42,
     )
 
     monetary_scaled = np.clip(summary["monetary"] / np.maximum(summary["monetary"].quantile(0.95), 1), 0, 1)
     frequency_scaled = np.clip(summary["frequency"] / np.maximum(summary["frequency"].quantile(0.95), 1), 0, 1)
     recency_scaled = np.clip(summary["recency_days"] / max(config.churn_inactivity_days * 1.5, 1), 0, 1)
 
+    customer_age_days = (end_ts - pd.to_datetime(summary["signup_date"]).dt.normalize()).dt.days.clip(lower=0)
+    new_signup_uncertainty = np.where(summary["persona"] == "new_signup", np.clip((120 - customer_age_days) / 120, 0, 1), 0.0)
+
     persona_boost = (
-        np.where(summary["persona"] == "vip", -0.12, 0.0)
-        + np.where(summary["persona"] == "coupon_sensitive", 0.04, 0.0)
-        + np.where(summary["persona"] == "churn_risk", 0.16, 0.0)
-        + np.where(summary["persona"] == "sure_thing", -0.08, 0.0)
-        + np.where(summary["persona"] == "lost_cause", 0.18, 0.0)
+        np.where(summary["persona"] == "vip_loyal", -0.12, 0.0)
+        + np.where(summary["persona"] == "regular_loyal", -0.06, 0.0)
+        + np.where(summary["persona"] == "price_sensitive", 0.04, 0.0)
+        + np.where(summary["persona"] == "explorer", 0.06, 0.0)
+        + np.where(summary["persona"] == "churn_progressing", 0.18, 0.0)
+        + np.where(summary["persona"] == "new_signup", 0.05, 0.0)
     )
 
     base_churn = (
@@ -118,6 +133,7 @@ def _build_customer_summary(
         + 0.13 * (summary["visit_change_rate"] < 0).astype(float)
         + 0.13 * (summary["purchase_change_rate"] < 0).astype(float)
         + 0.04 * np.clip(summary["inactivity_days"] / max(config.churn_inactivity_days, 1), 0, 1)
+        + 0.05 * new_signup_uncertainty
     )
     summary["churn_probability"] = np.clip(base_churn + persona_boost, 0.01, 0.99)
 
@@ -133,9 +149,9 @@ def _build_customer_summary(
 
     summary["uplift_segment"] = np.select(
         [
-            summary["uplift_score"] >= 0.15,
-            (summary["uplift_score"] >= 0.05) & (summary["uplift_score"] < 0.15),
-            (summary["uplift_score"] >= -0.02) & (summary["uplift_score"] < 0.05),
+            summary["uplift_score"] >= 0.12,
+            (summary["uplift_score"] >= 0.02) & (summary["uplift_score"] < 0.12),
+            (summary["uplift_score"] >= -0.03) & (summary["uplift_score"] < 0.02),
         ],
         ["Persuadables", "Sure Things", "Lost Causes"],
         default="Sleeping Dogs",
@@ -144,6 +160,7 @@ def _build_customer_summary(
     columns = [
         "customer_id",
         "persona",
+        "uplift_segment_true",
         "acquisition_month",
         "recency_days",
         "frequency",
@@ -194,13 +211,18 @@ def _build_cohort_retention(
         )
 
     visit_events = events[events["event_type"] == "visit"][["customer_id", "timestamp"]].copy()
-    visit_events["event_month"] = pd.to_datetime(visit_events["timestamp"]).dt.to_period("M")
+    visit_events["event_time"] = pd.to_datetime(visit_events["timestamp"])
+    visit_events["event_month_num"] = visit_events["event_time"].dt.year * 12 + visit_events["event_time"].dt.month
 
-    base = customers[["customer_id", "acquisition_month", "signup_date"]].copy()
-    base["cohort_month"] = pd.PeriodIndex(base["acquisition_month"], freq="M")
+    base = customers[["customer_id", "acquisition_month"]].copy()
+    cohort_month = base["acquisition_month"].astype(str)
+    cohort_year = cohort_month.str.slice(0, 4).astype(int)
+    cohort_mon = cohort_month.str.slice(5, 7).astype(int)
+    base["cohort_month"] = cohort_month
+    base["cohort_month_num"] = cohort_year * 12 + cohort_mon
 
-    merged = visit_events.merge(base[["customer_id", "cohort_month"]], on="customer_id", how="left")
-    merged["period"] = (merged["event_month"] - merged["cohort_month"]).apply(lambda x: x.n if pd.notna(x) else None)
+    merged = visit_events.merge(base[["customer_id", "cohort_month", "cohort_month_num"]], on="customer_id", how="left")
+    merged["period"] = merged["event_month_num"] - merged["cohort_month_num"]
     merged = merged[(merged["period"] >= 0) & (merged["period"] < periods)]
 
     cohort_sizes = base.groupby("cohort_month")["customer_id"].nunique()

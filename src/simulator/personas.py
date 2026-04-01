@@ -6,7 +6,7 @@ from typing import Dict
 
 @dataclass(frozen=True)
 class PersonaProfile:
-    """Base behavioral priors for a customer segment."""
+    """Base behavioral priors for a customer persona."""
 
     visit_prob: float
     browse_prob: float
@@ -22,103 +22,191 @@ class PersonaProfile:
     churn_sensitivity: float
     price_sensitivity: float
     recovery_prob: float
-    treatment_lift: float
     acquisition_weight: float
 
 
+@dataclass(frozen=True)
+class UpliftSegmentProfile:
+    """Latent response type for treatment-effect simulation."""
+
+    treatment_lift: float
+    coupon_open_delta: float = 0.0
+    coupon_redeem_delta: float = 0.0
+
+
 DEFAULT_PERSONAS: Dict[str, PersonaProfile] = {
-    "vip": PersonaProfile(
-        visit_prob=0.30,
-        browse_prob=0.76,
-        search_prob=0.32,
-        add_to_cart_prob=0.34,
-        remove_from_cart_prob=0.10,
-        purchase_given_cart_prob=0.50,
-        purchase_given_visit_prob=0.07,
-        coupon_open_prob=0.26,
-        coupon_redeem_prob=0.18,
-        avg_order_mean=128000,
-        avg_order_std=26000,
-        churn_sensitivity=0.72,
-        price_sensitivity=0.35,
-        recovery_prob=0.46,
-        treatment_lift=0.03,
-        acquisition_weight=0.15,
-    ),
-    "coupon_sensitive": PersonaProfile(
-        visit_prob=0.24,
-        browse_prob=0.72,
-        search_prob=0.38,
-        add_to_cart_prob=0.30,
-        remove_from_cart_prob=0.15,
-        purchase_given_cart_prob=0.42,
-        purchase_given_visit_prob=0.05,
-        coupon_open_prob=0.55,
-        coupon_redeem_prob=0.40,
-        avg_order_mean=72000,
-        avg_order_std=18000,
-        churn_sensitivity=0.98,
-        price_sensitivity=0.82,
-        recovery_prob=0.38,
-        treatment_lift=0.22,
-        acquisition_weight=0.25,
-    ),
-    "churn_risk": PersonaProfile(
-        visit_prob=0.18,
-        browse_prob=0.62,
-        search_prob=0.26,
-        add_to_cart_prob=0.20,
-        remove_from_cart_prob=0.22,
-        purchase_given_cart_prob=0.28,
-        purchase_given_visit_prob=0.03,
-        coupon_open_prob=0.42,
-        coupon_redeem_prob=0.22,
-        avg_order_mean=56000,
-        avg_order_std=15000,
-        churn_sensitivity=1.28,
-        price_sensitivity=0.67,
-        recovery_prob=0.18,
-        treatment_lift=0.14,
-        acquisition_weight=0.25,
-    ),
-    "sure_thing": PersonaProfile(
-        visit_prob=0.26,
-        browse_prob=0.74,
-        search_prob=0.31,
-        add_to_cart_prob=0.29,
+    "vip_loyal": PersonaProfile(
+        visit_prob=0.31,
+        browse_prob=0.78,
+        search_prob=0.30,
+        add_to_cart_prob=0.36,
         remove_from_cart_prob=0.08,
-        purchase_given_cart_prob=0.56,
-        purchase_given_visit_prob=0.08,
-        coupon_open_prob=0.16,
-        coupon_redeem_prob=0.08,
-        avg_order_mean=98000,
-        avg_order_std=20000,
-        churn_sensitivity=0.65,
+        purchase_given_cart_prob=0.58,
+        purchase_given_visit_prob=0.09,
+        coupon_open_prob=0.20,
+        coupon_redeem_prob=0.12,
+        avg_order_mean=135000,
+        avg_order_std=25000,
+        churn_sensitivity=0.60,
         price_sensitivity=0.28,
+        recovery_prob=0.52,
+        acquisition_weight=0.12,
+    ),
+    "regular_loyal": PersonaProfile(
+        visit_prob=0.27,
+        browse_prob=0.74,
+        search_prob=0.30,
+        add_to_cart_prob=0.31,
+        remove_from_cart_prob=0.10,
+        purchase_given_cart_prob=0.49,
+        purchase_given_visit_prob=0.07,
+        coupon_open_prob=0.24,
+        coupon_redeem_prob=0.16,
+        avg_order_mean=95000,
+        avg_order_std=20000,
+        churn_sensitivity=0.75,
+        price_sensitivity=0.40,
         recovery_prob=0.44,
-        treatment_lift=0.02,
+        acquisition_weight=0.24,
+    ),
+    "price_sensitive": PersonaProfile(
+        visit_prob=0.24,
+        browse_prob=0.70,
+        search_prob=0.40,
+        add_to_cart_prob=0.29,
+        remove_from_cart_prob=0.14,
+        purchase_given_cart_prob=0.41,
+        purchase_given_visit_prob=0.05,
+        coupon_open_prob=0.58,
+        coupon_redeem_prob=0.39,
+        avg_order_mean=70000,
+        avg_order_std=18000,
+        churn_sensitivity=1.00,
+        price_sensitivity=0.83,
+        recovery_prob=0.34,
         acquisition_weight=0.20,
     ),
-    "lost_cause": PersonaProfile(
-        visit_prob=0.12,
-        browse_prob=0.52,
-        search_prob=0.20,
-        add_to_cart_prob=0.14,
-        remove_from_cart_prob=0.25,
-        purchase_given_cart_prob=0.18,
-        purchase_given_visit_prob=0.02,
-        coupon_open_prob=0.20,
-        coupon_redeem_prob=0.05,
-        avg_order_mean=48000,
-        avg_order_std=12000,
-        churn_sensitivity=1.42,
-        price_sensitivity=0.72,
-        recovery_prob=0.09,
-        treatment_lift=-0.05,
-        acquisition_weight=0.15,
+    "explorer": PersonaProfile(
+        visit_prob=0.28,
+        browse_prob=0.83,
+        search_prob=0.48,
+        add_to_cart_prob=0.18,
+        remove_from_cart_prob=0.16,
+        purchase_given_cart_prob=0.22,
+        purchase_given_visit_prob=0.03,
+        coupon_open_prob=0.26,
+        coupon_redeem_prob=0.10,
+        avg_order_mean=60000,
+        avg_order_std=16000,
+        churn_sensitivity=0.95,
+        price_sensitivity=0.50,
+        recovery_prob=0.26,
+        acquisition_weight=0.18,
     ),
+    "churn_progressing": PersonaProfile(
+        visit_prob=0.17,
+        browse_prob=0.61,
+        search_prob=0.24,
+        add_to_cart_prob=0.19,
+        remove_from_cart_prob=0.24,
+        purchase_given_cart_prob=0.26,
+        purchase_given_visit_prob=0.02,
+        coupon_open_prob=0.40,
+        coupon_redeem_prob=0.20,
+        avg_order_mean=55000,
+        avg_order_std=15000,
+        churn_sensitivity=1.32,
+        price_sensitivity=0.68,
+        recovery_prob=0.15,
+        acquisition_weight=0.16,
+    ),
+    "new_signup": PersonaProfile(
+        visit_prob=0.20,
+        browse_prob=0.69,
+        search_prob=0.33,
+        add_to_cart_prob=0.23,
+        remove_from_cart_prob=0.13,
+        purchase_given_cart_prob=0.33,
+        purchase_given_visit_prob=0.04,
+        coupon_open_prob=0.30,
+        coupon_redeem_prob=0.17,
+        avg_order_mean=65000,
+        avg_order_std=17000,
+        churn_sensitivity=1.08,
+        price_sensitivity=0.57,
+        recovery_prob=0.29,
+        acquisition_weight=0.10,
+    ),
+}
+
+
+DEFAULT_UPLIFT_SEGMENTS: Dict[str, UpliftSegmentProfile] = {
+    "persuadable": UpliftSegmentProfile(
+        treatment_lift=0.19,
+        coupon_open_delta=0.08,
+        coupon_redeem_delta=0.10,
+    ),
+    "sure_thing": UpliftSegmentProfile(
+        treatment_lift=0.03,
+        coupon_open_delta=-0.02,
+        coupon_redeem_delta=-0.03,
+    ),
+    "lost_cause": UpliftSegmentProfile(
+        treatment_lift=0.00,
+        coupon_open_delta=-0.04,
+        coupon_redeem_delta=-0.05,
+    ),
+    "sleeping_dog": UpliftSegmentProfile(
+        treatment_lift=-0.08,
+        coupon_open_delta=-0.06,
+        coupon_redeem_delta=-0.08,
+    ),
+}
+
+
+PERSONA_TO_UPLIFT_WEIGHTS: Dict[str, Dict[str, float]] = {
+    "vip_loyal": {
+        "persuadable": 0.12,
+        "sure_thing": 0.65,
+        "lost_cause": 0.08,
+        "sleeping_dog": 0.15,
+    },
+    "regular_loyal": {
+        "persuadable": 0.25,
+        "sure_thing": 0.45,
+        "lost_cause": 0.20,
+        "sleeping_dog": 0.10,
+    },
+    "price_sensitive": {
+        "persuadable": 0.55,
+        "sure_thing": 0.15,
+        "lost_cause": 0.20,
+        "sleeping_dog": 0.10,
+    },
+    "explorer": {
+        "persuadable": 0.20,
+        "sure_thing": 0.08,
+        "lost_cause": 0.52,
+        "sleeping_dog": 0.20,
+    },
+    "churn_progressing": {
+        "persuadable": 0.38,
+        "sure_thing": 0.05,
+        "lost_cause": 0.40,
+        "sleeping_dog": 0.17,
+    },
+    "new_signup": {
+        "persuadable": 0.27,
+        "sure_thing": 0.22,
+        "lost_cause": 0.31,
+        "sleeping_dog": 0.20,
+    },
 }
 
 
 def get_persona_names():
     return list(DEFAULT_PERSONAS.keys())
+
+
+def get_uplift_segment_names():
+    return list(DEFAULT_UPLIFT_SEGMENTS.keys())
