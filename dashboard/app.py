@@ -2,12 +2,18 @@ import hashlib
 import os
 from typing import Dict, Optional
 
+import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from dashboard.data.mock_data import generate_mock_cohort_retention, generate_mock_customers
 from dashboard.services.churn_service import get_churn_status
-from dashboard.services.cohort_service import get_cohort_curve
+from dashboard.services.cohort_service import (
+    get_cohort_curve,
+    get_cohort_display_table,
+    get_cohort_pivot,
+    get_cohort_summary,
+)
+from dashboard.services.data_loader import load_dashboard_bundle
 from dashboard.services.llm_service import (
     DEFAULT_MODEL_NAME,
     answer_dashboard_question,
@@ -27,17 +33,15 @@ from dashboard.utils.formatters import money, pct
 
 
 st.set_page_config(
-    page_title="Retention ROI Mock Dashboard",
+    page_title="Retention ROI Dashboard",
     page_icon="📊",
     layout="wide",
 )
 
 
 @st.cache_data
-def load_mock_data():
-    customers = generate_mock_customers(n_customers=500, seed=42)
-    cohort = generate_mock_cohort_retention(seed=42)
-    return customers, cohort
+def load_app_data():
+    return load_dashboard_bundle()
 
 
 def _payload_hash(*parts: str) -> str:
@@ -115,7 +119,7 @@ def render_llm_panel(
 
     st.markdown("### 결과 지표에 대해 질문하기")
     st.caption(
-        "예: 왜 coupon_sensitive 고객이 많이 선정됐는지 설명해줘 / 현재 예산에서 ROI가 가장 높은 세그먼트는?"
+        "예: 왜 특정 세그먼트가 많이 선정됐는지 설명해줘 / 현재 예산에서 ROI가 가장 높은 세그먼트는?"
     )
 
     history_key = f"llm_history_{view_key}"
@@ -165,10 +169,13 @@ def render_llm_panel(
                 st.divider()
 
 
-customers, cohort_df = load_mock_data()
+bundle = load_app_data()
+customers = bundle.customer_summary
+cohort_df = bundle.cohort_retention
 
 st.title("AI 기반 고객 이탈 예측 및 리텐션 ROI 최적화 대시보드")
-st.caption("Mock data 기반 데모 대시보드")
+if bundle.used_mock:
+    st.warning("실제 data/raw 산출물을 찾지 못해 mock data로 실행 중입니다.")
 
 with st.sidebar:
     st.header("제어 패널")
@@ -185,29 +192,46 @@ with st.sidebar:
         ],
     )
 
-    threshold = st.slider(
-        "이탈 Threshold",
-        min_value=0.10,
-        max_value=0.90,
-        value=0.50,
-        step=0.01,
-    )
+    threshold = 0.50
+    budget = 5_000_000
+    top_n = 20
+    target_cap = 1000
 
-    budget = st.number_input(
-        "총 마케팅 예산",
-        min_value=100000,
-        max_value=100000000,
-        value=5000000,
-        step=100000,
-    )
+    if view in {"1. 이탈현황", "4. 예산 배분 결과", "5. 예상 최적화 ROI", "6. 리텐션 대상 고객 목록"}:
+        threshold = st.slider(
+            "이탈 Threshold",
+            min_value=0.10,
+            max_value=0.90,
+            value=0.50,
+            step=0.01,
+            help="이 값 이상인 고객을 이탈 위험군으로 간주합니다.",
+        )
 
-    top_n = st.slider(
-        "상위 고객 수",
-        min_value=5,
-        max_value=50,
-        value=20,
-        step=5,
-    )
+    if view in {"3. Uplift + CLV 상위 고객", "6. 리텐션 대상 고객 목록"}:
+        top_n = st.slider(
+            "표시 고객 수",
+            min_value=5,
+            max_value=50,
+            value=20,
+            step=5,
+        )
+
+    if view in {"4. 예산 배분 결과", "5. 예상 최적화 ROI"}:
+        budget = st.number_input(
+            "총 마케팅 예산",
+            min_value=100000,
+            max_value=100000000,
+            value=5000000,
+            step=100000,
+        )
+        target_cap = st.slider(
+            "최대 타겟 고객 수",
+            min_value=50,
+            max_value=3000,
+            value=1000,
+            step=50,
+            help="예산이 충분하더라도 이 수를 넘겨 타겟팅하지 않습니다.",
+        )
 
     st.divider()
     st.subheader("LLM 설정")
@@ -231,7 +255,12 @@ with st.sidebar:
 churn_summary, risk_customers = get_churn_status(customers, threshold)
 cohort_curve = get_cohort_curve(cohort_df)
 top_customers = get_top_high_value_customers(customers, top_n=top_n)
-selected_customers, optimize_summary, segment_allocation = get_budget_result(customers, budget)
+selected_customers, optimize_summary, segment_allocation = get_budget_result(
+    customers,
+    budget=budget,
+    threshold=threshold,
+    max_customers=target_cap,
+)
 retention_targets = get_retention_targets(customers, threshold, top_n=top_n)
 
 
@@ -312,45 +341,75 @@ if view == "1. 이탈현황":
     }
 
 elif view == "2. 코호트 리텐션 곡선":
-    st.subheader("코호트 리텐션 곡선")
+    st.subheader("코호트 리텐션 분석")
 
-    line_fig = px.line(
-        cohort_curve,
-        x="period",
-        y="retention_rate",
-        color="cohort_month",
-        markers=True,
-        title="가입 코호트별 리텐션 곡선",
+    cohort_summary = get_cohort_summary(cohort_df)
+    display_table = get_cohort_display_table(cohort_df)
+    heatmap_df = get_cohort_pivot(cohort_df)
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("코호트 수", f"{cohort_summary['cohort_count']:,}")
+    avg_size = cohort_summary["avg_cohort_size"]
+    m2.metric("평균 코호트 크기", "-" if pd.isna(avg_size) else f"{avg_size:,.0f}")
+    month1_ret = cohort_summary["month1_avg_retention"]
+    m3.metric("평균 1개월차 리텐션", "-" if pd.isna(month1_ret) else f"{month1_ret:.2%}")
+    last_avg_ret = cohort_summary["last_observed_avg_retention"]
+    m4.metric("마지막 관측 리텐션 평균", "-" if pd.isna(last_avg_ret) else f"{last_avg_ret:.2%}")
+
+    st.caption(
+        "period 0은 코호트 정의상 100%로 고정하고, 아직 관측할 수 없는 미래 period는 0이 아니라 공란으로 둡니다. "
+        "그래야 최근 코호트가 오른쪽 검열(right censoring) 때문에 과소평가되지 않습니다."
     )
-    line_fig.update_layout(xaxis_title="경과 기간", yaxis_title="Retention Rate")
-    st.plotly_chart(line_fig, use_container_width=True)
 
-    pivot_df = cohort_curve.pivot(
-        index="cohort_month",
-        columns="period",
-        values="retention_rate",
-    ).reset_index()
+    if cohort_curve.empty:
+        st.warning("표시할 코호트 데이터가 없습니다.")
+        last_period_df = cohort_curve.copy()
+    else:
+        line_fig = px.line(
+            cohort_curve,
+            x="period",
+            y="retention_rate",
+            color="cohort_month",
+            markers=True,
+            title="가입 코호트별 리텐션 곡선",
+        )
+        line_fig.update_layout(xaxis_title="경과 기간(개월)", yaxis_title="Retention Rate")
+        st.plotly_chart(line_fig, use_container_width=True)
 
-    formatted_pivot = pivot_df.copy()
-    for col in formatted_pivot.columns[1:]:
-        formatted_pivot[col] = formatted_pivot[col].map(lambda x: f"{x:.2%}")
+        if not heatmap_df.empty:
+            heatmap_fig = px.imshow(
+                heatmap_df,
+                text_auto=".0%",
+                aspect="auto",
+                labels={"x": "경과 기간(개월)", "y": "코호트", "color": "Retention"},
+                title="코호트 리텐션 히트맵",
+            )
+            st.plotly_chart(heatmap_fig, use_container_width=True)
 
-    st.markdown("### 코호트 리텐션 테이블")
-    st.dataframe(formatted_pivot, use_container_width=True, hide_index=True)
+        st.markdown("### 코호트 리텐션 테이블")
+        st.dataframe(display_table, use_container_width=True, hide_index=True)
 
-    last_period = int(cohort_curve["period"].max()) if not cohort_curve.empty else 0
-    last_period_df = cohort_curve[cohort_curve["period"] == last_period].sort_values(
-        "retention_rate", ascending=False
-    )
+        last_period_df = (
+            cohort_curve.sort_values(["cohort_month", "period"])
+            .groupby("cohort_month", as_index=False)
+            .tail(1)
+            .sort_values("retention_rate", ascending=False)
+            .reset_index(drop=True)
+        )
+
+        best_last = cohort_summary.get("best_last_cohort")
+        worst_last = cohort_summary.get("worst_last_cohort")
+        if best_last and worst_last:
+            st.markdown(
+                f"**최종 관측 기준 최고 코호트:** {best_last['cohort_month']} (period {best_last['period']}, {best_last['retention_rate']:.2%})"
+                f"**최종 관측 기준 최저 코호트:** {worst_last['cohort_month']} (period {worst_last['period']}, {worst_last['retention_rate']:.2%})"
+            )
 
     llm_payload = {
-        "period_count": int(cohort_curve["period"].nunique()),
-        "cohort_count": int(cohort_curve["cohort_month"].nunique()),
+        "cohort_summary": cohort_summary,
         "retention_curve_summary": numeric_summary(cohort_curve, ["retention_rate"]),
         "cohort_retention_records": cohort_curve.round(4).to_dict(orient="records"),
-        "last_period_retention": last_period_df.round(4).to_dict(orient="records"),
-        "best_last_period_cohort": last_period_df.head(1).round(4).to_dict(orient="records"),
-        "worst_last_period_cohort": last_period_df.tail(1).round(4).to_dict(orient="records"),
+        "last_observed_retention": last_period_df.round(4).to_dict(orient="records"),
     }
 
 elif view == "3. Uplift + CLV 상위 고객":
@@ -380,7 +439,7 @@ elif view == "3. Uplift + CLV 상위 고객":
 
     st.caption(
         "버블 크기는 expected_incremental_profit 대신 value_score(CLV × uplift_score)를 사용합니다. "
-        "일부 고객의 expected_incremental_profit이 음수가 될 수 있어, 상위 고객 수가 커질 때 Plotly size 오류가 발생하던 문제를 방지합니다."
+        "일부 고객의 expected_incremental_profit이 음수가 될 수 있어, 상위 고객 수가 커질 때 Plotly size 오류를 막습니다."
     )
 
     display_df = plot_df[
@@ -433,7 +492,29 @@ elif view == "4. 예산 배분 결과":
     m3.metric("잔여 예산", money(optimize_summary["remaining"]))
     m4.metric("타겟 고객 수", f"{optimize_summary['num_targeted']:,}")
 
-    if segment_allocation.empty:
+    st.caption(
+        f"이탈 확률 {threshold:.2f} 이상, uplift_score > 0, expected_incremental_profit > 0 인 고객을 후보군으로 두고 "
+        f"ROI 우선순위로 선정했습니다. 최대 타겟 고객 수는 {optimize_summary['max_customers_cap']:,}명입니다."
+    )
+
+    candidate_by_segment = pd.DataFrame(
+        {
+            "uplift_segment": list(optimize_summary.get("candidate_segment_counts", {}).keys()),
+            "candidate_customer_count": list(optimize_summary.get("candidate_segment_counts", {}).values()),
+        }
+    )
+
+    if not candidate_by_segment.empty:
+        cand_fig = px.bar(
+            candidate_by_segment,
+            x="uplift_segment",
+            y="candidate_customer_count",
+            text="candidate_customer_count",
+            title="세그먼트별 예산 배분 후보 고객 수",
+        )
+        st.plotly_chart(cand_fig, use_container_width=True)
+
+    if segment_allocation.empty or optimize_summary["num_targeted"] == 0:
         st.warning("현재 조건에서 예산 배분 대상 고객이 없습니다.")
     else:
         bar_fig = px.bar(
@@ -453,6 +534,7 @@ elif view == "4. 예산 배분 결과":
     llm_payload = {
         "budget_summary": optimize_summary,
         "segment_allocation": segment_allocation.round(4).to_dict(orient="records"),
+        "candidate_segment_counts": optimize_summary.get("candidate_segment_counts", {}),
         "selected_customer_overview": dataframe_snapshot(
             selected_customers,
             columns=[
@@ -478,9 +560,9 @@ elif view == "5. 예상 최적화 ROI":
     m2.metric("예상 ROI", pct(optimize_summary["overall_roi"]))
     m3.metric("선정 고객 수", f"{optimize_summary['num_targeted']:,}")
 
+    top_roi = selected_customers.copy()
     if selected_customers.empty:
         st.warning("현재 조건에서 ROI 계산 대상이 없습니다.")
-        top_roi = selected_customers.copy()
     else:
         roi_fig = px.histogram(
             selected_customers,
@@ -490,7 +572,11 @@ elif view == "5. 예상 최적화 ROI":
         )
         st.plotly_chart(roi_fig, use_container_width=True)
 
-        top_roi = selected_customers.sort_values("expected_roi", ascending=False).head(top_n)
+        st.caption(
+            f"후보 고객 {optimize_summary['candidate_customers']:,}명 중 예산 및 최대 타겟 고객 수 제약 아래 선정된 고객만 포함합니다."
+        )
+
+        top_roi = selected_customers.sort_values("expected_roi", ascending=False).head(min(20, len(selected_customers)))
         display_df = top_roi[
             [
                 "customer_id",
