@@ -1,7 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Dict
+from dataclasses import dataclass, fields
+from pathlib import Path
+from typing import Dict, Mapping, Tuple
+
+import yaml
 
 
 @dataclass(frozen=True)
@@ -34,174 +37,135 @@ class UpliftSegmentProfile:
     coupon_redeem_delta: float = 0.0
 
 
-DEFAULT_PERSONAS: Dict[str, PersonaProfile] = {
-    "vip_loyal": PersonaProfile(
-        visit_prob=0.31,
-        browse_prob=0.78,
-        search_prob=0.30,
-        add_to_cart_prob=0.36,
-        remove_from_cart_prob=0.08,
-        purchase_given_cart_prob=0.58,
-        purchase_given_visit_prob=0.09,
-        coupon_open_prob=0.20,
-        coupon_redeem_prob=0.12,
-        avg_order_mean=135000,
-        avg_order_std=25000,
-        churn_sensitivity=0.60,
-        price_sensitivity=0.28,
-        recovery_prob=0.52,
-        acquisition_weight=0.12,
-    ),
-    "regular_loyal": PersonaProfile(
-        visit_prob=0.27,
-        browse_prob=0.74,
-        search_prob=0.30,
-        add_to_cart_prob=0.31,
-        remove_from_cart_prob=0.10,
-        purchase_given_cart_prob=0.49,
-        purchase_given_visit_prob=0.07,
-        coupon_open_prob=0.24,
-        coupon_redeem_prob=0.16,
-        avg_order_mean=95000,
-        avg_order_std=20000,
-        churn_sensitivity=0.75,
-        price_sensitivity=0.40,
-        recovery_prob=0.44,
-        acquisition_weight=0.24,
-    ),
-    "price_sensitive": PersonaProfile(
-        visit_prob=0.24,
-        browse_prob=0.70,
-        search_prob=0.40,
-        add_to_cart_prob=0.29,
-        remove_from_cart_prob=0.14,
-        purchase_given_cart_prob=0.41,
-        purchase_given_visit_prob=0.05,
-        coupon_open_prob=0.58,
-        coupon_redeem_prob=0.39,
-        avg_order_mean=70000,
-        avg_order_std=18000,
-        churn_sensitivity=1.00,
-        price_sensitivity=0.83,
-        recovery_prob=0.34,
-        acquisition_weight=0.20,
-    ),
-    "explorer": PersonaProfile(
-        visit_prob=0.28,
-        browse_prob=0.83,
-        search_prob=0.48,
-        add_to_cart_prob=0.18,
-        remove_from_cart_prob=0.16,
-        purchase_given_cart_prob=0.22,
-        purchase_given_visit_prob=0.03,
-        coupon_open_prob=0.26,
-        coupon_redeem_prob=0.10,
-        avg_order_mean=60000,
-        avg_order_std=16000,
-        churn_sensitivity=0.95,
-        price_sensitivity=0.50,
-        recovery_prob=0.26,
-        acquisition_weight=0.18,
-    ),
-    "churn_progressing": PersonaProfile(
-        visit_prob=0.17,
-        browse_prob=0.61,
-        search_prob=0.24,
-        add_to_cart_prob=0.19,
-        remove_from_cart_prob=0.24,
-        purchase_given_cart_prob=0.26,
-        purchase_given_visit_prob=0.02,
-        coupon_open_prob=0.40,
-        coupon_redeem_prob=0.20,
-        avg_order_mean=55000,
-        avg_order_std=15000,
-        churn_sensitivity=1.32,
-        price_sensitivity=0.68,
-        recovery_prob=0.15,
-        acquisition_weight=0.16,
-    ),
-    "new_signup": PersonaProfile(
-        visit_prob=0.20,
-        browse_prob=0.69,
-        search_prob=0.33,
-        add_to_cart_prob=0.23,
-        remove_from_cart_prob=0.13,
-        purchase_given_cart_prob=0.33,
-        purchase_given_visit_prob=0.04,
-        coupon_open_prob=0.30,
-        coupon_redeem_prob=0.17,
-        avg_order_mean=65000,
-        avg_order_std=17000,
-        churn_sensitivity=1.08,
-        price_sensitivity=0.57,
-        recovery_prob=0.29,
-        acquisition_weight=0.10,
-    ),
-}
+_PERSONAS_YAML_PATH = Path(__file__).with_name("personas.yaml")
 
 
-DEFAULT_UPLIFT_SEGMENTS: Dict[str, UpliftSegmentProfile] = {
-    "persuadable": UpliftSegmentProfile(
-        treatment_lift=0.19,
-        coupon_open_delta=0.08,
-        coupon_redeem_delta=0.10,
-    ),
-    "sure_thing": UpliftSegmentProfile(
-        treatment_lift=0.03,
-        coupon_open_delta=-0.02,
-        coupon_redeem_delta=-0.03,
-    ),
-    "lost_cause": UpliftSegmentProfile(
-        treatment_lift=0.00,
-        coupon_open_delta=-0.04,
-        coupon_redeem_delta=-0.05,
-    ),
-    "sleeping_dog": UpliftSegmentProfile(
-        treatment_lift=-0.08,
-        coupon_open_delta=-0.06,
-        coupon_redeem_delta=-0.08,
-    ),
-}
+def _expected_field_names(model_cls) -> set[str]:
+    return {field.name for field in fields(model_cls)}
 
 
-PERSONA_TO_UPLIFT_WEIGHTS: Dict[str, Dict[str, float]] = {
-    "vip_loyal": {
-        "persuadable": 0.12,
-        "sure_thing": 0.65,
-        "lost_cause": 0.08,
-        "sleeping_dog": 0.15,
-    },
-    "regular_loyal": {
-        "persuadable": 0.25,
-        "sure_thing": 0.45,
-        "lost_cause": 0.20,
-        "sleeping_dog": 0.10,
-    },
-    "price_sensitive": {
-        "persuadable": 0.55,
-        "sure_thing": 0.15,
-        "lost_cause": 0.20,
-        "sleeping_dog": 0.10,
-    },
-    "explorer": {
-        "persuadable": 0.20,
-        "sure_thing": 0.08,
-        "lost_cause": 0.52,
-        "sleeping_dog": 0.20,
-    },
-    "churn_progressing": {
-        "persuadable": 0.38,
-        "sure_thing": 0.05,
-        "lost_cause": 0.40,
-        "sleeping_dog": 0.17,
-    },
-    "new_signup": {
-        "persuadable": 0.27,
-        "sure_thing": 0.22,
-        "lost_cause": 0.31,
-        "sleeping_dog": 0.20,
-    },
-}
+def _read_yaml(path: Path) -> dict:
+    if not path.exists():
+        raise FileNotFoundError(f"Persona configuration file not found: {path}")
+
+    with path.open("r", encoding="utf-8") as fp:
+        data = yaml.safe_load(fp) or {}
+
+    if not isinstance(data, dict):
+        raise ValueError("Persona configuration YAML must contain a top-level mapping.")
+
+    return data
+
+
+def _require_mapping(value, name: str) -> Mapping[str, object]:
+    if not isinstance(value, Mapping):
+        raise ValueError(f"'{name}' must be a mapping in personas.yaml.")
+    return value
+
+
+def _build_profiles(section: Mapping[str, object], model_cls, section_name: str):
+    expected = _expected_field_names(model_cls)
+    profiles = {}
+
+    for profile_name, raw_values in section.items():
+        raw_values = _require_mapping(raw_values, f"{section_name}.{profile_name}")
+
+        raw_keys = set(raw_values.keys())
+        missing = expected - raw_keys
+        extra = raw_keys - expected
+        if missing or extra:
+            problems = []
+            if missing:
+                problems.append(f"missing={sorted(missing)}")
+            if extra:
+                problems.append(f"extra={sorted(extra)}")
+            joined = ", ".join(problems)
+            raise ValueError(f"Invalid fields for {section_name}.{profile_name}: {joined}")
+
+        profiles[str(profile_name)] = model_cls(**{key: float(raw_values[key]) for key in expected})
+
+    if not profiles:
+        raise ValueError(f"'{section_name}' must define at least one profile.")
+
+    return profiles
+
+
+def _build_weight_matrix(
+    weight_section: Mapping[str, object],
+    personas: Mapping[str, PersonaProfile],
+    uplift_segments: Mapping[str, UpliftSegmentProfile],
+) -> Dict[str, Dict[str, float]]:
+    persona_names = set(personas.keys())
+    uplift_names = set(uplift_segments.keys())
+    weight_persona_names = set(weight_section.keys())
+
+    missing_personas = persona_names - weight_persona_names
+    extra_personas = weight_persona_names - persona_names
+    if missing_personas or extra_personas:
+        problems = []
+        if missing_personas:
+            problems.append(f"missing personas={sorted(missing_personas)}")
+        if extra_personas:
+            problems.append(f"unknown personas={sorted(extra_personas)}")
+        joined = ", ".join(problems)
+        raise ValueError(f"Invalid persona_to_uplift_weights keys: {joined}")
+
+    matrix: Dict[str, Dict[str, float]] = {}
+    for persona_name, raw_weights in weight_section.items():
+        raw_weights = _require_mapping(raw_weights, f"persona_to_uplift_weights.{persona_name}")
+        segment_names = set(raw_weights.keys())
+        missing_segments = uplift_names - segment_names
+        extra_segments = segment_names - uplift_names
+        if missing_segments or extra_segments:
+            problems = []
+            if missing_segments:
+                problems.append(f"missing segments={sorted(missing_segments)}")
+            if extra_segments:
+                problems.append(f"unknown segments={sorted(extra_segments)}")
+            joined = ", ".join(problems)
+            raise ValueError(
+                f"Invalid uplift weights for persona '{persona_name}': {joined}"
+            )
+
+        normalized_weights = {segment: float(raw_weights[segment]) for segment in uplift_segments.keys()}
+        total = sum(normalized_weights.values())
+        if total <= 0:
+            raise ValueError(
+                f"persona_to_uplift_weights.{persona_name} must sum to a positive value."
+            )
+        matrix[str(persona_name)] = normalized_weights
+
+    return matrix
+
+
+def load_persona_bundle(
+    path: str | Path | None = None,
+) -> Tuple[Dict[str, PersonaProfile], Dict[str, UpliftSegmentProfile], Dict[str, Dict[str, float]]]:
+    """Load simulator persona definitions from YAML and validate cross-references."""
+
+    config_path = Path(path) if path is not None else _PERSONAS_YAML_PATH
+    raw = _read_yaml(config_path)
+
+    personas = _build_profiles(
+        _require_mapping(raw.get("personas"), "personas"),
+        PersonaProfile,
+        "personas",
+    )
+    uplift_segments = _build_profiles(
+        _require_mapping(raw.get("uplift_segments"), "uplift_segments"),
+        UpliftSegmentProfile,
+        "uplift_segments",
+    )
+    weight_matrix = _build_weight_matrix(
+        _require_mapping(raw.get("persona_to_uplift_weights"), "persona_to_uplift_weights"),
+        personas,
+        uplift_segments,
+    )
+
+    return personas, uplift_segments, weight_matrix
+
+
+DEFAULT_PERSONAS, DEFAULT_UPLIFT_SEGMENTS, PERSONA_TO_UPLIFT_WEIGHTS = load_persona_bundle()
 
 
 def get_persona_names():
