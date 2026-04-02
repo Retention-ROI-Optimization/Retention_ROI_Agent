@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
-from typing import Sequence
+from typing import Optional, Sequence
 
 
 @dataclass(frozen=True)
@@ -13,6 +13,10 @@ class SimulationConfig:
     Defaults are chosen to satisfy two goals:
     1) Enough samples for treatment/control analysis.
     2) Outputs that remain small enough to run on a student machine.
+
+    Notes:
+    - random_seed=42 keeps the simulator deterministic by default.
+    - random_seed=None makes each simulation run use fresh system entropy.
     """
 
     n_customers: int = 20000
@@ -30,9 +34,9 @@ class SimulationConfig:
         "2025-09",
         "2025-10",
         "2025-11",
-        "2025-12"
+        "2025-12",
     )
-    random_seed: int = 42
+    random_seed: Optional[int] = 42
 
     # Experiment design
     treatment_share: float = 0.50
@@ -82,12 +86,15 @@ class SimulationConfig:
         if self.coupon_min_cost <= 0 or self.coupon_max_cost < self.coupon_min_cost:
             raise ValueError("Coupon cost bounds are invalid.")
 
+    def with_seed(self, seed: Optional[int]) -> "SimulationConfig":
+        return replace(self, random_seed=seed)
+
     @property
-    def start_ts(self):
+    def start_ts(self) -> datetime:
         return datetime.fromisoformat(self.start_date)
 
     @property
-    def end_ts(self):
+    def end_ts(self) -> datetime:
         return datetime.fromisoformat(self.end_date)
 
     @property

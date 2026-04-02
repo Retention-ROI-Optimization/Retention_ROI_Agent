@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
 
 import pandas as pd
 
 from src.api.services.analytics import allocate_budget, budget_allocation_by_segment
 from src.features.engineering import build_feature_dataset
-from src.simulator.config import DEFAULT_CONFIG
+from src.simulator.config import DEFAULT_CONFIG, SimulationConfig
 from src.simulator.pipeline import run_simulation
 
 
@@ -17,31 +17,62 @@ def ensure_directory(path: Path) -> Path:
     return path
 
 
-def ensure_simulation_outputs(data_dir: Path) -> Dict[str, pd.DataFrame]:
+def _resolve_simulation_config(
+    random_seed: Optional[int] = None,
+    randomize: bool = False,
+) -> SimulationConfig:
+    if randomize:
+        return DEFAULT_CONFIG.with_seed(None)
+    if random_seed is None:
+        return DEFAULT_CONFIG
+    return DEFAULT_CONFIG.with_seed(random_seed)
+
+
+def ensure_simulation_outputs(
+    data_dir: Path,
+    force: bool = False,
+    random_seed: Optional[int] = None,
+    randomize: bool = False,
+) -> Dict[str, pd.DataFrame]:
     data_dir = ensure_directory(data_dir)
     required = [
         data_dir / "customers.csv",
+        data_dir / "treatment_assignments.csv",
+        data_dir / "campaign_exposures.csv",
         data_dir / "events.csv",
         data_dir / "orders.csv",
         data_dir / "state_snapshots.csv",
         data_dir / "customer_summary.csv",
         data_dir / "cohort_retention.csv",
     ]
-    if all(p.exists() for p in required):
+
+    if not force and all(p.exists() for p in required):
         return {
             "customer_summary": pd.read_csv(data_dir / "customer_summary.csv"),
             "cohort_retention": pd.read_csv(data_dir / "cohort_retention.csv"),
         }
+
+    config = _resolve_simulation_config(random_seed=random_seed, randomize=randomize)
     return run_simulation(
-        config=DEFAULT_CONFIG,
+        config=config,
         export=True,
         output_dir=str(data_dir),
         file_format="csv",
     )
 
 
-def load_customer_summary(data_dir: Path) -> pd.DataFrame:
-    ensure_simulation_outputs(data_dir)
+def load_customer_summary(
+    data_dir: Path,
+    force_simulation: bool = False,
+    simulation_seed: Optional[int] = None,
+    randomize_simulation: bool = False,
+) -> pd.DataFrame:
+    ensure_simulation_outputs(
+        data_dir,
+        force=force_simulation,
+        random_seed=simulation_seed,
+        randomize=randomize_simulation,
+    )
     return pd.read_csv(data_dir / "customer_summary.csv")
 
 
@@ -49,9 +80,19 @@ def run_feature_engineering_pipeline(
     data_dir: Path,
     result_dir: Path,
     feature_store_dir: Path | None = None,
+    force_simulation: bool = False,
+    simulation_seed: Optional[int] = None,
+    randomize_simulation: bool = False,
 ) -> Dict:
     result_dir = ensure_directory(result_dir)
     feature_store_dir = ensure_directory(feature_store_dir or Path("data/feature_store"))
+
+    ensure_simulation_outputs(
+        data_dir,
+        force=force_simulation,
+        random_seed=simulation_seed,
+        randomize=randomize_simulation,
+    )
 
     built = build_feature_dataset(data_dir=data_dir, feature_store_dir=feature_store_dir)
 
@@ -76,6 +117,9 @@ def run_churn_training_pipeline(
     model_dir: Path,
     result_dir: Path,
     feature_store_dir: Path | None = None,
+    force_simulation: bool = False,
+    simulation_seed: Optional[int] = None,
+    randomize_simulation: bool = False,
 ) -> Dict:
     # lazy import:
     # features 모드에서 불필요하게 LightGBM/OpenMP 로딩이 일어나지 않게 한다.
@@ -84,6 +128,13 @@ def run_churn_training_pipeline(
     model_dir = ensure_directory(model_dir)
     result_dir = ensure_directory(result_dir)
     feature_store_dir = ensure_directory(feature_store_dir or Path("data/feature_store"))
+
+    ensure_simulation_outputs(
+        data_dir,
+        force=force_simulation,
+        random_seed=simulation_seed,
+        randomize=randomize_simulation,
+    )
 
     built = build_feature_dataset(data_dir=data_dir, feature_store_dir=feature_store_dir)
     artifacts = train_churn_models(
@@ -111,9 +162,20 @@ def run_churn_training_pipeline(
     }
 
 
-def run_uplift_pipeline(data_dir: Path, result_dir: Path) -> Dict:
+def run_uplift_pipeline(
+    data_dir: Path,
+    result_dir: Path,
+    force_simulation: bool = False,
+    simulation_seed: Optional[int] = None,
+    randomize_simulation: bool = False,
+) -> Dict:
     result_dir = ensure_directory(result_dir)
-    df = load_customer_summary(data_dir).copy()
+    df = load_customer_summary(
+        data_dir,
+        force_simulation=force_simulation,
+        simulation_seed=simulation_seed,
+        randomize_simulation=randomize_simulation,
+    ).copy()
 
     output = df[
         [
@@ -148,9 +210,21 @@ def run_uplift_pipeline(data_dir: Path, result_dir: Path) -> Dict:
     }
 
 
-def run_optimize_pipeline(data_dir: Path, result_dir: Path, budget: int) -> Dict:
+def run_optimize_pipeline(
+    data_dir: Path,
+    result_dir: Path,
+    budget: int,
+    force_simulation: bool = False,
+    simulation_seed: Optional[int] = None,
+    randomize_simulation: bool = False,
+) -> Dict:
     result_dir = ensure_directory(result_dir)
-    df = load_customer_summary(data_dir)
+    df = load_customer_summary(
+        data_dir,
+        force_simulation=force_simulation,
+        simulation_seed=simulation_seed,
+        randomize_simulation=randomize_simulation,
+    )
 
     selected, summary = allocate_budget(df, budget=budget)
     segment_allocation = budget_allocation_by_segment(selected)
