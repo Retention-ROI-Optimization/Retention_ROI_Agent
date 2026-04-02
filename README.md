@@ -48,13 +48,22 @@ Output:
 - `results/churn_top10_feature_importance.json`
 - `results/churn_metrics.json`
 
-## Uplift / Optimization
+## Uplift + CLV/ Segmentation / Optimization
 
 ```bash
 python src/main.py --mode uplift
+python src/main.py --mode clv
+python src/main.py --mode segment
 python src/main.py --mode optimize --budget 50000000
 ```
 you're allowed to write whatever budget you have in your mind.
+
+## AB Test
+
+```bash
+python src/main.py --mode abtest
+
+```
 
 ## Implementation Order
 
