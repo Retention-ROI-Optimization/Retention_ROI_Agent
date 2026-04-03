@@ -58,6 +58,13 @@ python src/main.py --mode optimize --budget 50000000
 ```
 you're allowed to write whatever budget you have in your mind.
 
+## Personalization / Recommendation
+
+```bash
+python src/main.py --mode recommend --budget 5000000 --threshold 0.5 --max-customers 1000
+```
+you can change the figures (threshod, max-customers)
+
 ## AB Test
 
 ```bash
@@ -75,6 +82,7 @@ python src/main.py --mode uplift
 python src/main.py --mode clv
 python src/main.py --mode segment
 python src/main.py --mode optimize --budget 50000000
+python src/main.py --mode recommend --budget 5000000 --threshold 0.5 --max-customers 1000
 python src/main.py --mode abtest
 docker compose up --build
 ```
@@ -89,6 +97,7 @@ python src/main.py --mode uplift
 python src/main.py --mode clv
 python src/main.py --mode segment
 python src/main.py --mode optimize --budget 50000000
+python src/main.py --mode recommend --budget 5000000 --threshold 0.5 --max-customers 1000
 python src/main.py --mode abtest
 docker compose up --build
 ```
