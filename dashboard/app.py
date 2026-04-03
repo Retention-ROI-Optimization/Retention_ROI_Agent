@@ -44,6 +44,489 @@ st.set_page_config(
 )
 
 
+
+def inject_custom_css():
+    st.markdown(
+        """
+        <style>
+        :root {
+            --bg-grad-1: #0f172a;
+            --bg-grad-2: #111827;
+            --card-bg: rgba(255,255,255,0.88);
+            --card-border: rgba(15, 23, 42, 0.08);
+            --accent: #2563eb;
+            --accent-2: #7c3aed;
+            --text-main: #0f172a;
+            --text-soft: #475569;
+            --success-bg: linear-gradient(135deg, rgba(34,197,94,0.14), rgba(16,185,129,0.10));
+            --warn-bg: linear-gradient(135deg, rgba(245,158,11,0.16), rgba(251,191,36,0.10));
+        }
+
+        .stApp {
+            background:
+                radial-gradient(circle at top left, rgba(37,99,235,0.08), transparent 28%),
+                radial-gradient(circle at top right, rgba(124,58,237,0.08), transparent 22%),
+                linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%);
+            color: var(--text-main);
+        }
+
+        [data-testid="stHeader"] {
+            background: transparent;
+        }
+
+        section[data-testid="stSidebar"] {
+            background: linear-gradient(180deg, #0f172a 0%, #111827 100%);
+            border-right: 1px solid rgba(255,255,255,0.08);
+        }
+
+        /* 사이드바 일반 텍스트만 밝게 */
+        section[data-testid="stSidebar"] label,
+        section[data-testid="stSidebar"] .stMarkdown,
+        section[data-testid="stSidebar"] .stCaption,
+        section[data-testid="stSidebar"] p,
+        section[data-testid="stSidebar"] span,
+        section[data-testid="stSidebar"] h1,
+        section[data-testid="stSidebar"] h2,
+        section[data-testid="stSidebar"] h3,
+        section[data-testid="stSidebar"] h4,
+        section[data-testid="stSidebar"] h5,
+        section[data-testid="stSidebar"] h6 {
+            color: #e5eefc !important;
+        }
+
+        section[data-testid="stSidebar"] .stSlider [data-baseweb="slider"] > div div {
+            background-color: rgba(255,255,255,0.18);
+        }
+
+        section[data-testid="stSidebar"] .stButton > button,
+        section[data-testid="stSidebar"] .stDownloadButton > button {
+            border-radius: 14px;
+            border: 1px solid rgba(255,255,255,0.12);
+            background: linear-gradient(135deg, rgba(37,99,235,0.24), rgba(124,58,237,0.24));
+            color: white;
+            font-weight: 600;
+        }
+
+        /* 사이드바 입력칸 */
+        section[data-testid="stSidebar"] .stTextInput input,
+        section[data-testid="stSidebar"] .stNumberInput input,
+        section[data-testid="stSidebar"] .stTextArea textarea,
+        section[data-testid="stSidebar"] input[type="password"] {
+            border-radius: 12px !important;
+            background: rgba(255,255,255,0.14) !important;
+            color: #f8fafc !important;
+            -webkit-text-fill-color: #f8fafc !important;
+            caret-color: #f8fafc !important;
+            border: 1px solid rgba(255,255,255,0.18) !important;
+        }
+
+        /* placeholder */
+        section[data-testid="stSidebar"] .stTextInput input::placeholder,
+        section[data-testid="stSidebar"] .stNumberInput input::placeholder,
+        section[data-testid="stSidebar"] .stTextArea textarea::placeholder,
+        section[data-testid="stSidebar"] input[type="password"]::placeholder {
+            color: rgba(226,232,240,0.72) !important;
+            -webkit-text-fill-color: rgba(226,232,240,0.72) !important;
+            opacity: 1 !important;
+        }
+
+        /* number input의 + / - 버튼 */
+        section[data-testid="stSidebar"] .stNumberInput button {
+            color: #f8fafc !important;
+            background: rgba(255,255,255,0.06) !important;
+            border: 1px solid rgba(255,255,255,0.10) !important;
+        }
+
+        section[data-testid="stSidebar"] .stNumberInput button svg {
+            fill: #f8fafc !important;
+            color: #f8fafc !important;
+        }
+
+        .hero-card {
+            position: relative;
+            overflow: hidden;
+            padding: 32px 32px 26px 32px;
+            margin-bottom: 18px;
+            border-radius: 28px;
+            background: linear-gradient(135deg, rgba(15,23,42,0.96), rgba(37,99,235,0.92) 60%, rgba(124,58,237,0.88));
+            box-shadow: 0 24px 60px rgba(15,23,42,0.22);
+            color: white;
+            border: 1px solid rgba(255,255,255,0.08);
+        }
+
+        .hero-card::after {
+            content: "";
+            position: absolute;
+            inset: auto -70px -90px auto;
+            width: 220px;
+            height: 220px;
+            background: radial-gradient(circle, rgba(255,255,255,0.22), transparent 65%);
+            pointer-events: none;
+        }
+
+        .hero-kicker {
+            font-size: 0.9rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            font-weight: 700;
+            opacity: 0.78;
+            margin-bottom: 10px;
+        }
+
+        .hero-title {
+            font-size: 2.5rem;
+            line-height: 1.08;
+            font-weight: 800;
+            margin: 0 0 12px 0;
+        }
+
+        .hero-subtitle {
+            font-size: 1rem;
+            color: rgba(255,255,255,0.82);
+            max-width: 900px;
+        }
+
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            border-radius: 999px;
+            padding: 10px 16px;
+            margin: 10px 0 18px 0;
+            font-weight: 600;
+            font-size: 0.96rem;
+            border: 1px solid rgba(15,23,42,0.08);
+            box-shadow: 0 12px 30px rgba(15,23,42,0.06);
+        }
+
+        .status-pill.success {
+            background: var(--success-bg);
+            color: #166534;
+        }
+
+        .status-pill.warn {
+            background: var(--warn-bg);
+            color: #92400e;
+        }
+
+        .section-card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 24px;
+            padding: 24px 24px 10px 24px;
+            box-shadow: 0 12px 30px rgba(15,23,42,0.06);
+            backdrop-filter: blur(10px);
+            margin-bottom: 20px;
+        }
+
+        .section-card h2, .section-card h3 {
+            margin-top: 0;
+        }
+
+        [data-testid="stMetric"] {
+            background: rgba(255,255,255,0.86);
+            border: 1px solid rgba(148,163,184,0.18);
+            border-radius: 24px;
+            padding: 18px 18px 16px 18px;
+            box-shadow: 0 14px 28px rgba(15,23,42,0.06);
+        }
+
+        [data-testid="stMetricLabel"] {
+            color: #475569;
+            font-weight: 700;
+        }
+
+        [data-testid="stMetricValue"] {
+            color: #111827;
+            font-weight: 800;
+        }
+
+        .stPlotlyChart, .stDataFrame, [data-testid="stImage"] {
+            background: rgba(255,255,255,0.84);
+            border: 1px solid rgba(148,163,184,0.16);
+            border-radius: 24px;
+            padding: 10px;
+            box-shadow: 0 14px 28px rgba(15,23,42,0.05);
+        }
+
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 10px;
+        }
+
+        .stTabs [data-baseweb="tab"] {
+            background: rgba(255,255,255,0.65);
+            border-radius: 14px 14px 0 0;
+            padding-left: 16px;
+            padding-right: 16px;
+        }
+
+        .stAlert {
+            border-radius: 18px;
+            border: 1px solid rgba(148,163,184,0.16);
+            box-shadow: 0 10px 24px rgba(15,23,42,0.05);
+        }
+
+        .stButton > button, .stDownloadButton > button {
+            border-radius: 14px;
+            border: 1px solid rgba(37,99,235,0.14);
+            background: linear-gradient(135deg, rgba(37,99,235,0.96), rgba(124,58,237,0.92));
+            color: white;
+            font-weight: 700;
+            box-shadow: 0 12px 22px rgba(37,99,235,0.22);
+        }
+
+        .stTextArea textarea, .stTextInput input, .stNumberInput input {
+            border-radius: 14px;
+        }
+
+        hr {
+            margin-top: 1.6rem !important;
+            margin-bottom: 1.3rem !important;
+            border-color: rgba(148,163,184,0.18);
+        }
+
+        .block-container {
+            padding-top: 1.8rem;
+            padding-bottom: 3rem;
+            max-width: 1480px;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )    
+    st.markdown(
+        """
+        <style>
+        :root {
+            --bg-grad-1: #0f172a;
+            --bg-grad-2: #111827;
+            --card-bg: rgba(255,255,255,0.88);
+            --card-border: rgba(15, 23, 42, 0.08);
+            --accent: #2563eb;
+            --accent-2: #7c3aed;
+            --text-main: #0f172a;
+            --text-soft: #475569;
+            --success-bg: linear-gradient(135deg, rgba(34,197,94,0.14), rgba(16,185,129,0.10));
+            --warn-bg: linear-gradient(135deg, rgba(245,158,11,0.16), rgba(251,191,36,0.10));
+        }
+
+        .stApp {
+            background:
+                radial-gradient(circle at top left, rgba(37,99,235,0.08), transparent 28%),
+                radial-gradient(circle at top right, rgba(124,58,237,0.08), transparent 22%),
+                linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%);
+            color: var(--text-main);
+        }
+
+        [data-testid="stHeader"] {
+            background: transparent;
+        }
+
+        section[data-testid="stSidebar"] {
+            background: linear-gradient(180deg, #0f172a 0%, #111827 100%);
+            border-right: 1px solid rgba(255,255,255,0.08);
+        }
+
+        section[data-testid="stSidebar"] * {
+            color: #e5eefc;
+        }
+
+        section[data-testid="stSidebar"] .stSlider [data-baseweb="slider"] > div div {
+            background-color: rgba(255,255,255,0.18);
+        }
+
+        section[data-testid="stSidebar"] .stButton > button,
+        section[data-testid="stSidebar"] .stDownloadButton > button {
+            border-radius: 14px;
+            border: 1px solid rgba(255,255,255,0.12);
+            background: linear-gradient(135deg, rgba(37,99,235,0.24), rgba(124,58,237,0.24));
+            color: white;
+            font-weight: 600;
+        }
+
+        section[data-testid="stSidebar"] .stTextInput input,
+        section[data-testid="stSidebar"] .stNumberInput input {
+            border-radius: 12px;
+            background: #f8fafc !important;
+            color: #111827 !important;
+            -webkit-text-fill-color: #111827 !important;
+            caret-color: #111827 !important;
+        }
+
+        .hero-card {
+            position: relative;
+            overflow: hidden;
+            padding: 32px 32px 26px 32px;
+            margin-bottom: 18px;
+            border-radius: 28px;
+            background: linear-gradient(135deg, rgba(15,23,42,0.96), rgba(37,99,235,0.92) 60%, rgba(124,58,237,0.88));
+            box-shadow: 0 24px 60px rgba(15,23,42,0.22);
+            color: white;
+            border: 1px solid rgba(255,255,255,0.08);
+        }
+
+        .hero-card::after {
+            content: "";
+            position: absolute;
+            inset: auto -70px -90px auto;
+            width: 220px;
+            height: 220px;
+            background: radial-gradient(circle, rgba(255,255,255,0.22), transparent 65%);
+            pointer-events: none;
+        }
+
+        .hero-kicker {
+            font-size: 0.9rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            font-weight: 700;
+            opacity: 0.78;
+            margin-bottom: 10px;
+        }
+
+        .hero-title {
+            font-size: 2.5rem;
+            line-height: 1.08;
+            font-weight: 800;
+            margin: 0 0 12px 0;
+        }
+
+        .hero-subtitle {
+            font-size: 1rem;
+            color: rgba(255,255,255,0.82);
+            max-width: 900px;
+        }
+
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            border-radius: 999px;
+            padding: 10px 16px;
+            margin: 10px 0 18px 0;
+            font-weight: 600;
+            font-size: 0.96rem;
+            border: 1px solid rgba(15,23,42,0.08);
+            box-shadow: 0 12px 30px rgba(15,23,42,0.06);
+        }
+
+        .status-pill.success {
+            background: var(--success-bg);
+            color: #166534;
+        }
+
+        .status-pill.warn {
+            background: var(--warn-bg);
+            color: #92400e;
+        }
+
+        .section-card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 24px;
+            padding: 24px 24px 10px 24px;
+            box-shadow: 0 12px 30px rgba(15,23,42,0.06);
+            backdrop-filter: blur(10px);
+            margin-bottom: 20px;
+        }
+
+        .section-card h2, .section-card h3 {
+            margin-top: 0;
+        }
+
+        [data-testid="stMetric"] {
+            background: rgba(255,255,255,0.86);
+            border: 1px solid rgba(148,163,184,0.18);
+            border-radius: 24px;
+            padding: 18px 18px 16px 18px;
+            box-shadow: 0 14px 28px rgba(15,23,42,0.06);
+        }
+
+        [data-testid="stMetricLabel"] {
+            color: #475569;
+            font-weight: 700;
+        }
+
+        [data-testid="stMetricValue"] {
+            color: #111827;
+            font-weight: 800;
+        }
+
+        .stPlotlyChart, .stDataFrame, [data-testid="stImage"] {
+            background: rgba(255,255,255,0.84);
+            border: 1px solid rgba(148,163,184,0.16);
+            border-radius: 24px;
+            padding: 10px;
+            box-shadow: 0 14px 28px rgba(15,23,42,0.05);
+        }
+
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 10px;
+        }
+
+        .stTabs [data-baseweb="tab"] {
+            background: rgba(255,255,255,0.65);
+            border-radius: 14px 14px 0 0;
+            padding-left: 16px;
+            padding-right: 16px;
+        }
+
+        .stAlert {
+            border-radius: 18px;
+            border: 1px solid rgba(148,163,184,0.16);
+            box-shadow: 0 10px 24px rgba(15,23,42,0.05);
+        }
+
+        .stButton > button, .stDownloadButton > button {
+            border-radius: 14px;
+            border: 1px solid rgba(37,99,235,0.14);
+            background: linear-gradient(135deg, rgba(37,99,235,0.96), rgba(124,58,237,0.92));
+            color: white;
+            font-weight: 700;
+            box-shadow: 0 12px 22px rgba(37,99,235,0.22);
+        }
+
+        .stTextArea textarea, .stTextInput input, .stNumberInput input {
+            border-radius: 14px;
+        }
+
+        hr {
+            margin-top: 1.6rem !important;
+            margin-bottom: 1.3rem !important;
+            border-color: rgba(148,163,184,0.18);
+        }
+
+        .block-container {
+            padding-top: 1.8rem;
+            padding-bottom: 3rem;
+            max-width: 1480px;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_hero(title: str, subtitle: str):
+    st.markdown(
+        f"""
+        <div class="hero-card">
+            <div class="hero-kicker">Retention Intelligence Suite</div>
+            <div class="hero-title">{title}</div>
+            <div class="hero-subtitle">{subtitle}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_status_pill(message: str, variant: str = "success"):
+    st.markdown(
+        f'<div class="status-pill {variant}">{message}</div>',
+        unsafe_allow_html=True,
+    )
+
+
 @st.cache_data
 def load_app_data():
     return load_dashboard_bundle()
@@ -188,17 +671,22 @@ def render_llm_panel(
                 st.divider()
 
 
+inject_custom_css()
+
 bundle = load_app_data()
 
 customers = bundle.customer_summary
 cohort_df = bundle.cohort_retention
 
-st.title("AI 기반 고객 이탈 예측 및 리텐션 ROI 최적화 대시보드")
+render_hero(
+    "AI 기반 고객 이탈 예측 및 리텐션 ROI 최적화 대시보드",
+    "이탈 위험 고객 탐지부터 uplift·CLV·예산 최적화·개인화 추천까지 한 화면에서 이어서 분석하는 운영형 대시보드입니다.",
+)
 
 if bundle.used_mock:
-    st.warning("실제 data/raw 산출물을 찾지 못해 mock data로 실행 중입니다.")
+    render_status_pill("실제 data/raw 산출물을 찾지 못해 mock data로 실행 중입니다.", "warn")
 elif bundle.source_dir:
-    st.success(f"실제 시뮬레이터 산출물 사용 중: {bundle.source_dir}")
+    render_status_pill(f"실제 시뮬레이터 산출물 사용 중: {bundle.source_dir}", "success")
 
 with st.sidebar:
     st.header("제어 패널")
@@ -303,7 +791,7 @@ with st.sidebar:
     st.divider()
     st.subheader("LLM 설정")
     st.caption(
-        "권장: API 키는 코드에 쓰지 말고 환경변수 `OPENAI_API_KEY` 또는 Streamlit secrets로 관리하세요."
+        "권장: API 키는 코드에 쓰지 말고 환경변수 OPENAI_API_KEY 또는 Streamlit secrets로 관리하세요."
     )
 
     llm_enabled = st.toggle("LLM 요약/질문 기능 사용", value=True)
@@ -373,6 +861,16 @@ if view == "1. 이탈현황":
             nbins=30,
             title="고객별 이탈 확률 분포",
         )
+        hist_fig.update_traces(
+            marker_line_color="rgba(255,255,255,0.95)",
+            marker_line_width=1.2,
+            opacity=0.9,
+        )
+
+        hist_fig.update_layout(
+            bargap=0.02,
+        )
+
         hist_fig.add_vline(
             x=threshold,
             line_dash="dash",
@@ -630,6 +1128,16 @@ elif view == "5. 예상 최적화 ROI":
             nbins=25,
             title="선정 고객의 예상 ROI 분포",
         )
+        roi_fig.update_traces(
+            marker_line_color="rgba(255,255,255,0.95)",
+            marker_line_width=1.2,
+            opacity=0.9,
+        )
+
+        roi_fig.update_layout(
+            bargap=0.02,
+        )
+
         st.plotly_chart(roi_fig, use_container_width=True)
 
         top_roi = selected_customers.sort_values("expected_roi", ascending=False).head(
