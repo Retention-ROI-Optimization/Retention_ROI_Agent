@@ -1,10 +1,12 @@
 import hashlib
 import os
+from pathlib import Path
 from typing import Dict, Optional
 
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+import streamlit.components.v1 as components
 
 from dashboard.services.api_client import (
     fetch_personalized_recommendations,
@@ -79,18 +81,9 @@ def inject_custom_css():
             border-right: 1px solid rgba(255,255,255,0.08);
         }
 
-        /* 사이드바 일반 텍스트만 밝게 */
-        section[data-testid="stSidebar"] label,
-        section[data-testid="stSidebar"] .stMarkdown,
-        section[data-testid="stSidebar"] .stCaption,
-        section[data-testid="stSidebar"] p,
-        section[data-testid="stSidebar"] span,
-        section[data-testid="stSidebar"] h1,
-        section[data-testid="stSidebar"] h2,
-        section[data-testid="stSidebar"] h3,
-        section[data-testid="stSidebar"] h4,
-        section[data-testid="stSidebar"] h5,
-        section[data-testid="stSidebar"] h6 {
+        /* 사이드바 텍스트는 전체적으로 밝게 */
+        section[data-testid="stSidebar"],
+        section[data-testid="stSidebar"] * {
             color: #e5eefc !important;
         }
 
@@ -103,254 +96,72 @@ def inject_custom_css():
             border-radius: 14px;
             border: 1px solid rgba(255,255,255,0.12);
             background: linear-gradient(135deg, rgba(37,99,235,0.24), rgba(124,58,237,0.24));
-            color: white;
+            color: white !important;
             font-weight: 600;
         }
 
-        /* 사이드바 입력칸 */
-        section[data-testid="stSidebar"] .stTextInput input,
-        section[data-testid="stSidebar"] .stNumberInput input,
-        section[data-testid="stSidebar"] .stTextArea textarea,
-        section[data-testid="stSidebar"] input[type="password"] {
-            border-radius: 12px !important;
-            background: rgba(255,255,255,0.14) !important;
-            color: #f8fafc !important;
-            -webkit-text-fill-color: #f8fafc !important;
-            caret-color: #f8fafc !important;
-            border: 1px solid rgba(255,255,255,0.18) !important;
-        }
-
-        /* placeholder */
-        section[data-testid="stSidebar"] .stTextInput input::placeholder,
-        section[data-testid="stSidebar"] .stNumberInput input::placeholder,
-        section[data-testid="stSidebar"] .stTextArea textarea::placeholder,
-        section[data-testid="stSidebar"] input[type="password"]::placeholder {
-            color: rgba(226,232,240,0.72) !important;
-            -webkit-text-fill-color: rgba(226,232,240,0.72) !important;
+        /* radio / toggle / slider 글자 고정 */
+        section[data-testid="stSidebar"] .stRadio label,
+        section[data-testid="stSidebar"] .stRadio label p,
+        section[data-testid="stSidebar"] .stToggle label,
+        section[data-testid="stSidebar"] .stToggle label p,
+        section[data-testid="stSidebar"] .stCheckbox label,
+        section[data-testid="stSidebar"] .stCheckbox label p,
+        section[data-testid="stSidebar"] .stSelectbox label,
+        section[data-testid="stSidebar"] .stSlider label,
+        section[data-testid="stSidebar"] .stSlider span,
+        section[data-testid="stSidebar"] .stSlider p,
+        section[data-testid="stSidebar"] [role="radiogroup"] label,
+        section[data-testid="stSidebar"] [role="radiogroup"] label p {
+            color: #e5eefc !important;
+            -webkit-text-fill-color: #e5eefc !important;
             opacity: 1 !important;
         }
 
-        /* number input의 + / - 버튼 */
-        section[data-testid="stSidebar"] .stNumberInput button {
-            color: #f8fafc !important;
-            background: rgba(255,255,255,0.06) !important;
-            border: 1px solid rgba(255,255,255,0.10) !important;
-        }
-
-        section[data-testid="stSidebar"] .stNumberInput button svg {
-            fill: #f8fafc !important;
-            color: #f8fafc !important;
-        }
-
-        .hero-card {
-            position: relative;
-            overflow: hidden;
-            padding: 32px 32px 26px 32px;
-            margin-bottom: 18px;
-            border-radius: 28px;
-            background: linear-gradient(135deg, rgba(15,23,42,0.96), rgba(37,99,235,0.92) 60%, rgba(124,58,237,0.88));
-            box-shadow: 0 24px 60px rgba(15,23,42,0.22);
-            color: white;
-            border: 1px solid rgba(255,255,255,0.08);
-        }
-
-        .hero-card::after {
-            content: "";
-            position: absolute;
-            inset: auto -70px -90px auto;
-            width: 220px;
-            height: 220px;
-            background: radial-gradient(circle, rgba(255,255,255,0.22), transparent 65%);
-            pointer-events: none;
-        }
-
-        .hero-kicker {
-            font-size: 0.9rem;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-            font-weight: 700;
-            opacity: 0.78;
-            margin-bottom: 10px;
-        }
-
-        .hero-title {
-            font-size: 2.5rem;
-            line-height: 1.08;
-            font-weight: 800;
-            margin: 0 0 12px 0;
-        }
-
-        .hero-subtitle {
-            font-size: 1rem;
-            color: rgba(255,255,255,0.82);
-            max-width: 900px;
-        }
-
-        .status-pill {
-            display: inline-flex;
-            align-items: center;
-            gap: 10px;
-            border-radius: 999px;
-            padding: 10px 16px;
-            margin: 10px 0 18px 0;
-            font-weight: 600;
-            font-size: 0.96rem;
-            border: 1px solid rgba(15,23,42,0.08);
-            box-shadow: 0 12px 30px rgba(15,23,42,0.06);
-        }
-
-        .status-pill.success {
-            background: var(--success-bg);
-            color: #166534;
-        }
-
-        .status-pill.warn {
-            background: var(--warn-bg);
-            color: #92400e;
-        }
-
-        .section-card {
-            background: var(--card-bg);
-            border: 1px solid var(--card-border);
-            border-radius: 24px;
-            padding: 24px 24px 10px 24px;
-            box-shadow: 0 12px 30px rgba(15,23,42,0.06);
-            backdrop-filter: blur(10px);
-            margin-bottom: 20px;
-        }
-
-        .section-card h2, .section-card h3 {
-            margin-top: 0;
-        }
-
-        [data-testid="stMetric"] {
-            background: rgba(255,255,255,0.86);
-            border: 1px solid rgba(148,163,184,0.18);
-            border-radius: 24px;
-            padding: 18px 18px 16px 18px;
-            box-shadow: 0 14px 28px rgba(15,23,42,0.06);
-        }
-
-        [data-testid="stMetricLabel"] {
-            color: #475569;
-            font-weight: 700;
-        }
-
-        [data-testid="stMetricValue"] {
-            color: #111827;
-            font-weight: 800;
-        }
-
-        .stPlotlyChart, .stDataFrame, [data-testid="stImage"] {
-            background: rgba(255,255,255,0.84);
-            border: 1px solid rgba(148,163,184,0.16);
-            border-radius: 24px;
-            padding: 10px;
-            box-shadow: 0 14px 28px rgba(15,23,42,0.05);
-        }
-
-        .stTabs [data-baseweb="tab-list"] {
-            gap: 10px;
-        }
-
-        .stTabs [data-baseweb="tab"] {
-            background: rgba(255,255,255,0.65);
-            border-radius: 14px 14px 0 0;
-            padding-left: 16px;
-            padding-right: 16px;
-        }
-
-        .stAlert {
-            border-radius: 18px;
-            border: 1px solid rgba(148,163,184,0.16);
-            box-shadow: 0 10px 24px rgba(15,23,42,0.05);
-        }
-
-        .stButton > button, .stDownloadButton > button {
-            border-radius: 14px;
-            border: 1px solid rgba(37,99,235,0.14);
-            background: linear-gradient(135deg, rgba(37,99,235,0.96), rgba(124,58,237,0.92));
-            color: white;
-            font-weight: 700;
-            box-shadow: 0 12px 22px rgba(37,99,235,0.22);
-        }
-
-        .stTextArea textarea, .stTextInput input, .stNumberInput input {
-            border-radius: 14px;
-        }
-
-        hr {
-            margin-top: 1.6rem !important;
-            margin-bottom: 1.3rem !important;
-            border-color: rgba(148,163,184,0.18);
-        }
-
-        .block-container {
-            padding-top: 1.8rem;
-            padding-bottom: 3rem;
-            max-width: 1480px;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )    
-    st.markdown(
-        """
-        <style>
-        :root {
-            --bg-grad-1: #0f172a;
-            --bg-grad-2: #111827;
-            --card-bg: rgba(255,255,255,0.88);
-            --card-border: rgba(15, 23, 42, 0.08);
-            --accent: #2563eb;
-            --accent-2: #7c3aed;
-            --text-main: #0f172a;
-            --text-soft: #475569;
-            --success-bg: linear-gradient(135deg, rgba(34,197,94,0.14), rgba(16,185,129,0.10));
-            --warn-bg: linear-gradient(135deg, rgba(245,158,11,0.16), rgba(251,191,36,0.10));
-        }
-
-        .stApp {
-            background:
-                radial-gradient(circle at top left, rgba(37,99,235,0.08), transparent 28%),
-                radial-gradient(circle at top right, rgba(124,58,237,0.08), transparent 22%),
-                linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%);
-            color: var(--text-main);
-        }
-
-        [data-testid="stHeader"] {
-            background: transparent;
-        }
-
-        section[data-testid="stSidebar"] {
-            background: linear-gradient(180deg, #0f172a 0%, #111827 100%);
-            border-right: 1px solid rgba(255,255,255,0.08);
-        }
-
-        section[data-testid="stSidebar"] * {
-            color: #e5eefc;
-        }
-
-        section[data-testid="stSidebar"] .stSlider [data-baseweb="slider"] > div div {
-            background-color: rgba(255,255,255,0.18);
-        }
-
-        section[data-testid="stSidebar"] .stButton > button,
-        section[data-testid="stSidebar"] .stDownloadButton > button {
-            border-radius: 14px;
-            border: 1px solid rgba(255,255,255,0.12);
-            background: linear-gradient(135deg, rgba(37,99,235,0.24), rgba(124,58,237,0.24));
-            color: white;
-            font-weight: 600;
-        }
-
+        /* 사이드바 입력칸은 흰 배경 + 진한 글씨로 원복 */
         section[data-testid="stSidebar"] .stTextInput input,
-        section[data-testid="stSidebar"] .stNumberInput input {
-            border-radius: 12px;
-            background: #f8fafc !important;
+        section[data-testid="stSidebar"] .stNumberInput input,
+        section[data-testid="stSidebar"] .stTextArea textarea,
+        section[data-testid="stSidebar"] input[type="password"],
+        section[data-testid="stSidebar"] input[type="text"],
+        section[data-testid="stSidebar"] [data-baseweb="input"] input,
+        section[data-testid="stSidebar"] [data-baseweb="base-input"] input,
+        section[data-testid="stSidebar"] [data-baseweb="textarea"] textarea {
+            border-radius: 14px !important;
+            background: #ffffff !important;
             color: #111827 !important;
             -webkit-text-fill-color: #111827 !important;
             caret-color: #111827 !important;
+            border: 1px solid rgba(148,163,184,0.35) !important;
+            box-shadow: none !important;
+        }
+
+        section[data-testid="stSidebar"] .stTextInput input::placeholder,
+        section[data-testid="stSidebar"] .stNumberInput input::placeholder,
+        section[data-testid="stSidebar"] .stTextArea textarea::placeholder,
+        section[data-testid="stSidebar"] input[type="password"]::placeholder,
+        section[data-testid="stSidebar"] input[type="text"]::placeholder,
+        section[data-testid="stSidebar"] [data-baseweb="input"] input::placeholder,
+        section[data-testid="stSidebar"] [data-baseweb="base-input"] input::placeholder,
+        section[data-testid="stSidebar"] [data-baseweb="textarea"] textarea::placeholder {
+            color: #94a3b8 !important;
+            -webkit-text-fill-color: #94a3b8 !important;
+            opacity: 1 !important;
+        }
+
+        section[data-testid="stSidebar"] .stNumberInput button,
+        section[data-testid="stSidebar"] [data-baseweb="input"] button,
+        section[data-testid="stSidebar"] [data-baseweb="base-input"] button {
+            color: #111827 !important;
+            background: #ffffff !important;
+            border: 1px solid rgba(148,163,184,0.35) !important;
+        }
+
+        section[data-testid="stSidebar"] .stNumberInput button svg,
+        section[data-testid="stSidebar"] [data-baseweb="input"] button svg,
+        section[data-testid="stSidebar"] [data-baseweb="base-input"] button svg {
+            fill: #111827 !important;
+            color: #111827 !important;
         }
 
         .hero-card {
@@ -500,6 +311,75 @@ def inject_custom_css():
             padding-top: 1.8rem;
             padding-bottom: 3rem;
             max-width: 1480px;
+        }
+
+        .sidebar-chatbot-card {
+            border: 1px solid rgba(255,255,255,0.10);
+            border-radius: 22px;
+            padding: 18px 16px;
+            background: linear-gradient(135deg, rgba(37,99,235,0.20), rgba(124,58,237,0.22));
+            box-shadow: 0 14px 30px rgba(15,23,42,0.18);
+            text-align: center;
+            margin-bottom: 10px;
+        }
+
+        .sidebar-chatbot-emoji {
+            font-size: 3rem;
+            line-height: 1;
+            margin-bottom: 10px;
+        }
+
+        .sidebar-chatbot-title {
+            color: #ffffff;
+            font-size: 1.02rem;
+            font-weight: 800;
+            margin-bottom: 6px;
+        }
+
+        .sidebar-chatbot-desc {
+            color: rgba(229,238,252,0.84);
+            font-size: 0.90rem;
+            line-height: 1.45;
+        }
+
+        .chatbot-view-chip {
+            display: inline-block;
+            margin-top: 8px;
+            padding: 6px 10px;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.08);
+            color: #dbeafe;
+            font-size: 0.80rem;
+            font-weight: 600;
+        }
+
+        .chatbot-dialog-note {
+            background: rgba(37,99,235,0.08);
+            border: 1px solid rgba(37,99,235,0.12);
+            border-radius: 14px;
+            padding: 10px 12px;
+            color: #334155;
+            margin-bottom: 12px;
+        }
+
+        .chatbot-drag-handle {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 12px;
+            padding: 10px 12px;
+            border-radius: 14px;
+            background: linear-gradient(135deg, rgba(15,23,42,0.96), rgba(37,99,235,0.92));
+            color: #ffffff;
+            font-weight: 700;
+            cursor: move;
+            user-select: none;
+        }
+
+        .chatbot-drag-handle small {
+            color: rgba(255,255,255,0.78);
+            font-weight: 600;
         }
         </style>
         """,
@@ -587,7 +467,62 @@ def get_session_cached_answer(
     return st.session_state[cache_key]
 
 
-def render_llm_panel(
+def get_chat_history_key(view_key: str) -> str:
+    return f"llm_chat_history_{view_key}"
+
+
+def get_chat_input_key(view_key: str) -> str:
+    return f"llm_chat_input_{view_key}"
+
+
+def resolve_chatbot_image() -> Optional[str]:
+    candidates = [
+        Path(__file__).resolve().parent / "assets" / "chatbot.png",
+        Path(__file__).resolve().parent / "assets" / "chatbot.jpg",
+        Path(__file__).resolve().parent / "data" / "chatbot.png",
+        Path(__file__).resolve().parent / "data" / "chatbot.jpg",
+    ]
+    for path in candidates:
+        if path.exists():
+            return str(path)
+    return None
+
+
+def close_llm_chat_dialog():
+    st.session_state["llm_chat_open"] = False
+    st.session_state["llm_chat_view_key"] = None
+
+
+def build_contextual_chat_question(
+    view_title: str,
+    history: list,
+    latest_question: str,
+    max_messages: int = 6,
+) -> str:
+    recent_history = history[-max_messages:] if history else []
+    if not recent_history:
+        return latest_question
+
+    history_lines = []
+    for item in recent_history:
+        role = "사용자" if item.get("role") == "user" else "AI"
+        content = str(item.get("content", "")).strip()
+        if content:
+            history_lines.append(f"{role}: {content}")
+
+    if not history_lines:
+        return latest_question
+
+    history_block = "\\n".join(history_lines)
+    return (
+        f"현재 대시보드 화면: {view_title}\\n"
+        "아래는 직전 대화 맥락이다. 반드시 이 맥락을 참고해 이어서 답변하라.\\n\\n"
+        f"{history_block}\\n\\n"
+        f"현재 질문: {latest_question}"
+    )
+
+
+def render_llm_summary(
     view_key: str,
     view_title: str,
     payload: Dict,
@@ -618,57 +553,247 @@ def render_llm_panel(
             return
 
     st.markdown(summary)
+    st.caption("추가 질문은 사이드바의 AI 챗봇 버튼을 눌러 이어서 대화할 수 있습니다.")
 
-    st.markdown("### 결과 지표에 대해 질문하기")
-    st.caption(
-        "예: 왜 특정 세그먼트가 많이 선정됐는지 설명해줘 / 현재 예산에서 ROI가 가장 높은 세그먼트는?"
-    )
 
-    history_key = f"llm_history_{view_key}"
+def render_sidebar_chatbot_launcher(
+    view_key: str,
+    view_title: str,
+    llm_enabled: bool,
+    api_key: Optional[str],
+):
+    st.divider()
+    st.subheader("AI 챗봇")
+
+    chatbot_image_path = resolve_chatbot_image()
+    if chatbot_image_path:
+        st.image(chatbot_image_path, use_container_width=True)
+        st.caption("현재 화면의 표·그래프를 바탕으로 대화를 이어갈 수 있습니다.")
+    else:
+        st.markdown(
+            f"""
+            <div class="sidebar-chatbot-card">
+                <div class="sidebar-chatbot-emoji">🤖</div>
+                <div class="sidebar-chatbot-title">AI 분석 챗봇</div>
+                <div class="sidebar-chatbot-desc">
+                    현재 보고 있는 표·그래프를 함께 보면서
+                    질문을 이어갈 수 있습니다.
+                </div>
+                <div class="chatbot-view-chip">{view_title}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    ready, status_message = get_llm_status(api_key)
+
+    if st.button(
+        "🤖 AI 챗봇 열기",
+        key=f"open_chatbot_{view_key}",
+        use_container_width=True,
+        disabled=(not llm_enabled) or (not ready),
+    ):
+        st.session_state["llm_chat_open"] = True
+        st.session_state["llm_chat_view_key"] = view_key
+        st.rerun()
+
+    if not llm_enabled:
+        st.caption("LLM 기능이 꺼져 있어 챗봇을 열 수 없습니다.")
+    elif not ready:
+        pass
+    else:
+        st.caption("현재 화면 문맥을 유지한 채 질문할 수 있습니다.")
+
+
+@st.dialog("AI 분석 챗봇")
+def open_chatbot_dialog(
+    view_key: str,
+    view_title: str,
+    payload: Dict,
+    api_key: Optional[str],
+    model_name: str,
+):
+    ready, status_message = get_llm_status(api_key)
+    payload_json = build_payload_json(payload)
+    history_key = get_chat_history_key(view_key)
+    input_key = get_chat_input_key(view_key)
+
     if history_key not in st.session_state:
         st.session_state[history_key] = []
 
-    question = st.text_area(
-        "질문 입력",
-        key=f"llm_question_{view_key}",
-        height=100,
-        placeholder="현재 화면의 지표에 대해 질문을 입력하세요.",
+    st.markdown(
+        """
+        <div id="chatbot-drag-handle" class="chatbot-drag-handle">
+            <span>🤖 AI 분석 챗봇</span>
+            <small>드래그해서 이동</small>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
-    q_col1, q_col2 = st.columns([1, 1])
-    ask_clicked = q_col1.button("AI에게 질문하기", key=f"ask_{view_key}")
-    clear_clicked = q_col2.button("대화 지우기", key=f"clear_{view_key}")
+    st.markdown(
+        f"""
+        <div class="chatbot-dialog-note">
+            <strong>현재 화면:</strong> {view_title}<br/>
+            현재 화면의 지표·표·그래프 요약 컨텍스트를 바탕으로 답변합니다.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-    if clear_clicked:
+    top_col1, top_col2 = st.columns([1, 1])
+    if top_col1.button("대화 지우기", key=f"clear_chat_{view_key}", use_container_width=True):
         st.session_state[history_key] = []
+        st.rerun()
+    if top_col2.button("닫기", key=f"close_chat_{view_key}", use_container_width=True):
+        close_llm_chat_dialog()
+        st.rerun()
 
-    if ask_clicked:
-        user_question = question.strip()
-        if not user_question:
-            st.warning("질문을 먼저 입력하세요.")
-        else:
-            with st.spinner("AI가 질문에 답변하는 중입니다..."):
+    if not ready:
+        st.info(status_message)
+        return
+
+    history = st.session_state[history_key]
+
+    if not history:
+        with st.chat_message("assistant", avatar="🤖"):
+            st.markdown(
+                "안녕하세요. 현재 보고 있는 대시보드 화면을 기준으로 설명해드릴게요.\n\n"
+                "- 왜 이 지표가 높거나 낮은지\n"
+                "- 어떤 고객/세그먼트가 핵심인지\n"
+                "- 지금 예산·threshold에서 무엇을 바꾸면 좋을지\n"
+                "같은 질문을 이어서 해보세요."
+            )
+
+    for item in history:
+        role = item.get("role", "assistant")
+        avatar = "🧑" if role == "user" else "🤖"
+        with st.chat_message(role, avatar=avatar):
+            st.markdown(item.get("content", ""))
+
+    prompt = st.chat_input(
+        "현재 화면에 대해 질문하세요.",
+        key=input_key,
+    )
+
+    if prompt:
+        history.append({"role": "user", "content": prompt})
+
+        with st.chat_message("user", avatar="🧑"):
+            st.markdown(prompt)
+
+        contextual_question = build_contextual_chat_question(
+            view_title=view_title,
+            history=history[:-1],
+            latest_question=prompt,
+        )
+
+        with st.chat_message("assistant", avatar="🤖"):
+            with st.spinner("AI가 답변하는 중입니다..."):
                 try:
                     answer = get_session_cached_answer(
                         view_title=view_title,
                         payload_json=payload_json,
-                        question=user_question,
+                        question=contextual_question,
                         api_key=api_key or "",
                         model_name=model_name,
                     )
                 except Exception as exc:
-                    st.error(f"AI 답변 생성 중 오류가 발생했습니다: {exc}")
-                else:
-                    st.session_state[history_key].append(
-                        {"question": user_question, "answer": answer}
-                    )
+                    answer = f"AI 답변 생성 중 오류가 발생했습니다: {exc}"
 
-    if st.session_state[history_key]:
-        for idx, item in enumerate(reversed(st.session_state[history_key]), start=1):
-            with st.container():
-                st.markdown(f"**Q{idx}.** {item['question']}")
-                st.markdown(item["answer"])
-                st.divider()
+            st.markdown(answer)
+
+        history.append({"role": "assistant", "content": answer})
+        st.session_state[history_key] = history
+
+
+
+def inject_draggable_chat_dialog():
+    components.html(
+        """
+        <script>
+        (function() {
+          const doc = window.parent.document;
+
+          function setupDraggableDialog() {
+            const handle = doc.getElementById('chatbot-drag-handle');
+            if (!handle) return;
+
+            const dialog = handle.closest('[role="dialog"]');
+            if (!dialog) return;
+            if (dialog.dataset.dragBound === '1') return;
+
+            dialog.dataset.dragBound = '1';
+            dialog.style.position = 'fixed';
+            dialog.style.margin = '0';
+            dialog.style.transform = 'none';
+            dialog.style.right = '24px';
+            dialog.style.top = '92px';
+            dialog.style.left = 'auto';
+            dialog.style.width = 'min(460px, 92vw)';
+            dialog.style.maxWidth = '92vw';
+            dialog.style.maxHeight = '82vh';
+            dialog.style.overflow = 'auto';
+            dialog.style.zIndex = '999999';
+
+            let dragging = false;
+            let startX = 0;
+            let startY = 0;
+            let startLeft = 0;
+            let startTop = 0;
+
+            function clamp(value, minValue, maxValue) {
+              return Math.min(Math.max(value, minValue), maxValue);
+            }
+
+            function onMouseMove(event) {
+              if (!dragging) return;
+
+              const nextLeft = startLeft + (event.clientX - startX);
+              const nextTop = startTop + (event.clientY - startY);
+              const maxLeft = Math.max(12, window.parent.innerWidth - dialog.offsetWidth - 12);
+              const maxTop = Math.max(12, window.parent.innerHeight - dialog.offsetHeight - 12);
+
+              dialog.style.left = clamp(nextLeft, 12, maxLeft) + 'px';
+              dialog.style.top = clamp(nextTop, 12, maxTop) + 'px';
+              dialog.style.right = 'auto';
+            }
+
+            function onMouseUp() {
+              dragging = false;
+              doc.removeEventListener('mousemove', onMouseMove);
+              doc.removeEventListener('mouseup', onMouseUp);
+            }
+
+            handle.addEventListener('mousedown', function(event) {
+              if (event.target.closest('button, input, textarea, a, label')) return;
+
+              dragging = true;
+              const rect = dialog.getBoundingClientRect();
+              startLeft = rect.left;
+              startTop = rect.top;
+              startX = event.clientX;
+              startY = event.clientY;
+
+              dialog.style.left = rect.left + 'px';
+              dialog.style.top = rect.top + 'px';
+              dialog.style.right = 'auto';
+
+              doc.addEventListener('mousemove', onMouseMove);
+              doc.addEventListener('mouseup', onMouseUp);
+              event.preventDefault();
+            });
+          }
+
+          setupDraggableDialog();
+          const observer = new MutationObserver(setupDraggableDialog);
+          observer.observe(doc.body, { childList: true, subtree: true });
+        })();
+        </script>
+        """,
+        height=0,
+        width=0,
+    )
 
 
 inject_custom_css()
@@ -805,6 +930,13 @@ with st.sidebar:
     env_key_configured = bool(os.getenv("OPENAI_API_KEY"))
     if env_key_configured and not llm_api_key:
         st.caption("현재 OPENAI_API_KEY 환경변수를 사용하도록 설정되어 있습니다.")
+
+    render_sidebar_chatbot_launcher(
+        view_key=view.split(".")[0],
+        view_title=view,
+        llm_enabled=llm_enabled,
+        api_key=llm_api_key.strip() if llm_api_key else None,
+    )
 
 
 churn_summary, risk_customers = get_churn_status(customers, threshold)
@@ -1447,10 +1579,26 @@ elif view == "9. 개인화 추천":
 
 
 if llm_enabled:
-    render_llm_panel(
-        view_key=view.split(".")[0],
+    current_view_key = view.split(".")[0]
+    current_model_name = llm_model.strip() or DEFAULT_MODEL_NAME
+
+    render_llm_summary(
+        view_key=current_view_key,
         view_title=llm_view_title,
         payload=llm_payload,
         api_key=llm_api_key_value,
-        model_name=llm_model.strip() or DEFAULT_MODEL_NAME,
+        model_name=current_model_name,
     )
+
+    if (
+        st.session_state.get("llm_chat_open", False)
+        and st.session_state.get("llm_chat_view_key") == current_view_key
+    ):
+        open_chatbot_dialog(
+            view_key=current_view_key,
+            view_title=llm_view_title,
+            payload=llm_payload,
+            api_key=llm_api_key_value,
+            model_name=current_model_name,
+        )
+        inject_draggable_chat_dialog()
