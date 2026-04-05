@@ -154,15 +154,47 @@ def _compute_purchase_cycle_features(orders: pd.DataFrame, as_of_date: pd.Timest
 
 
 def _compute_session_features(events: pd.DataFrame, orders: pd.DataFrame, as_of_date: pd.Timestamp) -> pd.DataFrame:
-    hist_events = events.loc[(events['timestamp'] > as_of_date - pd.Timedelta(days=60)) & (events['timestamp'] <= as_of_date), ['customer_id', 'timestamp', 'event_type', 'session_id']].copy()
-    hist_orders = orders.loc[(orders['order_time'] > as_of_date - pd.Timedelta(days=60)) & (orders['order_time'] <= as_of_date), ['customer_id', 'order_time']].copy()
-    session_base = hist_events.groupby(['customer_id', 'session_id']).agg(session_start=('timestamp', 'min'), session_end=('timestamp', 'max'))
+    hist_events = events.loc[
+        (events['timestamp'] > as_of_date - pd.Timedelta(days=60)) & (events['timestamp'] <= as_of_date),
+        ['customer_id', 'timestamp', 'event_type', 'session_id'],
+    ].copy()
+    hist_orders = orders.loc[
+        (orders['order_time'] > as_of_date - pd.Timedelta(days=60)) & (orders['order_time'] <= as_of_date),
+        ['customer_id', 'order_time', 'order_id'],
+    ].copy()
+
+    if hist_events.empty:
+        return pd.DataFrame(
+            columns=[
+                'customer_id',
+                'avg_session_duration_sec_30d',
+                'median_session_duration_sec_30d',
+                'pageviews_per_session_30d',
+                'searches_per_session_30d',
+                'sessions_30d',
+                'support_contacts_per_session_30d',
+                'avg_session_duration_sec_prev_30d',
+                'median_session_duration_sec_prev_30d',
+                'pageviews_per_session_prev_30d',
+                'searches_per_session_prev_30d',
+                'sessions_prev_30d',
+                'support_contacts_per_session_prev_30d',
+                'search_to_purchase_conversion_total',
+            ]
+        )
+
+    session_base = hist_events.groupby(['customer_id', 'session_id']).agg(
+        session_start=('timestamp', 'min'),
+        session_end=('timestamp', 'max'),
+    )
     event_counts = pd.crosstab(index=[hist_events['customer_id'], hist_events['session_id']], columns=hist_events['event_type'])
     session_stats = session_base.join(event_counts, how='left').reset_index()
-    for col in ['page_view', 'search', 'add_to_cart', 'support_contact']:
+    for col in ['page_view', 'search', 'add_to_cart', 'support_contact', 'purchase']:
         if col not in session_stats.columns:
             session_stats[col] = 0
-    session_stats['session_duration_sec'] = (session_stats['session_end'] - session_stats['session_start']).dt.total_seconds().clip(lower=0)
+    session_stats['session_duration_sec'] = (
+        session_stats['session_end'] - session_stats['session_start']
+    ).dt.total_seconds().clip(lower=0)
 
     def _agg_between(start: pd.Timestamp, end: pd.Timestamp, suffix: str) -> pd.DataFrame:
         tmp = session_stats.loc[(session_stats['session_start'] > start) & (session_stats['session_start'] <= end)]
@@ -171,7 +203,7 @@ def _compute_session_features(events: pd.DataFrame, orders: pd.DataFrame, as_of_
         return tmp.groupby('customer_id').agg(
             **{
                 f'avg_session_duration_sec_{suffix}': ('session_duration_sec', 'mean'),
-                f'avg_session_duration_sec_prev_30d' if suffix == 'prev_30d' else f'median_session_duration_sec_{suffix}': ('session_duration_sec', 'median'),
+                f'median_session_duration_sec_{suffix}': ('session_duration_sec', 'median'),
                 f'pageviews_per_session_{suffix}': ('page_view', 'mean'),
                 f'searches_per_session_{suffix}': ('search', 'mean'),
                 f'sessions_{suffix}': ('session_id', 'nunique'),
@@ -181,12 +213,28 @@ def _compute_session_features(events: pd.DataFrame, orders: pd.DataFrame, as_of_
 
     recent_30 = _agg_between(as_of_date - pd.Timedelta(days=30), as_of_date, '30d')
     prev_30 = _agg_between(as_of_date - pd.Timedelta(days=60), as_of_date - pd.Timedelta(days=30), 'prev_30d')
-    order_days = hist_orders.assign(order_date=hist_orders['order_time'].dt.floor('D')).groupby('customer_id')['order_date'].nunique().rename('purchase_session_days_total')
-    search_sessions = (session_stats['search'] > 0).groupby(session_stats['customer_id']).sum().rename('search_sessions_total')
-    conv = pd.concat([search_sessions, order_days], axis=1).fillna(0.0)
-    conv['search_to_purchase_conversion_total'] = safe_divide(conv['purchase_session_days_total'], conv['search_sessions_total'], default=0.0)
+
+    if hist_orders.empty:
+        conv = pd.DataFrame(columns=['customer_id', 'search_to_purchase_conversion_total'])
+    else:
+        hist_orders['order_date'] = hist_orders['order_time'].dt.floor('D')
+        purchase_days = hist_orders.groupby('customer_id')['order_date'].nunique().rename('purchase_days_total')
+        search_sessions = (
+            session_stats.assign(has_search=session_stats['search'] > 0)
+            .groupby('customer_id')['has_search']
+            .sum()
+            .rename('search_sessions_total')
+        )
+        conv = pd.concat([search_sessions, purchase_days], axis=1).fillna(0.0)
+        conv['search_to_purchase_conversion_total'] = safe_divide(
+            conv['purchase_days_total'],
+            conv['search_sessions_total'],
+            default=0.0,
+        )
+        conv = conv[['search_to_purchase_conversion_total']].reset_index()
+
     out = recent_30.merge(prev_30, on='customer_id', how='outer')
-    out = out.merge(conv[['search_to_purchase_conversion_total']], left_on='customer_id', right_index=True, how='left')
+    out = out.merge(conv, on='customer_id', how='left')
     return out
 
 
@@ -293,6 +341,7 @@ def build_feature_dataset(data_dir: str | Path, feature_store_dir: str | Path = 
     base['days_since_last_event'] = (as_of_date - base['customer_id'].map(last_event)).dt.total_seconds().div(86400).fillna(999)
     base['recency_days'] = (as_of_date - base['customer_id'].map(last_purchase)).dt.total_seconds().div(86400).fillna(999)
     base['frequency_30d'] = base['customer_id'].map(_window_counts_by_customer(orders, 'customer_id', 'order_time', as_of_date, 30)).fillna(0)
+    base['frequency_prev_30d'] = base['customer_id'].map(_window_counts_by_customer(orders, 'customer_id', 'order_time', as_of_date - pd.Timedelta(days=30), 30)).fillna(0)
     base['frequency_90d'] = base['customer_id'].map(_window_counts_by_customer(orders, 'customer_id', 'order_time', as_of_date, 90)).fillna(0)
     base['monetary_30d'] = base['customer_id'].map(_window_counts_by_customer(orders, 'customer_id', 'order_time', as_of_date, 30, value_col='net_amount')).fillna(0.0)
     base['monetary_90d'] = base['customer_id'].map(_window_counts_by_customer(orders, 'customer_id', 'order_time', as_of_date, 90, value_col='net_amount')).fillna(0.0)
@@ -308,23 +357,25 @@ def build_feature_dataset(data_dir: str | Path, feature_store_dir: str | Path = 
     base['coupon_open_30d'] = base['customer_id'].map(_window_counts_by_customer(events, 'customer_id', 'timestamp', as_of_date, 30, event_filter=['coupon_open'])).fillna(0)
     base['coupon_open_prev_30d'] = base['customer_id'].map(_window_counts_by_customer(events, 'customer_id', 'timestamp', as_of_date - pd.Timedelta(days=30), 30, event_filter=['coupon_open'])).fillna(0)
     base['support_contact_30d'] = base['customer_id'].map(_window_counts_by_customer(events, 'customer_id', 'timestamp', as_of_date, 30, event_filter=['support_contact'])).fillna(0)
+    base['visits_90d'] = base['customer_id'].map(_window_counts_by_customer(events, 'customer_id', 'timestamp', as_of_date, 90, event_filter=['visit'])).fillna(0)
     base['active_days_30d'] = base['customer_id'].map(_window_unique_days(events, 'customer_id', 'timestamp', as_of_date, 30)).fillna(0)
     add_rate_feature(base, 'visits_14d', 'visits_prev_14d', 'visit_change_rate_14d')
     add_rate_feature(base, 'purchases_14d', 'purchases_prev_14d', 'purchase_change_rate_14d')
     base = base.merge(_compute_purchase_cycle_features(orders, as_of_date), on='customer_id', how='left')
     base = base.merge(_compute_session_features(events, orders, as_of_date), on='customer_id', how='left')
+    base['exposure_count_30d'] = base['customer_id'].map(_window_counts_by_customer(exposures, 'customer_id', 'exposure_time', as_of_date, 30)).fillna(0)
+    base['exposure_count_prev_30d'] = base['customer_id'].map(_window_counts_by_customer(exposures, 'customer_id', 'exposure_time', as_of_date - pd.Timedelta(days=30), 30)).fillna(0)
     base['search_to_purchase_conversion_30d'] = safe_divide(base['frequency_30d'], base['searches_30d'].replace(0, np.nan), default=0.0)
-    base['search_to_purchase_conversion_prev_30d'] = safe_divide(base['purchases_prev_14d'], base['searches_prev_30d'].replace(0, np.nan), default=0.0)
+    base['search_to_purchase_conversion_prev_30d'] = safe_divide(base['frequency_prev_30d'], base['searches_prev_30d'].replace(0, np.nan), default=0.0)
     base['cart_to_purchase_rate_30d'] = safe_divide(base['frequency_30d'], base['add_to_cart_30d'].replace(0, np.nan), default=0.0)
-    base['cart_to_purchase_rate_prev_30d'] = safe_divide(base['purchases_prev_14d'], base['add_to_cart_prev_30d'].replace(0, np.nan), default=0.0)
-    base['coupon_open_rate_30d'] = safe_divide(base['coupon_open_30d'], base['coupon_exposure_count'].replace(0, np.nan), default=0.0) if 'coupon_exposure_count' in base.columns else 0.0
-    base['coupon_open_rate_prev_30d'] = safe_divide(base['coupon_open_prev_30d'], base['coupon_exposure_count'].replace(0, np.nan), default=0.0) if 'coupon_exposure_count' in base.columns else 0.0
+    base['cart_to_purchase_rate_prev_30d'] = safe_divide(base['frequency_prev_30d'], base['add_to_cart_prev_30d'].replace(0, np.nan), default=0.0)
+    base['coupon_open_rate_30d'] = safe_divide(base['coupon_open_30d'], base['exposure_count_30d'].replace(0, np.nan), default=0.0)
+    base['coupon_open_rate_prev_30d'] = safe_divide(base['coupon_open_prev_30d'], base['exposure_count_prev_30d'].replace(0, np.nan), default=0.0)
     add_rate_feature(base, 'avg_session_duration_sec_30d', 'avg_session_duration_sec_prev_30d', 'session_duration_change_rate')
     add_rate_feature(base, 'pageviews_per_session_30d', 'pageviews_per_session_prev_30d', 'pageviews_change_rate')
     add_rate_feature(base, 'search_to_purchase_conversion_30d', 'search_to_purchase_conversion_prev_30d', 'search_purchase_conv_change_rate')
     add_rate_feature(base, 'cart_to_purchase_rate_30d', 'cart_to_purchase_rate_prev_30d', 'cart_conversion_change_rate')
     add_rate_feature(base, 'coupon_open_rate_30d', 'coupon_open_rate_prev_30d', 'coupon_response_change_rate')
-    base['exposure_count_30d'] = base['customer_id'].map(_window_counts_by_customer(exposures, 'customer_id', 'exposure_time', as_of_date, 30)).fillna(0)
     base['coupon_cost_30d'] = base['customer_id'].map(_window_counts_by_customer(exposures, 'customer_id', 'exposure_time', as_of_date, 30, value_col='coupon_cost')).fillna(0.0)
     base['coupon_redeem_rate_90d'] = base['orders_with_coupon_ratio_90d'].fillna(0.0)
     base = base.merge(_compute_time_features(events, orders, as_of_date), on='customer_id', how='left')
@@ -334,7 +385,7 @@ def build_feature_dataset(data_dir: str | Path, feature_store_dir: str | Path = 
     dominant = hist_90d.groupby(['customer_id', 'event_type']).size().reset_index(name='cnt').sort_values(['customer_id', 'cnt'], ascending=[True, False]).drop_duplicates('customer_id').set_index('customer_id')['event_type']
     base['dominant_event_type_90d'] = base['customer_id'].map(dominant).fillna('none')
     base = base.merge(_compute_state_features(snapshots, as_of_date), on='customer_id', how='left')
-    base['monetary_per_visit_90d'] = safe_divide(base['monetary_90d'], (base['visits_14d'] + base['visits_prev_14d']).replace(0, np.nan), default=0.0)
+    base['monetary_per_visit_90d'] = safe_divide(base['monetary_90d'], base['visits_90d'].replace(0, np.nan), default=0.0)
     base['support_contact_rate_30d'] = safe_divide(base['support_contact_30d'], base['sessions_30d'].replace(0, np.nan), default=0.0)
     base['label'] = _compute_future_label(events, orders, snapshots, base['customer_id'], as_of_date, horizon_days)
     base, clipping_summary = _winsorize_and_impute(base)
