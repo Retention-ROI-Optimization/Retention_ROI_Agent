@@ -340,7 +340,7 @@ def run_recommendation_pipeline(
     threshold: float = 0.50,
     max_customers: Optional[int] = 1000,
     per_customer: int = 3,
-    candidate_limit: int = 100,
+    candidate_limit: Optional[int] = None,
     force_simulation: bool = False,
     simulation_seed: Optional[int] = None,
     randomize_simulation: bool = False,
@@ -361,16 +361,31 @@ def run_recommendation_pipeline(
         max_customers=max_customers,
     )
 
+    if candidate_limit is not None and int(candidate_limit) > 0:
+        resolved_candidate_limit = int(candidate_limit)
+    elif not selected_customers.empty:
+        if max_customers is not None and max_customers > 0:
+            resolved_candidate_limit = min(int(max_customers), int(len(selected_customers)))
+        else:
+            resolved_candidate_limit = int(len(selected_customers))
+    elif max_customers is not None and max_customers > 0:
+        resolved_candidate_limit = int(max_customers)
+    else:
+        resolved_candidate_limit = 100
+
     artifacts = run_personalized_recommendation_pipeline(
         data_dir=data_dir,
         result_dir=result_dir,
         per_customer=per_customer,
-        candidate_limit=candidate_limit,
+        candidate_limit=resolved_candidate_limit,
         target_customers=selected_customers,
         target_source="optimized_targets",
     )
     summary = json.loads(Path(artifacts.summary_path).read_text(encoding="utf-8"))
+    budget_summary["threshold"] = float(threshold)
     summary["budget_context"] = budget_summary
+    summary["candidate_limit"] = int(resolved_candidate_limit)
+    summary["eligible_target_customers"] = int(len(selected_customers))
     Path(artifacts.summary_path).write_text(
         json.dumps(summary, ensure_ascii=False, indent=2),
         encoding="utf-8",

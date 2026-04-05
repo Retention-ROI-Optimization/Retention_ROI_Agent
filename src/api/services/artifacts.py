@@ -49,7 +49,17 @@ def _find_model_path(model_dir: Path) -> Optional[str]:
 
 
 def training_artifacts_missing(settings: ApiSettings) -> bool:
-    return not (settings.resolved_result_dir / "churn_metrics.json").exists()
+    result_dir = settings.resolved_result_dir
+    feature_store_dir = settings.resolved_feature_store_dir
+    required = [
+        result_dir / "churn_metrics.json",
+        result_dir / "churn_threshold_analysis.json",
+        feature_store_dir / "customer_features.csv",
+        feature_store_dir / "customer_features_metadata.json",
+    ]
+    if any(not path.exists() for path in required):
+        return True
+    return _find_model_path(settings.resolved_model_dir) is None
 
 
 def uplift_artifacts_missing(settings: ApiSettings) -> bool:
@@ -64,6 +74,17 @@ def optimization_artifacts_missing(settings: ApiSettings) -> bool:
         and (result_dir / "optimization_segment_budget.csv").exists()
         and (result_dir / "optimization_selected_customers.csv").exists()
     )
+
+
+def optimization_budget_mismatch(settings: ApiSettings, budget: int) -> bool:
+    summary_path = settings.resolved_result_dir / "optimization_summary.json"
+    if not summary_path.exists():
+        return True
+    try:
+        summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return True
+    return int(summary.get("budget", -1)) != int(budget)
 
 
 def ensure_training_artifacts(settings: ApiSettings, rebuild: bool = False) -> None:
@@ -82,7 +103,7 @@ def ensure_saved_results_artifacts(settings: ApiSettings, budget: int, rebuild: 
             data_dir=settings.resolved_data_dir,
             result_dir=settings.resolved_result_dir,
         )
-    if rebuild or optimization_artifacts_missing(settings):
+    if rebuild or optimization_artifacts_missing(settings) or optimization_budget_mismatch(settings, budget):
         run_optimize_pipeline(
             data_dir=settings.resolved_data_dir,
             result_dir=settings.resolved_result_dir,

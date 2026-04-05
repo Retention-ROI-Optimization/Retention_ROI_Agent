@@ -1524,6 +1524,13 @@ elif view == "8. 저장된 Uplift/최적화 결과":
         if not optimization_summary and optimization_segment_budget_df.empty:
             st.warning("저장된 optimize 결과를 찾지 못했습니다.")
         else:
+            saved_budget = int(optimization_summary.get("budget", 0) or 0)
+            if saved_budget and saved_budget != int(budget):
+                render_status_pill(
+                    f"저장된 optimize 결과는 현재 선택 예산({money(budget)})이 아니라 {money(saved_budget)} 기준으로 생성되었습니다.",
+                    "warn",
+                )
+
             m1, m2, m3, m4 = st.columns(4)
             m1.metric("저장된 예산", money(optimization_summary.get("budget", 0)))
             m2.metric("저장된 집행 예산", money(optimization_summary.get("spent", 0)))

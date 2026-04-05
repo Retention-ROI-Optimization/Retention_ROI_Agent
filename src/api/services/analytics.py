@@ -209,6 +209,7 @@ def get_budget_result(
             'candidate_customers': 0,
             'expected_incremental_profit': 0.0,
             'overall_roi': 0.0,
+            'threshold': float(threshold),
             'max_customers_cap': int(max_customers or 0),
             'candidate_segment_counts': {seg: 0 for seg in _segment_order(customers)},
         }
@@ -229,6 +230,7 @@ def get_budget_result(
             'candidate_customers': 0,
             'expected_incremental_profit': 0.0,
             'overall_roi': 0.0,
+            'threshold': float(threshold),
             'max_customers_cap': int(max_customers or 0),
             'candidate_segment_counts': {seg: 0 for seg in all_segments},
         }
@@ -253,6 +255,7 @@ def get_budget_result(
         'candidate_customers': int(len(candidate)),
         'expected_incremental_profit': round(expected_profit, 2),
         'overall_roi': round(overall_roi, 6),
+        'threshold': float(threshold),
         'max_customers_cap': int(max_customers or len(candidate)),
         'candidate_segment_counts': candidate_segment_counts,
     }
