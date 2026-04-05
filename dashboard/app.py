@@ -1,7 +1,9 @@
 import hashlib
+import json
+import math
 import os
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 import pandas as pd
 import plotly.express as px
@@ -422,8 +424,61 @@ def load_saved_results_artifacts_api(budget: int, rebuild: bool = False):
     return fetch_saved_results_artifacts(budget=budget, rebuild=rebuild)
 
 
-def _artifact_frame(records) -> pd.DataFrame:
-    return pd.DataFrame(records or [])
+def _normalize_artifact_value(value: Any) -> Any:
+    if value is None:
+        return ""
+
+    if isinstance(value, pd.Timestamp):
+        return value.isoformat()
+
+    if isinstance(value, float):
+        if math.isnan(value) or math.isinf(value):
+            return ""
+        return value
+
+    if pd.isna(value):
+        return ""
+
+    if isinstance(value, (dict, list, tuple, set)):
+        try:
+            return json.dumps(value, ensure_ascii=False)
+        except TypeError:
+            return str(value)
+
+    return value
+
+
+def _sanitize_artifact_dataframe(df: pd.DataFrame, max_columns: int | None = None) -> pd.DataFrame:
+    if df is None or df.empty:
+        return pd.DataFrame()
+
+    clean = df.copy()
+    clean.columns = [str(col) for col in clean.columns]
+
+    if max_columns is not None:
+        clean = clean.loc[:, list(clean.columns[:max_columns])]
+
+    clean = clean.reset_index(drop=True)
+
+    for column in clean.columns:
+        clean[column] = clean[column].map(_normalize_artifact_value)
+
+    return clean
+
+
+def _artifact_frame(records, max_columns: int | None = None) -> pd.DataFrame:
+    return _sanitize_artifact_dataframe(pd.DataFrame(records or []), max_columns=max_columns)
+
+
+def _render_artifact_table(df: pd.DataFrame, *, use_dataframe: bool = False, height: int | None = None) -> None:
+    safe_df = _sanitize_artifact_dataframe(df)
+    if safe_df.empty:
+        return
+
+    if use_dataframe:
+        st.dataframe(safe_df, use_container_width=True, hide_index=True, height=height)
+    else:
+        st.table(safe_df)
 
 
 def _payload_hash(*parts: str) -> str:
@@ -1356,7 +1411,7 @@ elif view == "7. 학습 결과 아티팩트":
     churn_metrics = training_payload.get("churn_metrics", {})
     threshold_analysis = training_payload.get("threshold_analysis", {})
     top_feature_importance_df = _artifact_frame(training_payload.get("top_feature_importance"))
-    customer_features_df = _artifact_frame(training_payload.get("customer_features"))
+    customer_features_df = _artifact_frame(training_payload.get("customer_features"), max_columns=16)
     image_paths = training_payload.get("image_paths", {})
     model_paths = training_payload.get("model_paths", {})
 
@@ -1380,16 +1435,16 @@ elif view == "7. 학습 결과 아티팩트":
                 {"key": "model_path", "value": model_paths.get("churn_model")},
             ]
         )
-        st.dataframe(meta_df, use_container_width=True, hide_index=True)
+        _render_artifact_table(meta_df)
 
     if not top_feature_importance_df.empty:
         st.markdown("### Top feature importance")
-        st.dataframe(top_feature_importance_df, use_container_width=True, hide_index=True)
+        _render_artifact_table(top_feature_importance_df)
 
     if threshold_analysis and threshold_analysis.get("selected"):
         st.markdown("### 선택된 threshold 요약")
-        selected_df = pd.DataFrame([threshold_analysis["selected"]])
-        st.dataframe(selected_df, use_container_width=True, hide_index=True)
+        selected_df = _sanitize_artifact_dataframe(pd.DataFrame([threshold_analysis["selected"]]))
+        _render_artifact_table(selected_df)
 
     st.markdown("### 학습 시각화")
     image_cols = st.columns(2)
@@ -1408,11 +1463,7 @@ elif view == "7. 학습 결과 아티팩트":
 
     if not customer_features_df.empty:
         st.markdown("### Feature store 미리보기")
-        st.dataframe(
-            customer_features_df.head(20),
-            use_container_width=True,
-            hide_index=True,
-        )
+        _render_artifact_table(customer_features_df.head(20), use_dataframe=True, height=420)
 
     llm_payload = {
         "churn_metrics": churn_metrics,
