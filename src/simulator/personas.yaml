@@ -64,37 +64,37 @@ personas:
     recovery_prob: 0.15
     acquisition_weight: 0.20
   churn_progressing:
-    visit_prob: 0.17
-    browse_prob: 0.61
-    search_prob: 0.24
-    add_to_cart_prob: 0.19
-    remove_from_cart_prob: 0.24
-    purchase_given_cart_prob: 0.26
-    purchase_given_visit_prob: 0.02
-    coupon_open_prob: 0.40
-    coupon_redeem_prob: 0.20
-    avg_order_mean: 55000
-    avg_order_std: 15000
-    churn_sensitivity: 1.32
+    visit_prob: 0.10
+    browse_prob: 0.82
+    search_prob: 0.42
+    add_to_cart_prob: 0.27
+    remove_from_cart_prob: 0.17
+    purchase_given_cart_prob: 0.42
+    purchase_given_visit_prob: 0.05
+    coupon_open_prob: 0.58
+    coupon_redeem_prob: 0.44
+    avg_order_mean: 72000
+    avg_order_std: 22000
+    churn_sensitivity: 1.55
     price_sensitivity: 0.68
-    recovery_prob: 0.15
-    acquisition_weight: 0.16
+    recovery_prob: 0.48
+    acquisition_weight: 0.06
   new_signup:
-    visit_prob: 0.20
-    browse_prob: 0.69
-    search_prob: 0.33
-    add_to_cart_prob: 0.23
-    remove_from_cart_prob: 0.13
-    purchase_given_cart_prob: 0.33
-    purchase_given_visit_prob: 0.04
-    coupon_open_prob: 0.30
-    coupon_redeem_prob: 0.17
-    avg_order_mean: 65000
-    avg_order_std: 17000
-    churn_sensitivity: 1.08
-    price_sensitivity: 0.57
-    recovery_prob: 0.29
-    acquisition_weight: 0.10
+    visit_prob: 0.18
+    browse_prob: 0.95
+    search_prob: 0.78
+    add_to_cart_prob: 0.58
+    remove_from_cart_prob: 0.22
+    purchase_given_cart_prob: 0.32
+    purchase_given_visit_prob: 0.06
+    coupon_open_prob: 0.72
+    coupon_redeem_prob: 0.62
+    avg_order_mean: 48000
+    avg_order_std: 16000
+    churn_sensitivity: 1.25
+    price_sensitivity: 0.72
+    recovery_prob: 0.22
+    acquisition_weight: 0.35
 
 uplift_segments:
   persuadable:
