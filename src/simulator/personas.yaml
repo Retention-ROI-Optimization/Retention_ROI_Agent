@@ -1,36 +1,40 @@
 personas:
+personas:
   vip_loyal:
-    visit_prob: 0.31
+    visit_prob: 0.35
     browse_prob: 0.78
     search_prob: 0.30
     add_to_cart_prob: 0.36
-    remove_from_cart_prob: 0.08
-    purchase_given_cart_prob: 0.58
-    purchase_given_visit_prob: 0.09
-    coupon_open_prob: 0.20
-    coupon_redeem_prob: 0.12
-    avg_order_mean: 135000
+    remove_from_cart_prob: 0.06
+    purchase_given_cart_prob: 0.65
+    purchase_given_visit_prob: 0.12
+    coupon_open_prob: 0.15
+    coupon_redeem_prob: 0.08
+    avg_order_mean: 145000
     avg_order_std: 25000
-    churn_sensitivity: 0.60
-    price_sensitivity: 0.28
-    recovery_prob: 0.52
+    churn_sensitivity: 0.45
+    price_sensitivity: 0.22
+    recovery_prob: 0.60
     acquisition_weight: 0.12
   regular_loyal:
-    visit_prob: 0.27
+    visit_prob: 0.25
     browse_prob: 0.74
     search_prob: 0.30
     add_to_cart_prob: 0.31
     remove_from_cart_prob: 0.10
-    purchase_given_cart_prob: 0.49
+    purchase_given_cart_prob: 0.52
     purchase_given_visit_prob: 0.07
-    coupon_open_prob: 0.24
-    coupon_redeem_prob: 0.16
-    avg_order_mean: 95000
+    coupon_open_prob: 0.28
+    coupon_redeem_prob: 0.19
+    avg_order_mean: 88000
     avg_order_std: 20000
-    churn_sensitivity: 0.75
-    price_sensitivity: 0.40
+    churn_sensitivity: 0.65
+    price_sensitivity: 0.35
     recovery_prob: 0.44
     acquisition_weight: 0.24
+# vip_loyal — 쿠폰 반응을 낮추고(coupon_open 0.20→0.15, redeem 0.12→0.08), 구매력을 높이고(purchase_given_cart 0.58→0.65), 이탈 민감도를 낮춤(churn_sensitivity 0.60→0.45). 쿠폰 없어도 알아서 사는 VIP"를 더 뚜렷하게 만든 거야.
+# regular_loyal — VIP와 차별화하되 여전히 안정적인 구매. 쿠폰 반응을 약간 올려서(coupon_open 0.24→0.28) Persuadable 여지를 주고, 이탈 민감도는 낮춤(churn_sensitivity 0.75→0.65).
+
   price_sensitive:
     visit_prob: 0.14
     browse_prob: 0.90
