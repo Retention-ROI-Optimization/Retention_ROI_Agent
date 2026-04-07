@@ -1,5 +1,4 @@
 personas:
-personas:
   vip_loyal:
     visit_prob: 0.35
     browse_prob: 0.78
@@ -32,8 +31,8 @@ personas:
     price_sensitivity: 0.35
     recovery_prob: 0.44
     acquisition_weight: 0.24
-# vip_loyal — 쿠폰 반응을 낮추고(coupon_open 0.20→0.15, redeem 0.12→0.08), 구매력을 높이고(purchase_given_cart 0.58→0.65), 이탈 민감도를 낮춤(churn_sensitivity 0.60→0.45). 쿠폰 없어도 알아서 사는 VIP"를 더 뚜렷하게 만든 거야.
-# regular_loyal — VIP와 차별화하되 여전히 안정적인 구매. 쿠폰 반응을 약간 올려서(coupon_open 0.24→0.28) Persuadable 여지를 주고, 이탈 민감도는 낮춤(churn_sensitivity 0.75→0.65).
+  # vip_loyal — 쿠폰 반응을 낮추고(coupon_open 0.20→0.15, redeem 0.12→0.08), 구매력을 높이고(purchase_given_cart 0.58→0.65), 이탈 민감도를 낮춤(churn_sensitivity 0.60→0.45). 쿠폰 없어도 알아서 사는 VIP"를 더 뚜렷하게 만든 거야.
+  # regular_loyal — VIP와 차별화하되 여전히 안정적인 구매. 쿠폰 반응을 약간 올려서(coupon_open 0.24→0.28) Persuadable 여지를 주고, 이탈 민감도는 낮춤(churn_sensitivity 0.75→0.65).
 
   price_sensitive:
     visit_prob: 0.14
@@ -98,7 +97,7 @@ personas:
     churn_sensitivity: 1.25
     price_sensitivity: 0.72
     recovery_prob: 0.22
-    acquisition_weight: 0.35
+    acquisition_weight: 0.08
 
 uplift_segments:
   persuadable:
@@ -145,7 +144,7 @@ persona_to_uplift_weights:
     lost_cause: 0.40
     sleeping_dog: 0.17
   new_signup:
-    persuadable: 0.27
-    sure_thing: 0.22
-    lost_cause: 0.31
-    sleeping_dog: 0.20
+    persuadable: 0.45
+    sure_thing: 0.18
+    lost_cause: 0.27
+    sleeping_dog: 0.10
