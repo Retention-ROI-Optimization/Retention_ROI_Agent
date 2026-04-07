@@ -980,7 +980,33 @@ with st.sidebar:
         type="password",
         help="비워두면 OPENAI_API_KEY 환경변수를 사용합니다.",
     )
-    llm_model = st.text_input("LLM 모델명", value=DEFAULT_MODEL_NAME)
+    st.caption("모델이 목록에 없으면 '직접 입력'을 선택해서 모델명을 넣어주세요.")
+    _llm_presets = [
+        ("GPT-4.1 mini (default)", DEFAULT_MODEL_NAME),
+        ("GPT-4.1", "gpt-4.1"),
+        ("GPT-4o mini", "gpt-4o-mini"),
+        ("GPT-4o", "gpt-4o"),
+        ("o4-mini (reasoning)", "o4-mini"),
+        ("o3-mini (reasoning)", "o3-mini"),
+        ("직접 입력", "__custom__"),
+    ]
+    _llm_preset_labels = [label for label, _ in _llm_presets]
+    _llm_preset_models = {label: model for label, model in _llm_presets}
+
+    _default_label = next(
+        (label for label, model in _llm_presets if model == DEFAULT_MODEL_NAME),
+        _llm_presets[0][0],
+    )
+    llm_model_choice = st.selectbox(
+        "LLM 모델 선택",
+        options=_llm_preset_labels,
+        index=_llm_preset_labels.index(_default_label),
+    )
+    _chosen_model = _llm_preset_models.get(llm_model_choice, DEFAULT_MODEL_NAME)
+    if _chosen_model == "__custom__":
+        llm_model = st.text_input("LLM 모델명 (직접 입력)", value=DEFAULT_MODEL_NAME)
+    else:
+        llm_model = _chosen_model
 
     env_key_configured = bool(os.getenv("OPENAI_API_KEY"))
     if env_key_configured and not llm_api_key:
