@@ -48,15 +48,15 @@ class SimulationConfig:
     coupon_min_cost: int = 3000
     coupon_max_cost: int = 15000
     coupon_cooldown_days: int = 14
-    coupon_trigger_inactivity_days: int = 14
+    coupon_trigger_inactivity_days: int = 10
     max_exposures_per_customer: int = 4
 
     # State snapshots
     snapshot_frequency_days: int = 7
 
     # Behavior thresholds
-    dormant_inactivity_days: int = 21
-    churn_inactivity_days: int = 45
+    dormant_inactivity_days: int = 14
+    churn_inactivity_days: int = 30
 
     # Export
     default_export_dir: str = "data/raw"

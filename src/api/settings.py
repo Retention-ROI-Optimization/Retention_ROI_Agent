@@ -23,6 +23,14 @@ class ApiSettings:
     feature_store_dir: Path = field(default_factory=lambda: Path(os.getenv("RETENTION_FEATURE_STORE_DIR", "data/feature_store")))
     default_budget: int = field(default_factory=lambda: int(os.getenv("RETENTION_API_DEFAULT_BUDGET", "5000000")))
     default_threshold: float = field(default_factory=lambda: float(os.getenv("RETENTION_API_DEFAULT_THRESHOLD", "0.50")))
+    redis_url: str = field(default_factory=lambda: os.getenv("RETENTION_REDIS_URL", "redis://redis:6379/0"))
+    realtime_stream_key: str = field(default_factory=lambda: os.getenv("RETENTION_REALTIME_STREAM_KEY", "retention:events"))
+    realtime_consumer_group: str = field(default_factory=lambda: os.getenv("RETENTION_REALTIME_CONSUMER_GROUP", "retention-risk-scorers"))
+    realtime_consumer_name: str = field(default_factory=lambda: os.getenv("RETENTION_REALTIME_CONSUMER_NAME", "retention-risk-worker-1"))
+    survival_horizon_days: int = field(default_factory=lambda: int(os.getenv("RETENTION_SURVIVAL_HORIZON_DAYS", "90")))
+    survival_test_size: float = field(default_factory=lambda: float(os.getenv("RETENTION_SURVIVAL_TEST_SIZE", "0.20")))
+    survival_random_state: int = field(default_factory=lambda: int(os.getenv("RETENTION_SURVIVAL_RANDOM_STATE", "42")))
+    survival_penalizer: float = field(default_factory=lambda: float(os.getenv("RETENTION_SURVIVAL_PENALIZER", "0.10")))
     allowed_origins: List[str] = field(
         default_factory=lambda: _split_csv(
             os.getenv(

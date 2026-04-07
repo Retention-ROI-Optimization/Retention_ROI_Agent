@@ -98,12 +98,36 @@ def fetch_personalized_recommendations(
     return data['summary'], pd.DataFrame(data['records'])
 
 
-def fetch_training_artifacts(rebuild: bool = False) -> Dict[str, Any]:
-    return _request_json('/api/v1/artifacts/training', {'rebuild': str(bool(rebuild)).lower()})
+def fetch_training_artifacts() -> Dict[str, Any]:
+    return _request_json('/api/v1/artifacts/training')
 
 
-def fetch_saved_results_artifacts(budget: int, rebuild: bool = False) -> Dict[str, Any]:
-    return _request_json(
-        '/api/v1/artifacts/saved-results',
-        {'budget': budget, 'rebuild': str(bool(rebuild)).lower()},
+def fetch_saved_results_artifacts(
+    budget: int,
+    threshold: float = 0.50,
+    max_customers: int | None = None,
+    rebuild: bool = False,
+) -> Dict[str, Any]:
+    params: Dict[str, Any] = {
+        'budget': budget,
+        'threshold': threshold,
+        'rebuild': str(bool(rebuild)).lower(),
+    }
+    if max_customers is not None:
+        params['max_customers'] = max_customers
+    return _request_json('/api/v1/artifacts/saved-results', params)
+
+
+def fetch_realtime_scores(limit: int = 50) -> tuple[Dict[str, Any], pd.DataFrame]:
+    data = _request_json('/api/v1/realtime/scores', {'top_n': limit})
+    return data.get('summary', {}), pd.DataFrame(data.get('records', []))
+
+
+def fetch_survival_summary(limit: int = 50) -> tuple[Dict[str, Any], pd.DataFrame, pd.DataFrame, Dict[str, Any]]:
+    data = _request_json('/api/v1/survival/summary', {'top_n': limit})
+    return (
+        data.get('metrics', {}),
+        pd.DataFrame(data.get('predictions', [])),
+        pd.DataFrame(data.get('coefficients', [])),
+        data.get('image_paths', {}),
     )

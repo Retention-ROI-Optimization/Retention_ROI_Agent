@@ -162,6 +162,7 @@ class TrainingArtifactsResponse(BaseModel):
     top_feature_importance: List[Dict[str, Any]] = Field(default_factory=list)
     image_paths: Dict[str, Optional[str]] = Field(default_factory=dict)
     model_paths: Dict[str, Optional[str]] = Field(default_factory=dict)
+    training_parameters: Dict[str, Any] = Field(default_factory=dict)
 
 
 class SavedResultsArtifactsResponse(BaseModel):
@@ -171,3 +172,16 @@ class SavedResultsArtifactsResponse(BaseModel):
     optimization_summary: Dict[str, Any] = Field(default_factory=dict)
     optimization_segment_budget: List[Dict[str, Any]] = Field(default_factory=list)
     optimization_selected_customers: List[Dict[str, Any]] = Field(default_factory=list)
+    parameters: Dict[str, Any] = Field(default_factory=dict)
+
+class RealtimeScoringResponse(BaseModel):
+    summary: Dict[str, Any] = Field(default_factory=dict)
+    records: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class SurvivalArtifactsResponse(BaseModel):
+    metrics: Dict[str, Any] = Field(default_factory=dict)
+    predictions: List[Dict[str, Any]] = Field(default_factory=list)
+    coefficients: List[Dict[str, Any]] = Field(default_factory=list)
+    image_paths: Dict[str, Optional[str]] = Field(default_factory=dict)
+

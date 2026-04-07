@@ -1,15 +1,24 @@
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: retention-redis
+    ports:
+      - "6379:6379"
+
   api:
     build:
       context: .
       dockerfile: Dockerfile.api
     container_name: retention-api
+    depends_on:
+      - redis
     environment:
       RETENTION_API_HOST: 0.0.0.0
       RETENTION_API_PORT: 8000
       RETENTION_API_DATA_DIR: data/raw
       RETENTION_MODEL_DIR: models
       RETENTION_RESULT_DIR: results
+      RETENTION_REDIS_URL: redis://redis:6379/0
       PYTHONPATH: /app
     ports:
       - "8000:8000"

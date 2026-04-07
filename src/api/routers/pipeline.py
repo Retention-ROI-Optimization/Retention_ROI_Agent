@@ -17,7 +17,14 @@ def run_train(
     settings: ApiSettings = Depends(get_settings),
     repository: DataRepository = Depends(get_repository),
 ) -> PipelineRunResponse:
-    result = run_mode('train', settings.resolved_data_dir, settings.resolved_model_dir, settings.resolved_result_dir)
+    result = run_mode(
+        'train',
+        settings.resolved_data_dir,
+        settings.resolved_model_dir,
+        settings.resolved_result_dir,
+        feature_store_dir=settings.resolved_feature_store_dir,
+        force_simulation=request.force_simulation,
+    )
     repository.reload_all()
     return PipelineRunResponse(**result)
 
@@ -28,7 +35,13 @@ def run_uplift(
     settings: ApiSettings = Depends(get_settings),
     repository: DataRepository = Depends(get_repository),
 ) -> PipelineRunResponse:
-    result = run_mode('uplift', settings.resolved_data_dir, settings.resolved_model_dir, settings.resolved_result_dir)
+    result = run_mode(
+        'uplift',
+        settings.resolved_data_dir,
+        settings.resolved_model_dir,
+        settings.resolved_result_dir,
+        force_simulation=request.force_simulation,
+    )
     repository.reload_all()
     return PipelineRunResponse(**result)
 
@@ -40,6 +53,49 @@ def run_optimize(
     settings: ApiSettings = Depends(get_settings),
     repository: DataRepository = Depends(get_repository),
 ) -> PipelineRunResponse:
-    result = run_mode('optimize', settings.resolved_data_dir, settings.resolved_model_dir, settings.resolved_result_dir, budget=budget)
+    result = run_mode(
+        'optimize',
+        settings.resolved_data_dir,
+        settings.resolved_model_dir,
+        settings.resolved_result_dir,
+        budget=request.budget or budget,
+        force_simulation=request.force_simulation,
+    )
+    repository.reload_all()
+    return PipelineRunResponse(**result)
+
+
+
+@router.post('/abtest', response_model=PipelineRunResponse)
+def run_abtest(
+    request: PipelineRunRequest,
+    settings: ApiSettings = Depends(get_settings),
+    repository: DataRepository = Depends(get_repository),
+) -> PipelineRunResponse:
+    result = run_mode(
+        'abtest',
+        settings.resolved_data_dir,
+        settings.resolved_model_dir,
+        settings.resolved_result_dir,
+        force_simulation=request.force_simulation,
+    )
+    repository.reload_all()
+    return PipelineRunResponse(**result)
+
+
+@router.post('/survival', response_model=PipelineRunResponse)
+def run_survival(
+    request: PipelineRunRequest,
+    settings: ApiSettings = Depends(get_settings),
+    repository: DataRepository = Depends(get_repository),
+) -> PipelineRunResponse:
+    result = run_mode(
+        'survival',
+        settings.resolved_data_dir,
+        settings.resolved_model_dir,
+        settings.resolved_result_dir,
+        feature_store_dir=settings.resolved_feature_store_dir,
+        force_simulation=request.force_simulation,
+    )
     repository.reload_all()
     return PipelineRunResponse(**result)

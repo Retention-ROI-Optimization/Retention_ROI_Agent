@@ -20,6 +20,35 @@ def _safe_div(numer, denom):
     return numer / np.maximum(denom, 1.0)
 
 
+def _calibrate_churn_probability(
+    raw_score: pd.Series | np.ndarray,
+    inactivity_days: pd.Series | np.ndarray,
+    churn_threshold: int,
+) -> np.ndarray:
+    """
+    Keep the synthetic churn score monotonic with the latent risk signal,
+    while calibrating the 0.50 threshold to roughly match the simulator's
+    realized churn share.
+
+    Without this step, the latent score can make more than half of customers
+    appear to be "at risk" even when the realized inactivity-based churn rate
+    is only around 15~25%.
+    """
+    raw = np.asarray(raw_score, dtype=float)
+    inactivity = np.asarray(inactivity_days, dtype=float)
+
+    if raw.size == 0:
+        return np.array([], dtype=float)
+
+    actual_churn_share = float(np.clip(np.mean(inactivity >= float(churn_threshold)), 0.15, 0.25))
+    rank_pct = pd.Series(raw).rank(pct=True, method="average").to_numpy(dtype=float)
+
+    center = 1.0 - actual_churn_share
+    width = 0.10
+    calibrated = 1.0 / (1.0 + np.exp(-(rank_pct - center) / width))
+    return np.clip(calibrated, 0.01, 0.99)
+
+
 def _build_customer_summary(
     customers: pd.DataFrame,
     assignments: pd.DataFrame,
@@ -136,7 +165,12 @@ def _build_customer_summary(
         + 0.04 * np.clip(summary["inactivity_days"] / max(config.churn_inactivity_days, 1), 0, 1)
         + 0.05 * new_signup_uncertainty
     )
-    summary["churn_probability"] = np.clip(base_churn + persona_boost, 0.01, 0.99)
+    raw_churn_score = np.clip(base_churn + persona_boost, 0.01, 0.99)
+    summary["churn_probability"] = _calibrate_churn_probability(
+        raw_score=raw_churn_score,
+        inactivity_days=summary["inactivity_days"],
+        churn_threshold=config.churn_inactivity_days,
+    )
 
     avg_order_value = _safe_div(summary["monetary"], summary["frequency"])
     retention_factor = np.clip(1.15 - summary["churn_probability"], 0.20, 1.15)
@@ -199,7 +233,7 @@ def _build_customer_summary(
 def _build_cohort_retention(
     customers: pd.DataFrame,
     events: pd.DataFrame,
-    periods: int = 7,
+    periods: int = 13,
     end_date: Optional[str] = None,
 ) -> pd.DataFrame:
     return build_all_cohort_retention(

@@ -137,8 +137,8 @@ def simulate_events(
     assigned_at_days = (pd.to_datetime(sim["assigned_at"]) - pd.Timestamp(config.start_date)).dt.days.to_numpy()
 
     for day_idx, date in enumerate(dates):
-        tracker.start_day()
         active_mask = signup_dates <= np.datetime64(date)
+        tracker.start_day(active_mask)
 
         eligible_exposure = (
             active_mask

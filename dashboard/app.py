@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+import numpy as np
 import pandas as pd
 import plotly.express as px
 import streamlit as st
@@ -12,7 +13,9 @@ import streamlit.components.v1 as components
 
 from dashboard.services.api_client import (
     fetch_personalized_recommendations,
+    fetch_realtime_scores,
     fetch_saved_results_artifacts,
+    fetch_survival_summary,
     fetch_training_artifacts,
 )
 from dashboard.services.churn_service import get_churn_status
@@ -413,19 +416,26 @@ def render_status_pill(message: str, variant: str = "success"):
     )
 
 
-@st.cache_data
 def load_app_data():
     return load_dashboard_bundle()
 
 
-@st.cache_data(show_spinner=False)
-def load_training_artifacts_api(rebuild: bool = False):
-    return fetch_training_artifacts(rebuild=rebuild)
+def load_training_artifacts_api():
+    return fetch_training_artifacts()
 
 
-@st.cache_data(show_spinner=False)
-def load_saved_results_artifacts_api(budget: int, rebuild: bool = False):
-    return fetch_saved_results_artifacts(budget=budget, rebuild=rebuild)
+def load_saved_results_artifacts_api(
+    budget: int,
+    threshold: float,
+    max_customers: int | None,
+    rebuild: bool = False,
+):
+    return fetch_saved_results_artifacts(
+        budget=budget,
+        threshold=threshold,
+        max_customers=max_customers,
+        rebuild=rebuild,
+    )
 
 
 def _normalize_artifact_value(value: Any) -> Any:
@@ -435,19 +445,38 @@ def _normalize_artifact_value(value: Any) -> Any:
     if isinstance(value, pd.Timestamp):
         return value.isoformat()
 
-    if isinstance(value, float):
-        if math.isnan(value) or math.isinf(value):
-            return ""
-        return value
+    if isinstance(value, (pd.Timedelta, Path)):
+        return str(value)
 
-    if pd.isna(value):
-        return ""
+    if isinstance(value, np.ndarray):
+        value = value.tolist()
+
+    if isinstance(value, (pd.Series, pd.Index)):
+        value = value.tolist()
 
     if isinstance(value, (dict, list, tuple, set)):
         try:
             return json.dumps(value, ensure_ascii=False)
         except TypeError:
             return str(value)
+
+    if isinstance(value, (np.floating, float)):
+        numeric = float(value)
+        if math.isnan(numeric) or math.isinf(numeric):
+            return ""
+        return numeric
+
+    if isinstance(value, np.integer):
+        return int(value)
+
+    if isinstance(value, np.bool_):
+        return bool(value)
+
+    try:
+        if pd.isna(value):
+            return ""
+    except (TypeError, ValueError):
+        pass
 
     return value
 
@@ -474,10 +503,43 @@ def _artifact_frame(records, max_columns: int | None = None) -> pd.DataFrame:
     return _sanitize_artifact_dataframe(pd.DataFrame(records or []), max_columns=max_columns)
 
 
-def _render_artifact_table(df: pd.DataFrame, *, use_dataframe: bool = False, height: int | None = None) -> None:
+def _describe_table_count(df: pd.DataFrame, label: str = "테이블") -> str:
+    rows = int(len(df))
+    customers = None
+    if isinstance(df, pd.DataFrame) and "customer_id" in df.columns:
+        customers = int(df["customer_id"].nunique())
+
+    if customers is not None:
+        if rows == customers:
+            return f"{label}: 고객 {customers:,}명"
+        return f"{label}: 고객 {customers:,}명 / 행 {rows:,}개"
+    return f"{label}: 행 {rows:,}개"
+
+
+def _render_dataframe_with_count(
+    df: pd.DataFrame,
+    *,
+    label: str = "테이블",
+    use_container_width: bool = True,
+    hide_index: bool = True,
+    height: int | None = None,
+) -> None:
+    st.caption(_describe_table_count(df, label=label))
+    st.dataframe(df, use_container_width=use_container_width, hide_index=hide_index, height=height)
+
+
+def _render_artifact_table(
+    df: pd.DataFrame,
+    *,
+    use_dataframe: bool = False,
+    height: int | None = None,
+    label: str = "테이블",
+) -> None:
     safe_df = _sanitize_artifact_dataframe(df)
     if safe_df.empty:
         return
+
+    st.caption(_describe_table_count(safe_df, label=label))
 
     if use_dataframe:
         st.dataframe(safe_df, use_container_width=True, hide_index=True, height=height)
@@ -885,8 +947,10 @@ with st.sidebar:
             "5. 예상 최적화 ROI",
             "6. 리텐션 대상 고객 목록",
             "7. 학습 결과 아티팩트",
-            "8. 저장된 Uplift/최적화 결과",
+            "8. Uplift/최적화 결과 (실시간)",
             "9. 개인화 추천",
+            "10. 실시간 이탈 위험 스코어링",
+            "11. 이탈 시점 예측 (Survival Analysis)",
         ],
     )
 
@@ -896,7 +960,7 @@ with st.sidebar:
     target_cap = 1000
     recommendation_per_customer = 3
 
-    if view in {"1. 이탈현황", "4. 예산 배분 결과", "5. 예상 최적화 ROI", "6. 리텐션 대상 고객 목록", "9. 개인화 추천"}:
+    if view in {"1. 이탈현황", "4. 예산 배분 결과", "5. 예상 최적화 ROI", "6. 리텐션 대상 고객 목록", "8. Uplift/최적화 결과 (실시간)", "9. 개인화 추천"}:
         threshold = st.slider(
             "이탈 Threshold",
             min_value=0.10,
@@ -906,7 +970,7 @@ with st.sidebar:
             help="이 값 이상인 고객을 이탈 위험군으로 간주합니다.",
         )
 
-    if view in {"3. Uplift + CLV 상위 고객", "6. 리텐션 대상 고객 목록"}:
+    if view in {"3. Uplift + CLV 상위 고객", "6. 리텐션 대상 고객 목록", "10. 실시간 이탈 위험 스코어링", "11. 이탈 시점 예측 (Survival Analysis)"}:
         top_n = st.slider(
             "표시 고객 수",
             min_value=5,
@@ -925,7 +989,7 @@ with st.sidebar:
             step=1,
         )
 
-    if view in {"4. 예산 배분 결과", "5. 예상 최적화 ROI", "9. 개인화 추천"}:
+    if view in {"4. 예산 배분 결과", "5. 예상 최적화 ROI", "8. Uplift/최적화 결과 (실시간)", "9. 개인화 추천"}:
         budget = st.number_input(
             "총 마케팅 예산",
             min_value=100000,
@@ -963,13 +1027,10 @@ with st.sidebar:
     st.divider()
     st.subheader("실행 / 새로고침")
     if st.button("데이터/결과 새로고침", use_container_width=True):
-        load_app_data.clear()
-        load_training_artifacts_api.clear()
-        load_saved_results_artifacts_api.clear()
         st.rerun()
 
     st.caption(
-        "기존 4·5번 화면은 저장 파일을 읽는 것이 아니라 현재 data/raw를 기준으로 다시 계산합니다."
+        "4·5·8·9번 화면은 현재 조건으로 다시 계산됩니다. 7번 화면은 백엔드가 보관한 학습 결과를 읽기 전용으로 표시합니다."
     )
 
     st.divider()
@@ -1054,6 +1115,30 @@ else:
     recommendation_summary, personalized_recommendations = {}, pd.DataFrame()
     recommendation_error = None
 
+if view == "10. 실시간 이탈 위험 스코어링":
+    try:
+        realtime_summary, realtime_scores = fetch_realtime_scores(limit=top_n)
+    except Exception as exc:
+        realtime_summary, realtime_scores = {}, pd.DataFrame()
+        realtime_error = str(exc)
+    else:
+        realtime_error = None
+else:
+    realtime_summary, realtime_scores = {}, pd.DataFrame()
+    realtime_error = None
+
+if view == "11. 이탈 시점 예측 (Survival Analysis)":
+    try:
+        survival_metrics, survival_predictions, survival_coefficients, survival_image_paths = fetch_survival_summary(limit=top_n)
+    except Exception as exc:
+        survival_metrics, survival_predictions, survival_coefficients, survival_image_paths = {}, pd.DataFrame(), pd.DataFrame(), {}
+        survival_error = str(exc)
+    else:
+        survival_error = None
+else:
+    survival_metrics, survival_predictions, survival_coefficients, survival_image_paths = {}, pd.DataFrame(), pd.DataFrame(), {}
+    survival_error = None
+
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("전체 고객 수", f"{churn_summary['total_customers']:,}")
 c2.metric("이탈 위험 고객 수", f"{churn_summary['at_risk_customers']:,}")
@@ -1117,7 +1202,7 @@ if view == "1. 이탈현황":
     display_df["churn_probability"] = display_df["churn_probability"].map(lambda x: f"{x:.3f}")
     display_df["clv"] = display_df["clv"].map(money)
     display_df["uplift_score"] = display_df["uplift_score"].map(lambda x: f"{x:.3f}")
-    st.dataframe(display_df, use_container_width=True, hide_index=True)
+    _render_dataframe_with_count(display_df, label="이탈 위험 고객 목록")
 
     llm_payload = {
         "threshold": threshold,
@@ -1248,7 +1333,7 @@ elif view == "2. 코호트 리텐션 곡선":
             st.plotly_chart(heatmap_fig, use_container_width=True)
 
         st.markdown("### 코호트 리텐션 테이블")
-        st.dataframe(display_table, use_container_width=True, hide_index=True)
+        _render_dataframe_with_count(display_table, label="코호트 리텐션 테이블")
 
         comparable_df = cohort_curve.copy()
         if comparable_period is not None:
@@ -1260,10 +1345,9 @@ elif view == "2. 코호트 리텐션 곡선":
                 ["cohort_month", "period", "cohort_size", "retained_customers", "retention_rate"]
             ].copy()
             comparable_display["retention_rate"] = comparable_display["retention_rate"].map(lambda x: f"{x:.2%}")
-            st.dataframe(
+            _render_dataframe_with_count(
                 comparable_display.sort_values("retention_rate", ascending=False),
-                use_container_width=True,
-                hide_index=True,
+                label="공통 기간 비교 테이블",
             )
 
         last_period_df = (
@@ -1330,7 +1414,7 @@ elif view == "3. Uplift + CLV 상위 고객":
     display_df["clv"] = display_df["clv"].map(money)
     display_df["value_score"] = display_df["value_score"].map(money)
     display_df["expected_incremental_profit"] = display_df["expected_incremental_profit"].map(money)
-    st.dataframe(display_df, use_container_width=True, hide_index=True)
+    _render_dataframe_with_count(display_df, label="상위 고객 테이블")
 
     llm_payload = {
         "top_n": top_n,
@@ -1396,7 +1480,7 @@ elif view == "4. 예산 배분 결과":
         display_df = segment_allocation.copy()
         display_df["allocated_budget"] = display_df["allocated_budget"].map(money)
         display_df["expected_profit"] = display_df["expected_profit"].map(money)
-        st.dataframe(display_df, use_container_width=True, hide_index=True)
+        _render_dataframe_with_count(display_df, label="세그먼트별 예산 배분 테이블")
 
     llm_payload = {
         "budget_summary": optimize_summary,
@@ -1456,7 +1540,7 @@ elif view == "5. 예상 최적화 ROI":
         display_df["coupon_cost"] = display_df["coupon_cost"].map(money)
         display_df["expected_incremental_profit"] = display_df["expected_incremental_profit"].map(money)
         display_df["expected_roi"] = display_df["expected_roi"].map(lambda x: f"{x:.2%}")
-        st.dataframe(display_df, use_container_width=True, hide_index=True)
+        _render_dataframe_with_count(display_df, label="ROI 상위 고객 테이블")
 
     llm_payload = {
         "optimize_summary": optimize_summary,
@@ -1496,7 +1580,7 @@ elif view == "6. 리텐션 대상 고객 목록":
         display_df["uplift_score"] = display_df["uplift_score"].map(lambda x: f"{x:.3f}")
         display_df["clv"] = display_df["clv"].map(money)
         display_df["priority_score"] = display_df["priority_score"].map(lambda x: f"{x:.3f}")
-        st.dataframe(display_df, use_container_width=True, hide_index=True)
+        _render_dataframe_with_count(display_df, label="리텐션 타겟 고객 테이블")
 
     llm_payload = {
         "threshold": threshold,
@@ -1510,10 +1594,10 @@ elif view == "6. 리텐션 대상 고객 목록":
 
 elif view == "7. 학습 결과 아티팩트":
     st.subheader("학습 결과 아티팩트")
-    st.caption("이 화면은 API 서버가 로컬 results/, models/, data/feature_store 를 읽고 필요하면 생성한 뒤 전달합니다.")
+    st.caption("이 화면은 백엔드 API가 보관 중인 최신 학습 산출물을 읽기 전용으로 표시합니다. 대시보드에서 학습 파라미터를 조정하거나 재학습을 직접 실행하지 않습니다.")
 
     try:
-        training_payload = load_training_artifacts_api(rebuild=False)
+        training_payload = load_training_artifacts_api()
     except Exception as exc:
         st.error(f"학습 결과 API 호출 실패: {exc}")
         training_payload = {}
@@ -1524,6 +1608,7 @@ elif view == "7. 학습 결과 아티팩트":
     customer_features_df = _artifact_frame(training_payload.get("customer_features"), max_columns=16)
     image_paths = training_payload.get("image_paths", {})
     model_paths = training_payload.get("model_paths", {})
+    training_parameters = training_payload.get("training_parameters", {}) or churn_metrics.get("training_parameters", {})
 
     if not churn_metrics:
         st.warning("학습 결과를 아직 불러오지 못했습니다.")
@@ -1543,18 +1628,27 @@ elif view == "7. 학습 결과 아티팩트":
                 {"key": "categorical_feature_count", "value": churn_metrics.get("categorical_feature_count")},
                 {"key": "lightgbm_available", "value": churn_metrics.get("lightgbm_available")},
                 {"key": "model_path", "value": model_paths.get("churn_model")},
+                {"key": "requested_models", "value": training_parameters.get("candidate_models") or training_parameters.get("requested_models")},
+                {"key": "test_size", "value": training_parameters.get("test_size")},
+                {"key": "random_state", "value": training_parameters.get("random_state")},
+                {"key": "shap_sample_size", "value": training_parameters.get("shap_sample_size")},
             ]
         )
-        _render_artifact_table(meta_df)
+        _render_artifact_table(meta_df, label="학습 메타데이터")
 
     if not top_feature_importance_df.empty:
         st.markdown("### Top feature importance")
-        _render_artifact_table(top_feature_importance_df)
+        _render_artifact_table(top_feature_importance_df, label="Top feature importance")
 
     if threshold_analysis and threshold_analysis.get("selected"):
         st.markdown("### 선택된 threshold 요약")
         selected_df = _sanitize_artifact_dataframe(pd.DataFrame([threshold_analysis["selected"]]))
-        _render_artifact_table(selected_df)
+        _render_artifact_table(selected_df, label="선택 threshold 요약")
+
+    if training_parameters:
+        st.markdown("### 학습 파라미터 (서버 반영값)")
+        training_parameter_df = _sanitize_artifact_dataframe(pd.DataFrame([training_parameters]))
+        _render_artifact_table(training_parameter_df, label="학습 파라미터")
 
     st.markdown("### 학습 시각화")
     image_cols = st.columns(2)
@@ -1573,10 +1667,11 @@ elif view == "7. 학습 결과 아티팩트":
 
     if not customer_features_df.empty:
         st.markdown("### Feature store 미리보기")
-        _render_artifact_table(customer_features_df.head(20), use_dataframe=True, height=420)
+        _render_artifact_table(customer_features_df.head(20), use_dataframe=True, height=420, label="Feature store 미리보기")
 
     llm_payload = {
         "churn_metrics": churn_metrics,
+        "training_parameters": training_parameters,
         "threshold_analysis_selected": threshold_analysis.get("selected", {}) if threshold_analysis else {},
         "top_feature_importance": top_feature_importance_df.to_dict(orient="records") if not top_feature_importance_df.empty else [],
         "feature_store_preview": dataframe_snapshot(
@@ -1586,12 +1681,18 @@ elif view == "7. 학습 결과 아티팩트":
         ) if not customer_features_df.empty else [],
     }
 
-elif view == "8. 저장된 Uplift/최적화 결과":
-    st.subheader("저장된 Uplift/최적화 결과")
-    st.caption("이 화면은 API 서버가 로컬 results 산출물을 읽고, 없으면 현재 data/raw 기준으로 생성한 뒤 전달합니다.")
+elif view == "8. Uplift/최적화 결과 (실시간)":
+    st.subheader("Uplift/최적화 결과 (실시간)")
+    st.caption("Uplift 결과는 최신 raw 데이터를 기준으로 필요 시 다시 만들고, 최적화 결과는 현재 budget/threshold/max-customers 조건으로 즉시 다시 계산합니다.")
+    rebuild_saved_results = st.button("현재 조건으로 Uplift/최적화 다시 계산", key="rebuild_saved_results")
 
     try:
-        saved_payload = load_saved_results_artifacts_api(int(budget), rebuild=False)
+        saved_payload = load_saved_results_artifacts_api(
+            int(budget),
+            float(threshold),
+            int(target_cap) if target_cap else None,
+            rebuild=rebuild_saved_results,
+        )
     except Exception as exc:
         st.error(f"저장 결과 API 호출 실패: {exc}")
         saved_payload = {}
@@ -1601,6 +1702,14 @@ elif view == "8. 저장된 Uplift/최적화 결과":
     optimization_summary = saved_payload.get("optimization_summary", {})
     optimization_segment_budget_df = _artifact_frame(saved_payload.get("optimization_segment_budget"))
     optimization_selected_customers_df = _artifact_frame(saved_payload.get("optimization_selected_customers"))
+    saved_parameters = saved_payload.get("parameters", {})
+
+    if saved_parameters:
+        st.caption(
+            f"현재 반영 조건 · budget={money(saved_parameters.get('budget', 0))}, "
+            f"threshold={float(saved_parameters.get('threshold', 0.0)):.2f}, "
+            f"max_customers={int(saved_parameters.get('max_customers') or 0):,}"
+        )
 
     uplift_tab, optimize_tab = st.tabs(["Uplift 결과", "Optimize 결과"])
 
@@ -1624,10 +1733,9 @@ elif view == "8. 저장된 Uplift/최적화 결과":
                 st.plotly_chart(fig, use_container_width=True)
 
             if not uplift_segmentation_df.empty:
-                st.dataframe(
+                _render_dataframe_with_count(
                     uplift_segmentation_df.head(30),
-                    use_container_width=True,
-                    hide_index=True,
+                    label="Uplift 세그먼트 미리보기",
                 )
 
     with optimize_tab:
@@ -1635,10 +1743,10 @@ elif view == "8. 저장된 Uplift/최적화 결과":
             st.warning("저장된 optimize 결과를 찾지 못했습니다.")
         else:
             m1, m2, m3, m4 = st.columns(4)
-            m1.metric("저장된 예산", money(optimization_summary.get("budget", 0)))
-            m2.metric("저장된 집행 예산", money(optimization_summary.get("spent", 0)))
-            m3.metric("저장된 잔여 예산", money(optimization_summary.get("remaining", 0)))
-            m4.metric("저장된 타겟 고객 수", f"{int(optimization_summary.get('num_targeted', 0)):,}")
+            m1.metric("현재 예산", money(optimization_summary.get("budget", 0)))
+            m2.metric("현재 집행 예산", money(optimization_summary.get("spent", 0)))
+            m3.metric("현재 잔여 예산", money(optimization_summary.get("remaining", 0)))
+            m4.metric("현재 타겟 고객 수", f"{int(optimization_summary.get('num_targeted', 0)):,}")
 
             if not optimization_segment_budget_df.empty:
                 display_df = optimization_segment_budget_df.copy()
@@ -1646,15 +1754,14 @@ elif view == "8. 저장된 Uplift/최적화 결과":
                     display_df["allocated_budget"] = display_df["allocated_budget"].map(money)
                 if "expected_profit" in display_df.columns:
                     display_df["expected_profit"] = display_df["expected_profit"].map(money)
-                st.markdown("### 세그먼트별 저장 결과")
-                st.dataframe(display_df, use_container_width=True, hide_index=True)
+                st.markdown("### 세그먼트별 실시간 결과")
+                _render_dataframe_with_count(display_df, label="세그먼트별 실시간 결과")
 
             if not optimization_selected_customers_df.empty:
-                st.markdown("### 저장된 선정 고객")
-                st.dataframe(
+                st.markdown("### 현재 조건에서 선정된 고객")
+                _render_dataframe_with_count(
                     optimization_selected_customers_df.head(30),
-                    use_container_width=True,
-                    hide_index=True,
+                    label="현재 조건에서 선정된 고객",
                 )
 
     llm_payload = {
@@ -1716,7 +1823,7 @@ elif view == "9. 개인화 추천":
             display_df['target_priority_score'] = display_df['target_priority_score'].map(lambda x: f"{x:.3f}")
         if 'recommendation_score' in display_df.columns:
             display_df['recommendation_score'] = display_df['recommendation_score'].map(lambda x: f"{x:.3f}")
-        st.dataframe(display_df, use_container_width=True, hide_index=True)
+        _render_dataframe_with_count(display_df, label="개인화 추천 테이블")
 
     llm_payload = {
         'recommendation_summary': recommendation_summary,
@@ -1738,6 +1845,133 @@ elif view == "9. 개인화 추천":
         ) if not personalized_recommendations.empty else [],
     }
 
+elif view == "10. 실시간 이탈 위험 스코어링":
+    st.subheader("실시간 이탈 위험 스코어링")
+    st.caption("Redis Streams로 적재된 이벤트를 소비해 고객별 실시간 위험 점수를 갱신합니다. 배치 churn score는 초기값으로 사용하고, 최근 행동 시그널이 실시간 점수를 보정합니다.")
+
+    if realtime_error:
+        st.error(f"실시간 스코어 API 호출 실패: {realtime_error}")
+        st.info("먼저 Redis를 실행한 뒤 realtime-bootstrap / realtime-produce / realtime-consume(또는 realtime-replay) 명령을 수행하세요.")
+    elif realtime_scores.empty:
+        st.warning("실시간 스코어 스냅샷이 없습니다. 스트림 소비 결과가 아직 생성되지 않았을 수 있습니다.")
+    else:
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("추적 고객 수", f"{int(realtime_summary.get('tracked_customers', 0)):,}")
+        m2.metric("고위험 고객 수", f"{int(realtime_summary.get('high_risk_customers', 0)):,}")
+        m3.metric("임계 위험 고객 수", f"{int(realtime_summary.get('critical_risk_customers', 0)):,}")
+        m4.metric("처리 이벤트 수", f"{int(realtime_summary.get('processed_events', 0)):,}")
+
+        chart_df = realtime_scores.head(min(len(realtime_scores), 20)).copy()
+        chart_df['customer_id'] = chart_df['customer_id'].astype(str)
+        fig = px.bar(
+            chart_df,
+            x='customer_id',
+            y='realtime_churn_score',
+            hover_data=['base_churn_probability', 'score_delta', 'last_event_type', 'persona'],
+            title='실시간 이탈 위험 상위 고객',
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+        display_df = realtime_scores.copy()
+        for col in ['base_churn_probability', 'realtime_churn_score', 'score_delta', 'behavioral_risk', 'inactivity_signal']:
+            if col in display_df.columns:
+                display_df[col] = display_df[col].map(lambda x: f"{float(x):.3f}")
+        if 'clv' in display_df.columns:
+            display_df['clv'] = display_df['clv'].map(money)
+        if 'expected_roi' in display_df.columns:
+            display_df['expected_roi'] = display_df['expected_roi'].map(lambda x: f"{float(x):.3f}")
+        if 'coupon_cost' in display_df.columns:
+            display_df['coupon_cost'] = display_df['coupon_cost'].map(money)
+        _render_dataframe_with_count(display_df, label="실시간 이탈 위험 테이블")
+
+    llm_payload = {
+        'realtime_summary': realtime_summary,
+        'realtime_preview': dataframe_snapshot(
+            realtime_scores,
+            columns=[
+                'customer_id',
+                'persona',
+                'realtime_churn_score',
+                'base_churn_probability',
+                'score_delta',
+                'last_event_type',
+            ],
+            max_rows=20,
+        ) if not realtime_scores.empty else [],
+    }
+
+elif view == "11. 이탈 시점 예측 (Survival Analysis)":
+    st.subheader("이탈 시점 예측 (Survival Analysis)")
+    st.caption('Cox Proportional Hazards 기반으로 landmark 시점 이후 얼마 안에 churn risk 상태로 진입할지를 추정합니다. 분류 모델과 달리 "언제" 위험이 커지는지를 함께 봅니다.')
+
+    if survival_error:
+        st.error(f"Survival API 호출 실패: {survival_error}")
+    elif not survival_metrics:
+        st.warning("Survival 분석 결과를 아직 불러오지 못했습니다.")
+    else:
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("모델", str(survival_metrics.get('model_name', '-')))
+        m2.metric("Test C-index", f"{float(survival_metrics.get('test_concordance_index', 0.0)):.4f}")
+        m3.metric("Horizon", f"{int(survival_metrics.get('horizon_days', 0))}일")
+        m4.metric("Event rate", f"{float(survival_metrics.get('event_rate', 0.0)):.2%}")
+
+        meta_df = pd.DataFrame([
+            {'key': 'landmark_as_of_date', 'value': survival_metrics.get('landmark_as_of_date')},
+            {'key': 'train_rows', 'value': survival_metrics.get('train_rows')},
+            {'key': 'test_rows', 'value': survival_metrics.get('test_rows')},
+            {'key': 'feature_count_before_encoding', 'value': survival_metrics.get('feature_count_before_encoding')},
+            {'key': 'feature_count_after_encoding', 'value': survival_metrics.get('feature_count_after_encoding')},
+            {'key': 'penalizer', 'value': survival_metrics.get('penalizer')},
+        ])
+        st.markdown("### Survival 메타데이터")
+        _render_artifact_table(meta_df, label="Survival 메타데이터")
+
+        risk_plot = survival_image_paths.get('risk_stratification')
+        if risk_plot:
+            st.image(risk_plot, caption='예측 위험군별 생존 곡선', use_container_width=True)
+
+        if not survival_predictions.empty:
+            chart_df = survival_predictions.head(min(len(survival_predictions), 20)).copy()
+            chart_df['customer_id'] = chart_df['customer_id'].astype(str)
+            if 'survival_prob_30d' in chart_df.columns:
+                fig = px.bar(
+                    chart_df,
+                    x='customer_id',
+                    y='predicted_hazard_ratio',
+                    hover_data=['survival_prob_30d', 'predicted_median_time_to_churn_days', 'persona', 'risk_group'],
+                    title='단기 churn 위험 상위 고객',
+                )
+                st.plotly_chart(fig, use_container_width=True)
+
+            display_df = survival_predictions.copy()
+            for col in ['predicted_hazard_ratio', 'survival_prob_30d', 'survival_prob_60d', 'survival_prob_90d', 'predicted_median_time_to_churn_days', 'risk_percentile']:
+                if col in display_df.columns:
+                    display_df[col] = display_df[col].map(lambda x: f"{float(x):.3f}")
+            _render_dataframe_with_count(display_df, label="Survival 예측 결과")
+
+        if not survival_coefficients.empty:
+            st.markdown("### 주요 hazard coefficient")
+            coef_df = survival_coefficients.copy()
+            for col in ['coef', 'exp(coef)', 'p', 'abs_coef']:
+                if col in coef_df.columns:
+                    coef_df[col] = coef_df[col].map(lambda x: f"{float(x):.4f}")
+            _render_dataframe_with_count(coef_df, label="주요 hazard coefficient")
+
+    llm_payload = {
+        'survival_metrics': survival_metrics,
+        'survival_prediction_preview': dataframe_snapshot(
+            survival_predictions,
+            columns=[
+                'customer_id',
+                'predicted_hazard_ratio',
+                'survival_prob_30d',
+                'predicted_median_time_to_churn_days',
+                'risk_group',
+            ],
+            max_rows=20,
+        ) if not survival_predictions.empty else [],
+        'survival_coefficients': survival_coefficients.head(15).to_dict(orient='records') if not survival_coefficients.empty else [],
+    }
 
 if llm_enabled:
     current_view_key = view.split(".")[0]

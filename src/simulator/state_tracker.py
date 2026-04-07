@@ -39,14 +39,18 @@ class StateTracker:
         self.recent_exposure_score = np.zeros(n, dtype=float)
         self.recent_cart_abandon_score = np.zeros(n, dtype=float)
 
-    def start_day(self) -> None:
-        self.inactivity_days += 1
-        self.days_since_last_coupon += 1
+    def start_day(self, active_mask: np.ndarray | None = None) -> None:
+        if active_mask is None:
+            active_mask = np.ones(self.n_customers, dtype=bool)
 
-        self.recent_visit_score *= 0.86
-        self.recent_purchase_score *= 0.91
-        self.recent_exposure_score *= 0.68
-        self.recent_cart_abandon_score *= 0.88
+        if np.any(active_mask):
+            self.inactivity_days[active_mask] += 1
+            self.days_since_last_coupon[active_mask] += 1
+
+            self.recent_visit_score[active_mask] *= 0.86
+            self.recent_purchase_score[active_mask] *= 0.91
+            self.recent_exposure_score[active_mask] *= 0.68
+            self.recent_cart_abandon_score[active_mask] *= 0.88
 
     def record_exposure(self, mask: np.ndarray) -> None:
         if mask.any():

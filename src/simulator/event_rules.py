@@ -27,7 +27,7 @@ def compute_visit_probability(
     date: pd.Timestamp,
 ) -> np.ndarray:
     logit = (
-        -1.10
+        -2.5
         + 4.2 * customers["base_visit_prob"].to_numpy()
         + 0.20 * tracker.recent_visit_score
         + 0.15 * tracker.recent_purchase_score

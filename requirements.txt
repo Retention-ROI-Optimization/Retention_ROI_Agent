@@ -12,3 +12,7 @@ joblib>=1.4.0
 matplotlib>=3.9.0
 shap>=0.46.0
 PyYAML>=6.0
+redis>=5.2.0
+lifelines>=0.30.0
+xgboost>=2.1.0
+lightgbm>=4.5.0

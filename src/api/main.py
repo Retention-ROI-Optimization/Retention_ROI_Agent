@@ -10,8 +10,10 @@ from src.api.routers.analytics import router as analytics_router
 from src.api.routers.artifacts import router as artifacts_router
 from src.api.routers.health import router as health_router
 from src.api.routers.pipeline import router as pipeline_router
+from src.api.routers.realtime import router as realtime_router
 from src.api.routers.recommendations import router as recommendation_router
 from src.api.routers.simulation import router as simulation_router
+from src.api.routers.survival import router as survival_router
 from src.api.services.pipeline import bootstrap_data
 
 settings = get_settings()
@@ -44,3 +46,5 @@ app.include_router(simulation_router, prefix=settings.api_prefix)
 app.include_router(pipeline_router, prefix=settings.api_prefix)
 app.include_router(recommendation_router, prefix=settings.api_prefix)
 app.include_router(artifacts_router, prefix=settings.api_prefix)
+app.include_router(realtime_router, prefix=settings.api_prefix)
+app.include_router(survival_router, prefix=settings.api_prefix)

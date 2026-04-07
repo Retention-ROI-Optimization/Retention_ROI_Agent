@@ -49,6 +49,25 @@ class TrainingArtifacts:
     metrics: Dict
 
 
+def _resolve_requested_models(candidate_models: List[str] | None) -> List[str]:
+    if not candidate_models:
+        return ["xgboost", "lightgbm"]
+
+    resolved: List[str] = []
+    seen = set()
+    for name in candidate_models:
+        normalized = str(name).strip().lower()
+        if normalized in {"xgb", "xgboost"}:
+            normalized = "xgboost"
+        elif normalized in {"lgbm", "lightgbm"}:
+            normalized = "lightgbm"
+        if normalized in {"xgboost", "lightgbm"} and normalized not in seen:
+            resolved.append(normalized)
+            seen.add(normalized)
+
+    return resolved or ["xgboost", "lightgbm"]
+
+
 def _ensure_dir(path: Path) -> Path:
     path.mkdir(parents=True, exist_ok=True)
     return path
@@ -79,10 +98,8 @@ def _sanitize_training_frame(features_df: pd.DataFrame) -> tuple[pd.DataFrame, p
 
     X = features_df.drop(columns=["label", "customer_id"], errors="ignore").copy()
 
-    # 날짜형 컬럼을 일반 숫자/범주형 feature로 바꾼다.
     X, converted_datetime_cols = _extract_datetime_features(X)
 
-    # 혹시 문자열 날짜가 object로 들어와도 안전하게 categorical로 처리되게 한다.
     for col in X.columns:
         if pd.api.types.is_bool_dtype(X[col]):
             X[col] = X[col].astype(int)
@@ -92,7 +109,6 @@ def _sanitize_training_frame(features_df: pd.DataFrame) -> tuple[pd.DataFrame, p
             X[col] = pd.to_numeric(X[col], errors="coerce")
             X[col] = X[col].replace([np.inf, -np.inf], np.nan)
         else:
-            # 남는 희귀 dtype은 문자열로 처리
             X[col] = X[col].astype("object").where(X[col].notna(), "unknown")
 
     metadata = {
@@ -107,7 +123,6 @@ def _build_preprocessor(X: pd.DataFrame):
     cat_cols = X.select_dtypes(include=["object", "category"]).columns.tolist()
     num_cols = X.select_dtypes(include=[np.number]).columns.tolist()
 
-    # 혹시라도 분류되지 않은 컬럼이 있으면 categorical로 보낸다.
     remaining = [c for c in X.columns if c not in cat_cols and c not in num_cols]
     cat_cols.extend(remaining)
 
@@ -159,7 +174,13 @@ def _top_feature_importance(model, feature_names: List[str], top_n: int = 10) ->
     ]
 
 
-def _select_threshold(y_true: np.ndarray, y_prob: np.ndarray) -> Dict:
+def _select_threshold(
+    y_true: np.ndarray,
+    y_prob: np.ndarray,
+    tp_value: float = 120000.0,
+    fp_cost: float = 18000.0,
+    fn_cost: float = 60000.0,
+) -> Dict:
     precision, recall, thresholds = precision_recall_curve(y_true, y_prob)
     thresholds = np.append(thresholds, 1.0)
 
@@ -169,7 +190,7 @@ def _select_threshold(y_true: np.ndarray, y_prob: np.ndarray) -> Dict:
         tp = int(((pred == 1) & (y_true == 1)).sum())
         fp = int(((pred == 1) & (y_true == 0)).sum())
         fn = int(((pred == 0) & (y_true == 1)).sum())
-        value = tp * 120000 - fp * 18000 - fn * 60000
+        value = tp * float(tp_value) - fp * float(fp_cost) - fn * float(fn_cost)
         records.append(
             {
                 "threshold": float(t),
@@ -183,7 +204,15 @@ def _select_threshold(y_true: np.ndarray, y_prob: np.ndarray) -> Dict:
         )
 
     best = max(records, key=lambda x: x["business_value"])
-    return {"selected": best, "curve": records}
+    return {
+        "selected": best,
+        "curve": records,
+        "rule": {
+            "tp_value": float(tp_value),
+            "fp_cost": float(fp_cost),
+            "fn_cost": float(fn_cost),
+        },
+    }
 
 
 def _plot_roc(y_true: np.ndarray, y_prob: np.ndarray, output_path: Path) -> float:
@@ -265,17 +294,26 @@ def train_churn_models(
     features_df: pd.DataFrame,
     model_dir: str | Path,
     result_dir: str | Path,
+    *,
+    test_size: float = 0.2,
+    random_state: int = 42,
+    shap_sample_size: int = 300,
+    candidate_models: List[str] | None = None,
+    threshold_tp_value: float = 120000.0,
+    threshold_fp_cost: float = 18000.0,
+    threshold_fn_cost: float = 60000.0,
 ) -> TrainingArtifacts:
     model_dir = _ensure_dir(Path(model_dir))
     result_dir = _ensure_dir(Path(result_dir))
 
     X, y, preprocessing_meta = _sanitize_training_frame(features_df)
+    requested_models = _resolve_requested_models(candidate_models)
 
     X_train, X_test, y_train, y_test = train_test_split(
         X,
         y,
-        test_size=0.2,
-        random_state=42,
+        test_size=float(test_size),
+        random_state=int(random_state),
         stratify=y,
     )
 
@@ -285,7 +323,7 @@ def train_churn_models(
     candidates: Dict[str, tuple[object, Dict]] = {
         "xgboost": (
             XGBClassifier(
-                random_state=42,
+                random_state=int(random_state),
                 n_estimators=120,
                 learning_rate=0.08,
                 max_depth=4,
@@ -304,7 +342,7 @@ def train_churn_models(
     if LIGHTGBM_AVAILABLE:
         candidates["lightgbm"] = (
             LGBMClassifier(
-                random_state=42,
+                random_state=int(random_state),
                 n_estimators=160,
                 learning_rate=0.08,
                 num_leaves=31,
@@ -322,7 +360,15 @@ def train_churn_models(
     cv_details: Dict[str, Dict] = {}
     failed_models: Dict[str, str] = {}
 
-    for name, (estimator, grid_params) in candidates.items():
+    for name in requested_models:
+        if name == "lightgbm" and not LIGHTGBM_AVAILABLE:
+            failed_models[name] = LIGHTGBM_IMPORT_ERROR or "LightGBM is unavailable in this environment."
+            continue
+        if name not in candidates:
+            failed_models[name] = f"Unsupported model candidate: {name}"
+            continue
+
+        estimator, grid_params = candidates[name]
         pipe = Pipeline(
             [
                 ("preprocessor", pre),
@@ -390,7 +436,13 @@ def train_churn_models(
     metrics_path = result_dir / "churn_metrics.json"
 
     auc = _plot_roc(y_test.to_numpy(), y_prob, auc_path)
-    threshold = _select_threshold(y_test.to_numpy(), y_prob)
+    threshold = _select_threshold(
+        y_test.to_numpy(),
+        y_prob,
+        tp_value=threshold_tp_value,
+        fp_cost=threshold_fp_cost,
+        fn_cost=threshold_fn_cost,
+    )
     _plot_pr(threshold, pr_path)
     threshold_path.write_text(
         json.dumps(threshold, ensure_ascii=False, indent=2),
@@ -404,7 +456,10 @@ def train_churn_models(
         encoding="utf-8",
     )
 
-    shap_sample = X_test.sample(n=min(300, len(X_test)), random_state=42)
+    shap_sample = X_test.sample(
+        n=min(int(shap_sample_size), len(X_test)),
+        random_state=int(random_state),
+    )
     _plot_shap(best_pipe, shap_sample, shap_summary_path, shap_local_path)
 
     selected = threshold["selected"]["threshold"]
@@ -440,7 +495,16 @@ def train_churn_models(
         "top_10_feature_importance": top10,
         "imbalance_handling": imbalance_text,
         "cv_strategy": "5-fold cross validation + GridSearchCV",
-        "business_threshold_rule": "maximize TP*120000 - FP*18000 - FN*60000",
+        "business_threshold_rule": f"maximize TP*{float(threshold_tp_value):.0f} - FP*{float(threshold_fp_cost):.0f} - FN*{float(threshold_fn_cost):.0f}",
+        "training_parameters": {
+            "requested_models": requested_models,
+            "test_size": float(test_size),
+            "random_state": int(random_state),
+            "shap_sample_size": int(shap_sample_size),
+            "threshold_tp_value": float(threshold_tp_value),
+            "threshold_fp_cost": float(threshold_fp_cost),
+            "threshold_fn_cost": float(threshold_fn_cost),
+        },
     }
 
     metrics_path.write_text(

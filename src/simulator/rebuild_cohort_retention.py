@@ -10,7 +10,7 @@ from .config import DEFAULT_CONFIG
 
 def rebuild_cohort_retention(
     data_dir: str = "data/raw",
-    periods: int = 7,
+    periods: int = 13,
     end_date: str | None = None,
 ) -> Path:
     data_path = Path(data_dir)

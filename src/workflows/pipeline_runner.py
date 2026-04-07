@@ -16,6 +16,14 @@ from src.simulator.config import DEFAULT_CONFIG, SimulationConfig
 from src.simulator.pipeline import run_simulation
 from src.uplift.modeling import run_uplift_modeling
 from src.recommendations.modeling import run_personalized_recommendation_pipeline
+from src.analytics.cohort_journey import run_cohort_and_journey_analysis
+from src.realtime.scoring import (
+    RealtimeStreamConfig,
+    bootstrap_realtime_state,
+    consume_stream_events,
+    produce_events_to_stream,
+)
+from src.survival.modeling import run_survival_pipeline as run_survival_modeling_pipeline
 
 
 def ensure_directory(path: Path) -> Path:
@@ -140,6 +148,13 @@ def run_churn_training_pipeline(
     force_simulation: bool = False,
     simulation_seed: Optional[int] = None,
     randomize_simulation: bool = False,
+    test_size: float = 0.2,
+    random_state: int = 42,
+    shap_sample_size: int = 300,
+    candidate_models: list[str] | None = None,
+    threshold_tp_value: float = 120000.0,
+    threshold_fp_cost: float = 18000.0,
+    threshold_fn_cost: float = 60000.0,
 ) -> Dict:
     from src.ml.churn_training import train_churn_models
 
@@ -159,6 +174,13 @@ def run_churn_training_pipeline(
         built.features,
         model_dir=model_dir,
         result_dir=result_dir,
+        test_size=test_size,
+        random_state=random_state,
+        shap_sample_size=shap_sample_size,
+        candidate_models=candidate_models,
+        threshold_tp_value=threshold_tp_value,
+        threshold_fp_cost=threshold_fp_cost,
+        threshold_fn_cost=threshold_fn_cost,
     )
 
     metrics = dict(artifacts.metrics)
@@ -333,6 +355,45 @@ def run_ab_test_pipeline(
     }
 
 
+
+
+def run_cohort_journey_pipeline(
+    data_dir: Path,
+    result_dir: Path,
+    force_simulation: bool = False,
+    simulation_seed: Optional[int] = None,
+    randomize_simulation: bool = False,
+) -> Dict:
+    result_dir = ensure_directory(result_dir)
+    ensure_simulation_outputs(
+        data_dir,
+        force=force_simulation,
+        random_seed=simulation_seed,
+        randomize=randomize_simulation,
+    )
+    artifacts = run_cohort_and_journey_analysis(data_dir=data_dir, result_dir=result_dir)
+    summary = json.loads(Path(artifacts.summary_path).read_text(encoding="utf-8"))
+    return {
+        "mode": "cohort",
+        "model_path": None,
+        "metrics_path": artifacts.summary_path,
+        "primary_result_path": artifacts.retention_curve_path,
+        "extra_result_paths": [
+            artifacts.churn_heatmap_path,
+            artifacts.retention_milestone_csv_path,
+            artifacts.sequence_csv_path,
+            artifacts.sequence_plot_path,
+            artifacts.pre_churn_event_csv_path,
+            artifacts.pre_churn_event_plot_path,
+            artifacts.funnel_csv_path,
+            artifacts.funnel_plot_path,
+            artifacts.churn_timing_csv_path,
+            artifacts.churn_timing_plot_path,
+            artifacts.report_path,
+        ],
+        "metadata": summary,
+    }
+
 def run_recommendation_pipeline(
     data_dir: Path,
     result_dir: Path,
@@ -397,4 +458,99 @@ def run_recommendation_pipeline(
         "primary_result_path": artifacts.recommendations_path,
         "extra_result_paths": [],
         "metadata": summary,
+    }
+
+def run_survival_pipeline(
+    data_dir: Path,
+    model_dir: Path,
+    result_dir: Path,
+    feature_store_dir: Path | None = None,
+    force_simulation: bool = False,
+    simulation_seed: Optional[int] = None,
+    randomize_simulation: bool = False,
+) -> Dict:
+    model_dir = ensure_directory(model_dir)
+    result_dir = ensure_directory(result_dir)
+    feature_store_dir = ensure_directory(feature_store_dir or Path("data/feature_store"))
+
+    ensure_simulation_outputs(
+        data_dir,
+        force=force_simulation,
+        random_seed=simulation_seed,
+        randomize=randomize_simulation,
+    )
+
+    artifacts = run_survival_modeling_pipeline(
+        data_dir=data_dir,
+        model_dir=model_dir,
+        result_dir=result_dir,
+        feature_store_dir=feature_store_dir,
+    )
+    return {
+        "mode": "survival",
+        "model_path": artifacts.model_path,
+        "metrics_path": artifacts.metrics_path,
+        "primary_result_path": artifacts.predictions_path,
+        "extra_result_paths": [artifacts.coefficients_path, artifacts.risk_plot_path],
+        "metadata": artifacts.metrics,
+    }
+
+
+def run_realtime_bootstrap_pipeline(
+    data_dir: Path,
+    result_dir: Path,
+    *,
+    redis_url: str = 'redis://localhost:6379/0',
+    force_simulation: bool = False,
+    simulation_seed: Optional[int] = None,
+    randomize_simulation: bool = False,
+) -> Dict:
+    result_dir = ensure_directory(result_dir)
+    ensure_simulation_outputs(
+        data_dir,
+        force=force_simulation,
+        random_seed=simulation_seed,
+        randomize=randomize_simulation,
+    )
+    config = RealtimeStreamConfig(redis_url=redis_url)
+    payload = bootstrap_realtime_state(data_dir, result_dir, config, reset_stream=True)
+    return {
+        "mode": "realtime-bootstrap",
+        "model_path": None,
+        "metrics_path": str(result_dir / 'realtime_scores_summary.json'),
+        "primary_result_path": str(result_dir / 'realtime_scores_snapshot.csv'),
+        "extra_result_paths": [],
+        "metadata": payload.get('summary', {}),
+    }
+
+
+def run_realtime_replay_pipeline(
+    data_dir: Path,
+    result_dir: Path,
+    *,
+    redis_url: str = 'redis://localhost:6379/0',
+    limit: Optional[int] = None,
+    max_events: Optional[int] = None,
+    force_simulation: bool = False,
+    simulation_seed: Optional[int] = None,
+    randomize_simulation: bool = False,
+) -> Dict:
+    result_dir = ensure_directory(result_dir)
+    ensure_simulation_outputs(
+        data_dir,
+        force=force_simulation,
+        random_seed=simulation_seed,
+        randomize=randomize_simulation,
+    )
+    config = RealtimeStreamConfig(redis_url=redis_url)
+    bootstrap_realtime_state(data_dir, result_dir, config, reset_stream=True)
+    produce_events_to_stream(data_dir, result_dir, config, limit=limit, reset_stream=True)
+    payload = consume_stream_events(data_dir, result_dir, config, max_events=max_events or limit)
+    return {
+        "mode": "realtime-replay",
+        "model_path": None,
+        "metrics_path": str(result_dir / 'realtime_scores_summary.json'),
+        "primary_result_path": str(result_dir / 'realtime_scores_snapshot.csv'),
+        "extra_result_paths": [],
+        "metadata": payload.get('summary', {}),
     }
