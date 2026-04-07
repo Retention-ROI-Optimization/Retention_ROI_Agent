@@ -41,8 +41,16 @@ def fetch_churn_view(threshold: float, limit: int) -> tuple[Dict[str, Any], pd.D
     return data['summary'], pd.DataFrame(data['top_at_risk'])
 
 
-def fetch_cohort_retention() -> pd.DataFrame:
-    data = _request_json('/api/v1/analytics/cohort-retention')
+def fetch_cohort_retention(
+    activity_definition: str | None = None,
+    retention_mode: str | None = None,
+) -> pd.DataFrame:
+    params: Dict[str, Any] = {}
+    if activity_definition:
+        params['activity_definition'] = activity_definition
+    if retention_mode:
+        params['retention_mode'] = retention_mode
+    data = _request_json('/api/v1/analytics/cohort-retention', params or None)
     return pd.DataFrame(data['records'])
 
 

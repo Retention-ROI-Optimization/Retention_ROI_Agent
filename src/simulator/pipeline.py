@@ -7,7 +7,7 @@ import pandas as pd
 
 from .config import DEFAULT_CONFIG, SimulationConfig
 from .customer_generator import generate_customers
-from .cohort_analysis import build_cohort_retention
+from .cohort_analysis import build_all_cohort_retention
 from .event_engine import simulate_events
 from .exporter import export_tables
 from .personas import DEFAULT_PERSONAS
@@ -202,7 +202,7 @@ def _build_cohort_retention(
     periods: int = 7,
     end_date: Optional[str] = None,
 ) -> pd.DataFrame:
-    return build_cohort_retention(
+    return build_all_cohort_retention(
         customers=customers,
         events=events,
         periods=periods,

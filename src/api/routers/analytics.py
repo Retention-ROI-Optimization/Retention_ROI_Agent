@@ -33,6 +33,68 @@ ALLOWED_SORT_COLUMNS = {
 }
 
 
+_TRUE_VALUES = {'true', '1', 'yes', 'y', 't'}
+_FALSE_VALUES = {'false', '0', 'no', 'n', 'f'}
+
+
+def _coerce_bool_series(series: pd.Series, default: bool = True) -> pd.Series:
+    if series.empty:
+        return pd.Series(dtype=bool)
+
+    def _parse(value):
+        if pd.isna(value):
+            return default
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return bool(int(value))
+        text = str(value).strip().lower()
+        if text in _TRUE_VALUES:
+            return True
+        if text in _FALSE_VALUES:
+            return False
+        return default
+
+    return series.map(_parse).astype(bool)
+
+
+def _filter_cohort_retention(
+    cohort: pd.DataFrame,
+    activity_definition: Optional[str] = None,
+    retention_mode: Optional[str] = None,
+) -> pd.DataFrame:
+    df = cohort.copy()
+    if df.empty:
+        return df
+
+    if 'activity_definition' in df.columns and activity_definition:
+        candidate = df[df['activity_definition'].astype(str) == activity_definition].copy()
+        if not candidate.empty:
+            df = candidate
+    elif 'activity_definition' in df.columns:
+        for preferred in ['core_engagement', 'all_activity']:
+            candidate = df[df['activity_definition'].astype(str) == preferred].copy()
+            if not candidate.empty:
+                df = candidate
+                break
+
+    if 'retention_mode' in df.columns and retention_mode:
+        candidate = df[df['retention_mode'].astype(str) == retention_mode].copy()
+        if not candidate.empty:
+            df = candidate
+    elif 'retention_mode' in df.columns:
+        for preferred in ['rolling', 'point']:
+            candidate = df[df['retention_mode'].astype(str) == preferred].copy()
+            if not candidate.empty:
+                df = candidate
+                break
+
+    if 'observed' in df.columns:
+        df['observed'] = _coerce_bool_series(df['observed'], default=True)
+
+    return df.reset_index(drop=True)
+
+
 def _load_customer_summary(repository: DataRepository) -> pd.DataFrame:
     try:
         return repository.require_customer_summary()
@@ -115,8 +177,16 @@ def churn_view(
 
 
 @router.get('/cohort-retention', response_model=CohortRetentionResponse)
-def cohort_retention(repository: DataRepository = Depends(get_repository)) -> CohortRetentionResponse:
-    cohort = _load_cohort_retention(repository)
+def cohort_retention(
+    activity_definition: Optional[str] = Query(default=None),
+    retention_mode: Optional[str] = Query(default=None),
+    repository: DataRepository = Depends(get_repository),
+) -> CohortRetentionResponse:
+    cohort = _filter_cohort_retention(
+        _load_cohort_retention(repository),
+        activity_definition=activity_definition,
+        retention_mode=retention_mode,
+    )
     keep_cols = [
         'cohort_month',
         'period',
@@ -126,7 +196,7 @@ def cohort_retention(repository: DataRepository = Depends(get_repository)) -> Co
         'observed',
     ]
     records = dataframe_to_records(cohort, columns=keep_cols)
-    observed = cohort[cohort.get('observed', True) == True] if not cohort.empty and 'observed' in cohort.columns else cohort
+    observed = cohort[cohort['observed']] if not cohort.empty and 'observed' in cohort.columns else cohort
     periods = int(observed['period'].max()) + 1 if not observed.empty else 0
     return CohortRetentionResponse(periods=periods, records=records)
 

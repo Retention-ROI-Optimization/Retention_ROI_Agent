@@ -17,10 +17,14 @@ from dashboard.services.api_client import (
 )
 from dashboard.services.churn_service import get_churn_status
 from dashboard.services.cohort_service import (
+    get_activity_definition_label,
+    get_available_activity_definitions,
+    get_available_retention_modes,
     get_cohort_curve,
     get_cohort_display_table,
     get_cohort_pivot,
     get_cohort_summary,
+    get_retention_mode_label,
 )
 from dashboard.services.data_loader import load_dashboard_bundle
 from dashboard.services.llm_service import (
@@ -1139,9 +1143,45 @@ if view == "1. 이탈현황":
 elif view == "2. 코호트 리텐션 곡선":
     st.subheader("코호트 리텐션 분석")
 
-    cohort_summary = get_cohort_summary(cohort_df)
-    display_table = get_cohort_display_table(cohort_df)
-    heatmap_df = get_cohort_pivot(cohort_df)
+    activity_options = get_available_activity_definitions(cohort_df)
+    retention_mode_options = get_available_retention_modes(cohort_df)
+
+    c1, c2 = st.columns(2)
+    selected_activity_definition = c1.selectbox(
+        "리텐션 활동 정의",
+        options=activity_options,
+        index=activity_options.index("core_engagement") if "core_engagement" in activity_options else 0,
+        format_func=get_activity_definition_label,
+        key="cohort_activity_definition",
+    )
+    selected_retention_mode = c2.selectbox(
+        "리텐션 측정 방식",
+        options=retention_mode_options,
+        index=retention_mode_options.index("rolling") if "rolling" in retention_mode_options else 0,
+        format_func=get_retention_mode_label,
+        key="cohort_retention_mode",
+    )
+
+    cohort_curve = get_cohort_curve(
+        cohort_df,
+        activity_definition=selected_activity_definition,
+        retention_mode=selected_retention_mode,
+    )
+    cohort_summary = get_cohort_summary(
+        cohort_df,
+        activity_definition=selected_activity_definition,
+        retention_mode=selected_retention_mode,
+    )
+    display_table = get_cohort_display_table(
+        cohort_df,
+        activity_definition=selected_activity_definition,
+        retention_mode=selected_retention_mode,
+    )
+    heatmap_df = get_cohort_pivot(
+        cohort_df,
+        activity_definition=selected_activity_definition,
+        retention_mode=selected_retention_mode,
+    )
 
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("코호트 수", f"{cohort_summary['cohort_count']:,}")
@@ -1149,16 +1189,38 @@ elif view == "2. 코호트 리텐션 곡선":
     m2.metric("평균 코호트 크기", "-" if pd.isna(avg_size) else f"{avg_size:,.0f}")
     month1_ret = cohort_summary["month1_avg_retention"]
     m3.metric("평균 1개월차 리텐션", "-" if pd.isna(month1_ret) else f"{month1_ret:.2%}")
-    last_avg_ret = cohort_summary["last_observed_avg_retention"]
-    m4.metric("마지막 관측 리텐션 평균", "-" if pd.isna(last_avg_ret) else f"{last_avg_ret:.2%}")
+    comparable_ret = cohort_summary["comparable_avg_retention"]
+    comparable_period = cohort_summary["comparable_period"]
+    comparable_label = "공통 비교 리텐션"
+    if comparable_period is not None:
+        comparable_label = f"공통 비교({comparable_period}개월차)"
+    m4.metric(comparable_label, "-" if pd.isna(comparable_ret) else f"{comparable_ret:.2%}")
 
     st.caption(
-        "period 0은 코호트 정의상 100%로 고정하고, 아직 관측할 수 없는 미래 period는 0이 아니라 공란으로 둡니다. "
-        "그래야 최근 코호트가 오른쪽 검열 때문에 과소평가되지 않습니다."
+        f"현재 기준: {cohort_summary['selected_activity_label']} / {cohort_summary['selected_retention_mode_label']}. "
+        "period 0은 코호트 정의상 100%로 고정하고, 아직 관측할 수 없는 미래 period는 0이 아니라 공란으로 둡니다."
     )
+
+    if selected_retention_mode == "point":
+        st.info(
+            "해당 월 재방문율(point)은 재활성화 고객 때문에 month 2가 month 1보다 높아질 수 있습니다. "
+            "최근/오래된 코호트를 섞어 해석하지 않도록 아래 공통 비교 지표를 함께 보세요."
+        )
+    else:
+        st.info(
+            "롤링 리텐션(rolling)은 해당 월 또는 그 이후에 다시 살아난 고객까지 포함하므로 곡선이 단조 감소합니다. "
+            "코호트 붕괴 속도를 비교하기에 더 안정적입니다."
+        )
+
+    if cohort_summary.get("non_monotonic_cohort_count", 0) > 0:
+        st.caption(
+            f"참고: 현재 point 기준에서는 {cohort_summary['non_monotonic_cohort_count']}개 코호트에서 "
+            "후행 월 리텐션이 앞선 월보다 높게 나타났습니다."
+        )
 
     if cohort_curve.empty:
         st.warning("표시할 코호트 데이터가 없습니다.")
+        comparable_df = cohort_curve.copy()
         last_period_df = cohort_curve.copy()
     else:
         line_fig = px.line(
@@ -1167,7 +1229,10 @@ elif view == "2. 코호트 리텐션 곡선":
             y="retention_rate",
             color="cohort_month",
             markers=True,
-            title="가입 코호트별 리텐션 곡선",
+            title=(
+                f"가입 코호트별 리텐션 곡선 · "
+                f"{get_activity_definition_label(selected_activity_definition)} / {get_retention_mode_label(selected_retention_mode)}"
+            ),
         )
         line_fig.update_layout(xaxis_title="경과 기간(개월)", yaxis_title="Retention Rate")
         st.plotly_chart(line_fig, use_container_width=True)
@@ -1185,6 +1250,22 @@ elif view == "2. 코호트 리텐션 곡선":
         st.markdown("### 코호트 리텐션 테이블")
         st.dataframe(display_table, use_container_width=True, hide_index=True)
 
+        comparable_df = cohort_curve.copy()
+        if comparable_period is not None:
+            comparable_df = cohort_curve[cohort_curve["period"] == comparable_period].copy()
+
+        if not comparable_df.empty:
+            st.markdown("### 공통 기간 비교")
+            comparable_display = comparable_df[
+                ["cohort_month", "period", "cohort_size", "retained_customers", "retention_rate"]
+            ].copy()
+            comparable_display["retention_rate"] = comparable_display["retention_rate"].map(lambda x: f"{x:.2%}")
+            st.dataframe(
+                comparable_display.sort_values("retention_rate", ascending=False),
+                use_container_width=True,
+                hide_index=True,
+            )
+
         last_period_df = (
             cohort_curve.sort_values(["cohort_month", "period"])
             .groupby("cohort_month", as_index=False)
@@ -1195,8 +1276,11 @@ elif view == "2. 코호트 리텐션 곡선":
 
     llm_payload = {
         "cohort_summary": cohort_summary,
+        "selected_activity_definition": selected_activity_definition,
+        "selected_retention_mode": selected_retention_mode,
         "retention_curve_summary": numeric_summary(cohort_curve, ["retention_rate"]),
         "cohort_retention_records": cohort_curve.round(4).to_dict(orient="records"),
+        "comparable_retention": comparable_df.round(4).to_dict(orient="records"),
         "last_observed_retention": last_period_df.round(4).to_dict(orient="records"),
     }
 
@@ -1550,13 +1634,6 @@ elif view == "8. 저장된 Uplift/최적화 결과":
         if not optimization_summary and optimization_segment_budget_df.empty:
             st.warning("저장된 optimize 결과를 찾지 못했습니다.")
         else:
-            saved_budget = int(optimization_summary.get("budget", 0) or 0)
-            if saved_budget and saved_budget != int(budget):
-                render_status_pill(
-                    f"저장된 optimize 결과는 현재 선택 예산({money(budget)})이 아니라 {money(saved_budget)} 기준으로 생성되었습니다.",
-                    "warn",
-                )
-
             m1, m2, m3, m4 = st.columns(4)
             m1.metric("저장된 예산", money(optimization_summary.get("budget", 0)))
             m2.metric("저장된 집행 예산", money(optimization_summary.get("spent", 0)))
