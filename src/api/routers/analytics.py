@@ -5,7 +5,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 import pandas as pd
 
-from src.api.dependencies import get_repository
+from src.api.dependencies import get_repository, get_settings
 from src.api.schemas import (
     BudgetResponse,
     ChurnResponse,
@@ -24,6 +24,8 @@ from src.api.services.analytics import (
 )
 from src.api.services.repository import DataRepository
 from src.api.services.serialization import dataframe_to_records
+from src.api.settings import ApiSettings
+from src.optimization.timing import load_survival_predictions
 
 router = APIRouter(prefix='/analytics', tags=['analytics'])
 
@@ -115,11 +117,18 @@ def dashboard_summary(
     budget: int = Query(default=5000000, ge=1),
     max_customers: Optional[int] = Query(default=None, ge=1, le=5000),
     repository: DataRepository = Depends(get_repository),
+    settings: ApiSettings = Depends(get_settings),
 ) -> DashboardSummaryResponse:
     customers = _load_customer_summary(repository)
     cohort = _load_cohort_retention(repository)
     churn_summary, _ = get_churn_status(customers, threshold=threshold)
-    _, budget_summary, _ = get_budget_result(customers, budget=budget, threshold=threshold, max_customers=max_customers)
+    _, budget_summary, _ = get_budget_result(
+        customers,
+        budget=budget,
+        threshold=threshold,
+        max_customers=max_customers,
+        survival_predictions=load_survival_predictions(settings.resolved_result_dir),
+    )
     persona_distribution = dataframe_to_records(distribution_table(customers, 'persona'))
     uplift_segment_distribution = dataframe_to_records(distribution_table(customers, 'uplift_segment'))
     return DashboardSummaryResponse(
@@ -234,6 +243,7 @@ def budget_optimization(
     threshold: float = Query(default=0.50, ge=0.0, le=1.0),
     max_customers: Optional[int] = Query(default=None, ge=1, le=5000),
     repository: DataRepository = Depends(get_repository),
+    settings: ApiSettings = Depends(get_settings),
 ) -> BudgetResponse:
     customers = _load_customer_summary(repository)
     selected, summary, segment_allocation = get_budget_result(
@@ -241,6 +251,7 @@ def budget_optimization(
         budget=budget,
         threshold=threshold,
         max_customers=max_customers,
+        survival_predictions=load_survival_predictions(settings.resolved_result_dir),
     )
     return BudgetResponse(
         budget=int(budget),

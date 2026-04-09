@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from typing import Dict, Iterable, List, Optional, Tuple
 
+from pathlib import Path
+
 import pandas as pd
+
+from src.optimization.timing import apply_survival_timing, load_survival_predictions
 
 DEFAULT_CUSTOMER_COLUMNS = [
     'customer_id', 'persona', 'uplift_segment_true', 'acquisition_month', 'recency_days', 'frequency', 'monetary',
@@ -107,7 +111,11 @@ def _normalize(series: pd.Series) -> pd.Series:
     return (series - low) / (high - low)
 
 
-def _build_candidate_pool(customers: pd.DataFrame, threshold: float) -> pd.DataFrame:
+def _build_candidate_pool(
+    customers: pd.DataFrame,
+    threshold: float,
+    survival_predictions: Optional[pd.DataFrame] = None,
+) -> pd.DataFrame:
     if customers.empty:
         return customers.head(0).copy()
 
@@ -116,8 +124,22 @@ def _build_candidate_pool(customers: pd.DataFrame, threshold: float) -> pd.DataF
     df['uplift_score'] = _safe_series(df, 'uplift_score')
     df['clv'] = _safe_series(df, 'clv')
     df['coupon_cost'] = _safe_series(df, 'coupon_cost')
-    df['expected_incremental_profit'] = _safe_series(df, 'expected_incremental_profit')
-    df['expected_roi'] = _safe_series(df, 'expected_roi')
+    df['base_expected_incremental_profit'] = _safe_series(df, 'expected_incremental_profit')
+    df['base_expected_roi'] = _safe_series(df, 'expected_roi')
+    df = apply_survival_timing(df, survival_predictions=survival_predictions)
+
+    df['timing_adjusted_incremental_profit'] = (
+        df['base_expected_incremental_profit'] * _safe_series(df, 'churn_timing_weight', default=1.0)
+    )
+    # `expected_incremental_profit` in the customer summary is already a net-profit value,
+    # so timing adjustment should rescale that profit directly instead of subtracting coupon
+    # cost a second time. The previous implementation double-counted cost and depressed ROI.
+    df['timing_adjusted_roi'] = df['timing_adjusted_incremental_profit'] / df['coupon_cost'].where(
+        df['coupon_cost'] > 0,
+        1.0,
+    )
+    df['expected_incremental_profit'] = df['timing_adjusted_incremental_profit']
+    df['expected_roi'] = df['timing_adjusted_roi']
 
     candidate = df[
         (df['churn_probability'] >= float(threshold))
@@ -132,18 +154,30 @@ def _build_candidate_pool(customers: pd.DataFrame, threshold: float) -> pd.DataF
     candidate['roi_rank_score'] = _normalize(candidate['expected_roi'])
     candidate['profit_rank_score'] = _normalize(candidate['expected_incremental_profit'])
     candidate['clv_rank_score'] = _normalize(candidate['clv'])
+    candidate['timing_rank_score'] = _normalize(candidate['timing_urgency_score'])
+    candidate['window_rank_score'] = 1.0 - _normalize(candidate['intervention_window_days'])
 
     candidate['priority_score'] = (
-        0.35 * candidate['roi_rank_score']
-        + 0.25 * candidate['profit_rank_score']
-        + 0.20 * candidate['churn_probability']
+        0.20 * candidate['roi_rank_score']
+        + 0.20 * candidate['profit_rank_score']
+        + 0.15 * candidate['churn_probability']
         + 0.10 * candidate['uplift_score']
         + 0.10 * candidate['clv_rank_score']
+        + 0.15 * candidate['timing_rank_score']
+        + 0.10 * candidate['window_rank_score']
     )
 
     candidate = candidate.sort_values(
-        ['priority_score', 'expected_roi', 'expected_incremental_profit', 'clv', 'customer_id'],
-        ascending=[False, False, False, False, True],
+        [
+            'priority_score',
+            'timing_urgency_score',
+            'expected_roi',
+            'expected_incremental_profit',
+            'intervention_window_days',
+            'clv',
+            'customer_id',
+        ],
+        ascending=[False, False, False, False, True, False, True],
     ).reset_index(drop=True)
     return candidate
 
@@ -198,6 +232,8 @@ def get_budget_result(
     budget: int,
     threshold: float = 0.50,
     max_customers: Optional[int] = None,
+    survival_predictions: Optional[pd.DataFrame] = None,
+    result_dir: Optional[str | Path] = None,
 ) -> Tuple[pd.DataFrame, Dict[str, float], pd.DataFrame]:
     if customers.empty or budget <= 0:
         empty = customers.head(0).copy()
@@ -212,11 +248,15 @@ def get_budget_result(
             'threshold': float(threshold),
             'max_customers_cap': int(max_customers or 0),
             'candidate_segment_counts': {seg: 0 for seg in _segment_order(customers)},
+            'survival_enriched': False,
         }
         return empty, summary, budget_allocation_by_segment(empty, _segment_order(customers))
 
     all_segments = _segment_order(customers)
-    candidate = _build_candidate_pool(customers, threshold=threshold)
+    resolved_survival = survival_predictions
+    if resolved_survival is None and result_dir is not None:
+        resolved_survival = load_survival_predictions(result_dir)
+    candidate = _build_candidate_pool(customers, threshold=threshold, survival_predictions=resolved_survival)
 
     if max_customers is not None and max_customers > 0:
         candidate = candidate.head(int(max_customers)).copy()
@@ -233,6 +273,7 @@ def get_budget_result(
             'threshold': float(threshold),
             'max_customers_cap': int(max_customers or 0),
             'candidate_segment_counts': {seg: 0 for seg in all_segments},
+            'survival_enriched': False,
         }
         return candidate, summary, budget_allocation_by_segment(candidate, all_segments)
 
@@ -258,6 +299,9 @@ def get_budget_result(
         'threshold': float(threshold),
         'max_customers_cap': int(max_customers or len(candidate)),
         'candidate_segment_counts': candidate_segment_counts,
+        'survival_enriched': bool(resolved_survival is not None and not resolved_survival.empty),
+        'avg_timing_urgency_score': round(float(candidate['timing_urgency_score'].mean()), 6),
+        'avg_intervention_window_days': round(float(candidate['intervention_window_days'].mean()), 2),
     }
     segment_allocation = budget_allocation_by_segment(selected, all_segments=all_segments)
     return selected, summary, segment_allocation

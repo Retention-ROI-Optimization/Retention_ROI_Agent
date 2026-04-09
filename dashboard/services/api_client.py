@@ -5,6 +5,7 @@ from typing import Any, Dict
 
 import pandas as pd
 import requests
+from requests.utils import urlparse
 
 DEFAULT_TIMEOUT = 120
 DEFAULT_API_BASE_URL = os.getenv('RETENTION_API_BASE_URL', 'http://localhost:8000').rstrip('/')
@@ -18,14 +19,48 @@ def get_api_base_url() -> str:
     return os.getenv('RETENTION_API_BASE_URL', DEFAULT_API_BASE_URL).rstrip('/')
 
 
+def _candidate_api_base_urls() -> list[str]:
+    configured = get_api_base_url()
+    candidates: list[str] = []
+
+    def _append(url: str | None) -> None:
+        if not url:
+            return
+        normalized = str(url).rstrip('/')
+        if normalized and normalized not in candidates:
+            candidates.append(normalized)
+
+    _append(configured)
+    parsed = urlparse(configured)
+    host = (parsed.hostname or '').strip().lower()
+    scheme = parsed.scheme or 'http'
+    port = parsed.port or 8000
+
+    if host == 'api':
+        _append(f'{scheme}://localhost:{port}')
+        _append(f'{scheme}://127.0.0.1:{port}')
+        _append(f'{scheme}://host.docker.internal:{port}')
+    elif host in {'localhost', '127.0.0.1'}:
+        _append(f'{scheme}://api:{port}')
+
+    return candidates
+
+
 def _request_json(path: str, params: Dict[str, Any] | None = None) -> Dict[str, Any]:
-    url = f"{get_api_base_url()}{path}"
-    try:
-        response = requests.get(url, params=params, timeout=DEFAULT_TIMEOUT)
-        response.raise_for_status()
-    except requests.RequestException as exc:
-        raise DashboardApiError(f'API 요청 실패: {exc}') from exc
-    return response.json()
+    last_exc: Exception | None = None
+    attempted: list[str] = []
+    for base_url in _candidate_api_base_urls():
+        url = f"{base_url}{path}"
+        attempted.append(url)
+        try:
+            response = requests.get(url, params=params, timeout=DEFAULT_TIMEOUT)
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException as exc:
+            last_exc = exc
+            continue
+    attempted_text = ', '.join(attempted)
+    raise DashboardApiError(f'API 요청 실패: {last_exc}. attempted={attempted_text}') from last_exc
 
 
 def fetch_health() -> Dict[str, Any]:

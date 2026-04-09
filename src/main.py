@@ -216,6 +216,8 @@ def main() -> int:
             budget=args.budget,
             threshold=args.threshold,
             max_customers=args.max_customers,
+            model_dir=model_dir,
+            feature_store_dir=feature_store_dir,
             **common_simulation_kwargs,
         )
         return _print_result(result)
@@ -314,6 +316,8 @@ def main() -> int:
         data_dir,
         result_dir,
         budget=args.budget,
+        model_dir=model_dir,
+        feature_store_dir=feature_store_dir,
         **common_simulation_kwargs,
     )
     return _print_result(result)

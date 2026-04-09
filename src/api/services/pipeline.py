@@ -72,6 +72,8 @@ def run_mode(
             data_dir=data_dir,
             result_dir=result_dir,
             budget=int(budget or 5_000_000),
+            model_dir=model_dir,
+            feature_store_dir=feature_store_dir,
             **common_kwargs,
         )
 
@@ -97,6 +99,8 @@ def run_mode(
             threshold=float(threshold),
             max_customers=max_customers,
             per_customer=int(per_customer),
+            model_dir=model_dir,
+            feature_store_dir=feature_store_dir,
             **common_kwargs,
         )
 

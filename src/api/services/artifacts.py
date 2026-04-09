@@ -8,6 +8,7 @@ import pandas as pd
 
 from src.api.settings import ApiSettings
 from src.api.services.analytics import get_budget_result
+from src.optimization.timing import load_survival_predictions
 from src.workflows.pipeline_runner import (
     run_churn_training_pipeline,
     run_optimize_pipeline,
@@ -173,6 +174,7 @@ def optimization_artifacts_missing(settings: ApiSettings) -> bool:
     ]
     dependencies = [
         result_dir / "customer_segments.csv",
+        result_dir / "survival_predictions.csv",
     ]
     return _is_stale(outputs, dependencies)
 
@@ -222,6 +224,8 @@ def ensure_saved_results_artifacts(settings: ApiSettings, budget: int, rebuild: 
             data_dir=settings.resolved_data_dir,
             result_dir=settings.resolved_result_dir,
             budget=int(budget),
+            model_dir=settings.resolved_model_dir,
+            feature_store_dir=settings.resolved_feature_store_dir,
         )
 
 
@@ -277,6 +281,7 @@ def load_saved_results_payload(
         budget=int(budget),
         threshold=float(threshold),
         max_customers=max_customers,
+        survival_predictions=load_survival_predictions(result_dir),
     )
     optimization_summary["live_generated"] = True
 

@@ -23,6 +23,12 @@ TARGET_META_COLUMNS = [
     'coupon_cost',
     'uplift_segment',
     'persona',
+    'predicted_median_time_to_churn_days',
+    'timing_urgency_score',
+    'intervention_window_days',
+    'recommended_intervention_window',
+    'timing_priority_bucket',
+    'short_term_churn_probability',
 ]
 
 
@@ -131,13 +137,18 @@ def _prepare_target_customers(
     candidates['expected_roi'] = pd.to_numeric(candidates.get('expected_roi', 0.0), errors='coerce').fillna(0.0)
     candidates['coupon_cost'] = pd.to_numeric(candidates.get('coupon_cost', 0.0), errors='coerce').fillna(0.0)
 
+    candidates['predicted_median_time_to_churn_days'] = pd.to_numeric(candidates.get('predicted_median_time_to_churn_days', 90.0), errors='coerce').fillna(90.0)
+    candidates['timing_urgency_score'] = pd.to_numeric(candidates.get('timing_urgency_score', 0.0), errors='coerce').fillna(0.0)
+    candidates['intervention_window_days'] = pd.to_numeric(candidates.get('intervention_window_days', candidates['predicted_median_time_to_churn_days']), errors='coerce').fillna(candidates['predicted_median_time_to_churn_days'])
+    candidates['short_term_churn_probability'] = pd.to_numeric(candidates.get('short_term_churn_probability', 0.0), errors='coerce').fillna(0.0)
     max_clv = max(float(candidates['clv'].max()), 1.0)
     candidates['recommendation_priority'] = (
-        0.40 * candidates['priority_score']
-        + 0.20 * candidates['churn_probability']
-        + 0.15 * candidates['uplift_score']
-        + 0.15 * (candidates['clv'] / max_clv)
+        0.32 * candidates['priority_score']
+        + 0.18 * candidates['churn_probability']
+        + 0.12 * candidates['uplift_score']
+        + 0.14 * (candidates['clv'] / max_clv)
         + 0.10 * candidates['expected_roi'].clip(lower=0.0)
+        + 0.14 * candidates['timing_urgency_score']
     )
     candidates['target_priority_score'] = candidates['priority_score']
 
@@ -147,10 +158,11 @@ def _prepare_target_customers(
             'expected_incremental_profit',
             'expected_roi',
             'recommendation_priority',
+            'intervention_window_days',
             'clv',
             'customer_id',
         ],
-        ascending=[False, False, False, False, False, True],
+        ascending=[False, False, False, False, True, False, True],
     ).head(candidate_limit)
     return candidates, 'optimized_targets'
 
@@ -265,6 +277,12 @@ def run_personalized_recommendation_pipeline(
                         'expected_incremental_profit': float(customer.get('expected_incremental_profit', 0.0)),
                         'expected_roi': float(customer.get('expected_roi', 0.0)),
                         'coupon_cost': float(customer.get('coupon_cost', 0.0)),
+                        'predicted_median_time_to_churn_days': float(customer.get('predicted_median_time_to_churn_days', 0.0)),
+                        'timing_urgency_score': float(customer.get('timing_urgency_score', 0.0)),
+                        'intervention_window_days': float(customer.get('intervention_window_days', 0.0)),
+                        'recommended_intervention_window': customer.get('recommended_intervention_window'),
+                        'timing_priority_bucket': customer.get('timing_priority_bucket'),
+                        'short_term_churn_probability': float(customer.get('short_term_churn_probability', 0.0)),
                         'recommendation_rank': rank,
                         'recommended_category': rec['item_category'],
                         'recommendation_score': round(float(rec['score']), 6),
