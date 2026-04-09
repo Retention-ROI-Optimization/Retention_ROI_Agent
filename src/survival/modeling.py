@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional, cast
 
 import joblib
 import matplotlib
@@ -15,6 +15,14 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 
 from src.features.engineering import build_feature_dataset
+
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from lifelines import CoxPHFitter as CoxPHFitterType
+    from lifelines import KaplanMeierFitter as KaplanMeierFitterType
+else:  # pragma: no cover - runtime fallback for optional dependency
+    CoxPHFitterType = Any
+    KaplanMeierFitterType = Any
 
 try:  # pragma: no cover - optional dependency
     from lifelines import CoxPHFitter, KaplanMeierFitter
@@ -246,7 +254,8 @@ def _plot_risk_groups(df: pd.DataFrame, output_path: Path, horizon_days: int) ->
     assert KaplanMeierFitter is not None
 
     plt.figure(figsize=(8, 5))
-    kmf = KaplanMeierFitter()
+    kmf_cls = cast(type[KaplanMeierFitterType], KaplanMeierFitter)
+    kmf = kmf_cls()
     for group_name in ['Low risk', 'Mid risk', 'High risk']:
         subset = df[df['risk_group'] == group_name]
         if subset.empty:
@@ -272,9 +281,11 @@ def _fit_cox_with_retry(
     train_df: pd.DataFrame,
     *,
     base_penalizer: float,
-) -> tuple[CoxPHFitter, float, list[Dict[str, Any]]]:
+) -> tuple[CoxPHFitterType, float, list[Dict[str, Any]]]:
     _require_lifelines()
     assert CoxPHFitter is not None
+
+    cox_cls = cast(type[CoxPHFitterType], CoxPHFitter)
 
     attempts: list[Dict[str, Any]] = []
     penalties = []
@@ -284,7 +295,7 @@ def _fit_cox_with_retry(
 
     last_error: Exception | None = None
     for penalty in penalties:
-        model = CoxPHFitter(penalizer=float(penalty))
+        model = cox_cls(penalizer=float(penalty))
         try:
             model.fit(
                 train_df,
