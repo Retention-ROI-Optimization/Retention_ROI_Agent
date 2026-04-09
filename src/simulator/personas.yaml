@@ -95,24 +95,24 @@ personas:
     price_sensitivity: 0.72
     recovery_prob: 0.22
     acquisition_weight: 0.08
-
+# uplift_segments 값을 더 극단적으로 조정
 uplift_segments:
   persuadable:
-    treatment_lift: 0.28
-    coupon_open_delta: 0.12
-    coupon_redeem_delta: 0.15
+    treatment_lift: 0.65
+    coupon_open_delta: 0.25
+    coupon_redeem_delta: 0.28
   sure_thing:
-    treatment_lift: 0.02
-    coupon_open_delta: -0.03
-    coupon_redeem_delta: -0.04
+    treatment_lift: 0.01
+    coupon_open_delta: -0.05
+    coupon_redeem_delta: -0.05
   lost_cause:
     treatment_lift: 0.00
-    coupon_open_delta: -0.05
-    coupon_redeem_delta: -0.06
-  sleeping_dog:
-    treatment_lift: -0.12
-    coupon_open_delta: -0.08
+    coupon_open_delta: -0.10
     coupon_redeem_delta: -0.10
+  sleeping_dog:
+    treatment_lift: -0.30
+    coupon_open_delta: -0.15
+    coupon_redeem_delta: -0.18
 
 persona_to_uplift_weights:
   vip_loyal:
