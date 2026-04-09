@@ -32,7 +32,8 @@ def compute_visit_probability(
         + 0.20 * tracker.recent_visit_score
         + 0.15 * tracker.recent_purchase_score
         + 0.20 * tracker.recent_exposure_score * customers["coupon_affinity"].to_numpy()
-        + 0.15 * tracker.recent_exposure_score * customers["treatment_lift_base"].to_numpy()
+        # 기존 + 0.15 -> + 0.45로 변경
+        + 0.45 * tracker.recent_exposure_score * customers["treatment_lift_base"].to_numpy()
         - 0.035 * tracker.inactivity_days * customers["churn_sensitivity_base"].to_numpy()
         + 0.02 * np.minimum(tracker.purchases_total, 8)
     )
@@ -92,7 +93,8 @@ def compute_purchase_probability(
         visit_base
         + add_to_cart_mask.astype(float) * cart_base
         + 0.06 * coupon_open_mask.astype(float) * customers["coupon_redeem_prob_base"].to_numpy()
-        + 0.07 * tracker.recent_exposure_score * customers["treatment_lift_base"].to_numpy()
+        # 기존 +0.07 -> +0.35 로 변경
+        + 0.35 * tracker.recent_exposure_score * customers["treatment_lift_base"].to_numpy()
         + 0.03 * tracker.recent_purchase_score
         - 0.03 * customers["price_sensitivity"].to_numpy()
         - 0.02 * np.tanh(tracker.recent_cart_abandon_score)
