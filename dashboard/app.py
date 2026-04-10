@@ -487,7 +487,7 @@ def render_hero(title: str, subtitle: str):
     st.markdown(
         f"""
         <div class="hero-card">
-            <div class="hero-kicker">Retention Intelligence Suite</div>
+            <div class="hero-kicker">Retention Intelligence Copilot</div>
             <div class="hero-title">{title}</div>
             <div class="hero-subtitle">{subtitle}</div>
         </div>
@@ -1012,8 +1012,9 @@ customers = bundle.customer_summary
 cohort_df = bundle.cohort_retention
 
 render_hero(
-    "AI 기반 고객 이탈 예측 및 리텐션 ROI 최적화 대시보드",
-    "이탈 위험 고객 탐지부터 uplift·CLV·예산 최적화·개인화 추천까지 한 화면에서 이어서 분석하는 운영형 대시보드입니다.",
+    "AI 기반 고객 이탈 예측·개입 최적화·ROI 분석 플랫폼",
+    "누가 이탈할 가능성이 높은지뿐 아니라, 언제 개입해야 하는지, 누구에게 예산을 우선 배분할지, " \
+    "어떤 액션을 추천할지까지 연결해 보여주는 운영형 리텐션 분석 플랫폼입니다.",
 )
 
 if bundle.used_mock:
