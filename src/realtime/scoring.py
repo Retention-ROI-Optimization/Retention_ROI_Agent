@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 import json
 import math
 from pathlib import Path
@@ -10,6 +10,9 @@ from typing import Any, Dict, Iterable, Optional
 import numpy as np
 import pandas as pd
 
+from src.optimization.policy import build_intensity_action_candidates
+from src.optimization.timing import load_survival_predictions
+
 try:  # pragma: no cover - optional dependency
     import redis
 except Exception as exc:  # pragma: no cover
@@ -17,24 +20,7 @@ except Exception as exc:  # pragma: no cover
     REDIS_IMPORT_ERROR = str(exc)
 else:
     REDIS_IMPORT_ERROR = None
-def _redis_safe_value(value):
-    if value is None:
-        return ""
-    if isinstance(value, bool):
-        return int(value)
-    if isinstance(value, pd.Timestamp):
-        ts = _to_utc_timestamp(value)
-        return "" if ts is None else ts.isoformat()
-    try:
-        if pd.isna(value):
-            return ""
-    except Exception:
-        pass
-    return value
 
-
-def _redis_safe_mapping(mapping: dict) -> dict:
-    return {str(k): _redis_safe_value(v) for k, v in mapping.items()}
 
 EVENT_SIGNAL_MAP: dict[str, str] = {
     'visit': 'visit_signal',
@@ -60,6 +46,20 @@ TRACKED_SIGNAL_FIELDS = [
     'coupon_redeem_signal',
 ]
 
+QUEUE_STATE_FIELDS = [
+    'action_queue_status',
+    'queued_recommended_action',
+    'queued_intervention_intensity',
+    'queued_coupon_cost',
+    'queued_expected_profit',
+    'queued_expected_roi',
+    'action_queue_priority',
+    'latest_trigger_reason',
+    'reoptimization_count',
+    'last_reoptimized_at',
+    'dispatched_intensity_history',
+]
+
 
 @dataclass(frozen=True)
 class RealtimeStreamConfig:
@@ -68,12 +68,19 @@ class RealtimeStreamConfig:
     consumer_group: str = 'retention-risk-scorers'
     consumer_name: str = 'retention-risk-worker-1'
     ranking_key: str = 'retention:realtime:risk_ranking'
+    action_queue_key: str = 'retention:realtime:action_queue'
+    trigger_log_key: str = 'retention:realtime:trigger_log'
     summary_key: str = 'retention:realtime:summary'
     state_key_prefix: str = 'retention:realtime:state'
     stream_maxlen: int = 250000
     snapshot_top_n: int = 200
     block_ms: int = 2000
     batch_size: int = 200
+    default_budget_limit: int = 5_000_000
+    daily_channel_capacity: int = 500
+    reoptimize_customer_threshold: float = 0.65
+    reoptimize_high_risk_threshold: float = 0.80
+    reoptimize_score_delta_threshold: float = 0.12
 
     def state_key(self, customer_id: int | str) -> str:
         return f'{self.state_key_prefix}:{int(customer_id)}'
@@ -159,8 +166,81 @@ def _parse_timestamp(value: Any) -> pd.Timestamp:
     return ts
 
 
+def _redis_safe_value(value):
+    if value is None:
+        return ''
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, pd.Timestamp):
+        ts = _to_utc_timestamp(value)
+        return '' if ts is None else ts.isoformat()
+    try:
+        if pd.isna(value):
+            return ''
+    except Exception:
+        pass
+    return value
+
+
+def _redis_safe_mapping(mapping: dict) -> dict:
+    return {str(k): _redis_safe_value(v) for k, v in mapping.items()}
+
+
 def _summary_paths(result_dir: Path) -> tuple[Path, Path]:
     return result_dir / 'realtime_scores_snapshot.csv', result_dir / 'realtime_scores_summary.json'
+
+
+def _queue_paths(result_dir: Path) -> tuple[Path, Path]:
+    return result_dir / 'realtime_action_queue_snapshot.csv', result_dir / 'realtime_action_queue_summary.json'
+
+
+def _safe_series(df: pd.DataFrame, column: str, default: float = 0.0) -> pd.Series:
+    return pd.to_numeric(df.get(column, default), errors='coerce').fillna(float(default))
+
+
+def _normalize(series: pd.Series) -> pd.Series:
+    numeric = pd.to_numeric(series, errors='coerce').fillna(0.0)
+    if numeric.empty:
+        return numeric.astype(float)
+    low = float(numeric.min())
+    high = float(numeric.max())
+    if abs(high - low) < 1e-12:
+        return pd.Series(np.zeros(len(numeric)), index=numeric.index, dtype=float)
+    return (numeric - low) / (high - low)
+
+
+def _load_baseline_customer_summary(data_dir: Path) -> pd.DataFrame:
+    summary_path = data_dir / 'customer_summary.csv'
+    if not summary_path.exists():
+        raise RealtimeScoringError(f'필수 파일이 없습니다: {summary_path}')
+    df = pd.read_csv(summary_path, low_memory=False)
+    if 'customer_id' not in df.columns:
+        raise RealtimeScoringError(f'customer_id 컬럼이 없습니다: {summary_path}')
+    df['customer_id'] = pd.to_numeric(df['customer_id'], errors='coerce')
+    df = df.dropna(subset=['customer_id']).copy()
+    df['customer_id'] = df['customer_id'].astype(int)
+    for column in ['churn_probability', 'clv', 'expected_roi', 'coupon_cost', 'coupon_affinity', 'support_contact_propensity']:
+        if column in df.columns:
+            df[column] = pd.to_numeric(df[column], errors='coerce').fillna(0.0)
+    return df
+
+
+def _initial_summary(config: RealtimeStreamConfig) -> Dict[str, Any]:
+    return {
+        'bootstrapped_at': pd.Timestamp.now(tz='UTC').floor('s').isoformat(),
+        'bootstrapped_customers': 0,
+        'processed_events': 0,
+        'last_produced_event_at': None,
+        'last_consumed_event_at': None,
+        'closed_loop_budget_limit': int(config.default_budget_limit),
+        'closed_loop_budget_spent': 0,
+        'daily_channel_capacity': int(config.daily_channel_capacity),
+        'daily_channel_allocated': 0,
+        'triggered_reoptimizations': 0,
+        'queued_actions_total': 0,
+        'deferred_actions_total': 0,
+        'action_queue_size': 0,
+    }
 
 
 def _seed_state_from_row(row: pd.Series | Dict[str, Any], config: RealtimeStreamConfig) -> Dict[str, Any]:
@@ -183,6 +263,17 @@ def _seed_state_from_row(row: pd.Series | Dict[str, Any], config: RealtimeStream
         'coupon_affinity': _safe_float(row.get('coupon_affinity', 0.0), 0.0),
         'support_contact_propensity': _safe_float(row.get('support_contact_propensity', 0.0), 0.0),
         'updated_at': pd.Timestamp.now(tz='UTC').floor('s').isoformat(),
+        'action_queue_status': 'idle',
+        'queued_recommended_action': '',
+        'queued_intervention_intensity': '',
+        'queued_coupon_cost': 0,
+        'queued_expected_profit': 0.0,
+        'queued_expected_roi': 0.0,
+        'action_queue_priority': 0.0,
+        'latest_trigger_reason': '',
+        'reoptimization_count': 0,
+        'last_reoptimized_at': '',
+        'dispatched_intensity_history': '',
     }
     for field in TRACKED_SIGNAL_FIELDS:
         snapshot[field] = 0.0
@@ -282,6 +373,259 @@ def _apply_event_to_state(state: Dict[str, Any], event: Dict[str, Any], event_ts
     return current
 
 
+def _parse_history_set(state: Dict[str, Any]) -> set[str]:
+    raw = str(state.get('dispatched_intensity_history', '') or '').strip()
+    if not raw:
+        return set()
+    return {item.strip() for item in raw.split(',') if item.strip()}
+
+
+def _format_history(history: set[str]) -> str:
+    return ','.join(sorted(history))
+
+
+def _should_trigger_reoptimization(
+    previous_state: Dict[str, Any],
+    current_state: Dict[str, Any],
+    event: Dict[str, Any],
+    config: RealtimeStreamConfig,
+) -> tuple[bool, str]:
+    prev_score = _safe_float(previous_state.get('realtime_churn_score', previous_state.get('base_churn_probability', 0.5)), 0.5)
+    current_score = _safe_float(current_state.get('realtime_churn_score', current_state.get('base_churn_probability', 0.5)), 0.5)
+    score_jump = current_score - prev_score
+    event_type = str(event.get('event_type', '')).strip().lower()
+
+    reasons: list[str] = []
+    if current_score >= config.reoptimize_high_risk_threshold and prev_score < config.reoptimize_high_risk_threshold:
+        reasons.append('critical_risk_cross')
+    if current_score >= config.reoptimize_customer_threshold and prev_score < config.reoptimize_customer_threshold:
+        reasons.append('risk_threshold_cross')
+    if score_jump >= config.reoptimize_score_delta_threshold:
+        reasons.append('score_spike')
+    if event_type in {'remove_from_cart', 'support_contact'} and current_score >= config.reoptimize_customer_threshold:
+        reasons.append(f'{event_type}_event')
+
+    purchase_signal = _safe_float(current_state.get('purchase_signal', 0.0))
+    support_signal = _safe_float(current_state.get('support_signal', 0.0))
+    cart_remove_signal = _safe_float(current_state.get('cart_remove_signal', 0.0))
+    inactivity_signal = _safe_float(current_state.get('inactivity_signal', 0.0))
+    if support_signal >= 0.85 and cart_remove_signal >= 0.85 and purchase_signal <= 0.15:
+        reasons.append('support_and_cart_remove_without_purchase')
+    if inactivity_signal >= 0.75 and purchase_signal <= 0.10 and current_score >= config.reoptimize_customer_threshold:
+        reasons.append('extended_inactivity')
+
+    if not reasons:
+        return False, ''
+    return True, ', '.join(dict.fromkeys(reasons))
+
+
+def _reoptimize_customer_action(
+    *,
+    current_state: Dict[str, Any],
+    baseline_row: pd.Series | None,
+    survival_predictions: pd.DataFrame,
+    remaining_budget: int,
+    remaining_capacity: int,
+) -> Dict[str, Any]:
+    if baseline_row is None:
+        return {
+            'action_queue_status': 'hold',
+            'latest_trigger_reason': 'baseline_missing',
+            'action_queue_priority': 0.0,
+        }
+
+    base = pd.DataFrame([baseline_row.to_dict()])
+    base['customer_id'] = pd.to_numeric(base['customer_id'], errors='coerce').fillna(_safe_int(current_state.get('customer_id', 0), 0)).astype(int)
+    base['churn_probability'] = float(_safe_float(current_state.get('realtime_churn_score', current_state.get('base_churn_probability', 0.50)), 0.50))
+    if 'persona' not in base.columns:
+        base['persona'] = str(current_state.get('persona', 'unknown'))
+    if 'uplift_segment' not in base.columns:
+        base['uplift_segment'] = str(current_state.get('uplift_segment', 'unknown'))
+
+    candidates = build_intensity_action_candidates(base, survival_predictions=survival_predictions)
+    if candidates.empty:
+        return {
+            'action_queue_status': 'hold',
+            'latest_trigger_reason': 'candidate_actions_missing',
+            'action_queue_priority': 0.0,
+        }
+
+    blocked = _parse_history_set(current_state)
+    if current_state.get('queued_intervention_intensity'):
+        blocked.add(str(current_state.get('queued_intervention_intensity')))
+
+    candidates = candidates.copy()
+    candidates['coupon_cost'] = pd.to_numeric(candidates.get('coupon_cost', 0.0), errors='coerce').fillna(0.0)
+    candidates['expected_incremental_profit'] = pd.to_numeric(candidates.get('expected_incremental_profit', 0.0), errors='coerce').fillna(0.0)
+    candidates['expected_roi'] = pd.to_numeric(candidates.get('expected_roi', 0.0), errors='coerce').fillna(0.0)
+    candidates['timing_urgency_score'] = pd.to_numeric(candidates.get('timing_urgency_score', 0.0), errors='coerce').fillna(0.0)
+    candidates = candidates[
+        (candidates['coupon_cost'] > 0.0)
+        & (candidates['expected_incremental_profit'] > 0.0)
+        & ~candidates.get('intervention_intensity', pd.Series(index=candidates.index, dtype=object)).astype(str).isin(blocked)
+    ].copy()
+
+    if candidates.empty:
+        return {
+            'action_queue_status': 'hold',
+            'latest_trigger_reason': 'all_intensities_already_used',
+            'action_queue_priority': 0.0,
+        }
+
+    profit_rank = _normalize(candidates['expected_incremental_profit'])
+    roi_rank = _normalize(candidates['expected_roi'].clip(lower=0.0))
+    candidates['action_priority'] = (
+        0.34 * profit_rank
+        + 0.28 * roi_rank
+        + 0.23 * candidates['timing_urgency_score'].clip(lower=0.0, upper=1.0)
+        + 0.15 * float(_safe_float(current_state.get('realtime_churn_score', 0.0), 0.0))
+    )
+    candidates = candidates.sort_values(
+        ['action_priority', 'expected_incremental_profit', 'expected_roi', 'coupon_cost'],
+        ascending=[False, False, False, True],
+    ).reset_index(drop=True)
+
+    if remaining_budget <= 0:
+        best = candidates.iloc[0]
+        return {
+            'action_queue_status': 'deferred_budget_guardrail',
+            'queued_recommended_action': str(best.get('recommended_action', '')),
+            'queued_intervention_intensity': str(best.get('intervention_intensity', '')),
+            'queued_coupon_cost': int(round(float(best.get('coupon_cost', 0.0)))),
+            'queued_expected_profit': round(float(best.get('expected_incremental_profit', 0.0)), 2),
+            'queued_expected_roi': round(float(best.get('expected_roi', 0.0)), 6),
+            'action_queue_priority': round(float(best.get('action_priority', 0.0)), 6),
+        }
+    if remaining_capacity <= 0:
+        best = candidates.iloc[0]
+        return {
+            'action_queue_status': 'deferred_channel_guardrail',
+            'queued_recommended_action': str(best.get('recommended_action', '')),
+            'queued_intervention_intensity': str(best.get('intervention_intensity', '')),
+            'queued_coupon_cost': int(round(float(best.get('coupon_cost', 0.0)))),
+            'queued_expected_profit': round(float(best.get('expected_incremental_profit', 0.0)), 2),
+            'queued_expected_roi': round(float(best.get('expected_roi', 0.0)), 6),
+            'action_queue_priority': round(float(best.get('action_priority', 0.0)), 6),
+        }
+
+    affordable = candidates[candidates['coupon_cost'] <= float(remaining_budget)].copy()
+    if affordable.empty:
+        best = candidates.iloc[0]
+        return {
+            'action_queue_status': 'deferred_budget_guardrail',
+            'queued_recommended_action': str(best.get('recommended_action', '')),
+            'queued_intervention_intensity': str(best.get('intervention_intensity', '')),
+            'queued_coupon_cost': int(round(float(best.get('coupon_cost', 0.0)))),
+            'queued_expected_profit': round(float(best.get('expected_incremental_profit', 0.0)), 2),
+            'queued_expected_roi': round(float(best.get('expected_roi', 0.0)), 6),
+            'action_queue_priority': round(float(best.get('action_priority', 0.0)), 6),
+        }
+
+    best = affordable.iloc[0]
+    history = _parse_history_set(current_state)
+    chosen_intensity = str(best.get('intervention_intensity', '')).strip()
+    if chosen_intensity:
+        history.add(chosen_intensity)
+    return {
+        'action_queue_status': 'queued',
+        'queued_recommended_action': str(best.get('recommended_action', '')),
+        'queued_intervention_intensity': chosen_intensity,
+        'queued_coupon_cost': int(round(float(best.get('coupon_cost', 0.0)))),
+        'queued_expected_profit': round(float(best.get('expected_incremental_profit', 0.0)), 2),
+        'queued_expected_roi': round(float(best.get('expected_roi', 0.0)), 6),
+        'action_queue_priority': round(float(best.get('action_priority', 0.0)), 6),
+        'dispatched_intensity_history': _format_history(history),
+    }
+
+
+def _read_summary(client, config: RealtimeStreamConfig) -> Dict[str, Any]:
+    raw_summary = client.get(config.summary_key)
+    if raw_summary:
+        try:
+            return json.loads(raw_summary)
+        except json.JSONDecodeError:
+            pass
+    return _initial_summary(config)
+
+
+def _update_running_summary_for_action(
+    summary: Dict[str, Any],
+    previous_state: Dict[str, Any],
+    updated_state: Dict[str, Any],
+    *,
+    triggered: bool,
+) -> None:
+    if triggered:
+        summary['triggered_reoptimizations'] = _safe_int(summary.get('triggered_reoptimizations', 0), 0) + 1
+
+    previous_status = str(previous_state.get('action_queue_status', '') or '')
+    new_status = str(updated_state.get('action_queue_status', '') or '')
+    prev_cost = _safe_int(previous_state.get('queued_coupon_cost', 0), 0)
+    new_cost = _safe_int(updated_state.get('queued_coupon_cost', 0), 0)
+
+    budget_spent = _safe_int(summary.get('closed_loop_budget_spent', 0), 0)
+    allocated = _safe_int(summary.get('daily_channel_allocated', 0), 0)
+
+    if previous_status == 'queued' and new_status != 'queued':
+        budget_spent = max(0, budget_spent - prev_cost)
+        allocated = max(0, allocated - 1)
+    elif previous_status != 'queued' and new_status == 'queued':
+        budget_spent += new_cost
+        allocated += 1
+        summary['queued_actions_total'] = _safe_int(summary.get('queued_actions_total', 0), 0) + 1
+    elif previous_status == 'queued' and new_status == 'queued':
+        budget_spent = max(0, budget_spent - prev_cost + new_cost)
+
+    if triggered and new_status.startswith('deferred'):
+        summary['deferred_actions_total'] = _safe_int(summary.get('deferred_actions_total', 0), 0) + 1
+
+    summary['closed_loop_budget_spent'] = int(max(0, budget_spent))
+    summary['daily_channel_allocated'] = int(max(0, allocated))
+
+
+def _queue_snapshot_from_redis(client, result_dir: Path, config: RealtimeStreamConfig, top_n: int | None = None) -> Dict[str, Any]:
+    top_n = int(top_n or config.snapshot_top_n)
+    members = client.zrevrange(config.action_queue_key, 0, max(top_n - 1, 0), withscores=True)
+    records: list[Dict[str, Any]] = []
+    for customer_id, priority in members:
+        raw_state = client.hgetall(config.state_key(customer_id))
+        if not raw_state:
+            continue
+        record = {
+            'customer_id': _safe_int(raw_state.get('customer_id', customer_id), _safe_int(customer_id)),
+            'persona': str(raw_state.get('persona', 'unknown')),
+            'uplift_segment': str(raw_state.get('uplift_segment', 'unknown')),
+            'realtime_churn_score': _safe_float(raw_state.get('realtime_churn_score', 0.0), 0.0),
+            'action_queue_status': str(raw_state.get('action_queue_status', 'idle')),
+            'queued_recommended_action': str(raw_state.get('queued_recommended_action', '')),
+            'queued_intervention_intensity': str(raw_state.get('queued_intervention_intensity', '')),
+            'queued_coupon_cost': _safe_int(raw_state.get('queued_coupon_cost', 0), 0),
+            'queued_expected_profit': _safe_float(raw_state.get('queued_expected_profit', 0.0), 0.0),
+            'queued_expected_roi': _safe_float(raw_state.get('queued_expected_roi', 0.0), 0.0),
+            'action_queue_priority': float(priority),
+            'latest_trigger_reason': str(raw_state.get('latest_trigger_reason', '')),
+            'last_reoptimized_at': str(raw_state.get('last_reoptimized_at', '')),
+            'reoptimization_count': _safe_int(raw_state.get('reoptimization_count', 0), 0),
+        }
+        records.append(record)
+
+    queue_df = pd.DataFrame(records)
+    if not queue_df.empty:
+        queue_df = queue_df.sort_values(['action_queue_priority', 'queued_expected_profit', 'customer_id'], ascending=[False, False, True])
+    queue_summary = {
+        'queue_size': int(client.zcard(config.action_queue_key)),
+        'high_priority_queue_size': int(client.zcount(config.action_queue_key, 0.70, '+inf')),
+        'generated_at': pd.Timestamp.now(tz='UTC').floor('s').isoformat(),
+    }
+    queue_csv, queue_json = _queue_paths(result_dir)
+    if not queue_df.empty:
+        queue_df.to_csv(queue_csv, index=False)
+    else:
+        pd.DataFrame(columns=['customer_id', 'queued_recommended_action']).to_csv(queue_csv, index=False)
+    queue_json.write_text(json.dumps(queue_summary, ensure_ascii=False, indent=2), encoding='utf-8')
+    return {'summary': queue_summary, 'records': queue_df.to_dict(orient='records') if not queue_df.empty else []}
+
+
 def _snapshot_from_redis(client, result_dir: Path, config: RealtimeStreamConfig, top_n: int | None = None) -> Dict[str, Any]:
     top_n = int(top_n or config.snapshot_top_n)
     ranking = client.zrevrange(config.ranking_key, 0, max(top_n - 1, 0), withscores=True)
@@ -296,9 +640,12 @@ def _snapshot_from_redis(client, result_dir: Path, config: RealtimeStreamConfig,
         raw_state['score_delta'] = _safe_float(raw_state.get('score_delta', 0.0), 0.0)
         raw_state['total_events_seen'] = _safe_int(raw_state.get('total_events_seen', 0), 0)
         raw_state['minutes_since_last_event'] = _safe_float(raw_state.get('minutes_since_last_event', 0.0), 0.0)
-        for field in TRACKED_SIGNAL_FIELDS + ['clv', 'expected_roi', 'coupon_affinity', 'support_contact_propensity', 'behavioral_risk', 'inactivity_signal']:
+        for field in TRACKED_SIGNAL_FIELDS + ['clv', 'expected_roi', 'coupon_affinity', 'support_contact_propensity', 'behavioral_risk', 'inactivity_signal', 'queued_expected_profit', 'queued_expected_roi', 'action_queue_priority']:
             raw_state[field] = _safe_float(raw_state.get(field, 0.0), 0.0)
-        raw_state['coupon_cost'] = _safe_int(raw_state.get('coupon_cost', 0), 0)
+        for field in ['coupon_cost', 'queued_coupon_cost', 'reoptimization_count']:
+            raw_state[field] = _safe_int(raw_state.get(field, 0), 0)
+        for field in ['action_queue_status', 'queued_recommended_action', 'queued_intervention_intensity', 'latest_trigger_reason', 'last_reoptimized_at', 'dispatched_intensity_history']:
+            raw_state[field] = str(raw_state.get(field, ''))
         records.append(raw_state)
 
     df = pd.DataFrame(records)
@@ -318,6 +665,12 @@ def _snapshot_from_redis(client, result_dir: Path, config: RealtimeStreamConfig,
             summary.update(json.loads(raw_summary))
         except json.JSONDecodeError:
             pass
+
+    queue_payload = _queue_snapshot_from_redis(client, result_dir, config, top_n=top_n)
+    summary.update({
+        'action_queue_size': int(queue_payload['summary'].get('queue_size', 0)),
+        'high_priority_queue_size': int(queue_payload['summary'].get('high_priority_queue_size', 0)),
+    })
 
     snapshot_csv, snapshot_json = _summary_paths(result_dir)
     if not df.empty:
@@ -342,23 +695,20 @@ def bootstrap_realtime_state(
 ) -> Dict[str, Any]:
     data_dir = Path(data_dir)
     result_dir = _ensure_dir(result_dir)
-    summary_path = data_dir / 'customer_summary.csv'
-    if not summary_path.exists():
-        raise RealtimeScoringError(f'필수 파일이 없습니다: {summary_path}')
+    df = _load_baseline_customer_summary(data_dir)
 
     client = _redis_client(config)
     if reset_stream:
-        for key in [config.ranking_key, config.summary_key, config.stream_key]:
+        for key in [config.ranking_key, config.action_queue_key, config.summary_key, config.stream_key, config.trigger_log_key]:
             client.delete(key)
         for match in client.scan_iter(match=f'{config.state_key_prefix}:*'):
             client.delete(match)
 
-    df = pd.read_csv(summary_path)
     pipe = client.pipeline(transaction=False)
     buffered = 0
     for _, row in df.iterrows():
         state = _seed_state_from_row(row, config)
-        pipe.hset(config.state_key(state['customer_id']), mapping=_redis_safe_mapping(state))       
+        pipe.hset(config.state_key(state['customer_id']), mapping=_redis_safe_mapping(state))
         pipe.zadd(config.ranking_key, {str(state['customer_id']): float(state['realtime_churn_score'])})
         buffered += 1
         if buffered >= batch_size:
@@ -367,13 +717,8 @@ def bootstrap_realtime_state(
     if buffered:
         pipe.execute()
 
-    summary = {
-        'bootstrapped_at': pd.Timestamp.now(tz='UTC').floor('s').isoformat(),
-        'bootstrapped_customers': int(len(df)),
-        'processed_events': 0,
-        'last_produced_event_at': None,
-        'last_consumed_event_at': None,
-    }
+    summary = _initial_summary(config)
+    summary['bootstrapped_customers'] = int(len(df))
     client.set(config.summary_key, json.dumps(summary, ensure_ascii=False))
     payload = _snapshot_from_redis(client, result_dir, config)
     payload['summary'].update(summary)
@@ -425,8 +770,7 @@ def produce_events_to_stream(
         if sleep_ms > 0:
             time.sleep(float(sleep_ms) / 1000.0)
 
-    raw_summary = client.get(config.summary_key)
-    summary = json.loads(raw_summary) if raw_summary else {}
+    summary = _read_summary(client, config)
     summary.update(
         {
             'last_produced_event_at': last_ts,
@@ -465,6 +809,10 @@ def consume_stream_events(
         bootstrap_realtime_state(data_dir, result_dir, config)
 
     _ensure_consumer_group(client, config)
+    baseline_df = _load_baseline_customer_summary(data_dir)
+    baseline_indexed = baseline_df.set_index('customer_id', drop=False)
+    survival_predictions = load_survival_predictions(result_dir)
+    summary = _read_summary(client, config)
 
     processed = 0
     last_consumed_event_at: Optional[str] = None
@@ -495,34 +843,77 @@ def consume_stream_events(
                 event_ts = _parse_timestamp(payload.get('timestamp'))
                 raw_state = client.hgetall(config.state_key(customer_id))
                 if not raw_state:
-                    baseline_path = data_dir / 'customer_summary.csv'
-                    if not baseline_path.exists():
-                        raise RealtimeScoringError(f'필수 파일이 없습니다: {baseline_path}')
-                    baseline_df = pd.read_csv(baseline_path)
-                    row = baseline_df.loc[baseline_df['customer_id'] == customer_id]
-                    if row.empty:
+                    row = baseline_indexed.loc[customer_id] if customer_id in baseline_indexed.index else None
+                    if row is None:
                         raw_state = _seed_state_from_row({'customer_id': customer_id, 'churn_probability': 0.50}, config)
                     else:
-                        raw_state = _seed_state_from_row(row.iloc[0], config)
+                        raw_state = _seed_state_from_row(row, config)
+
+                previous_state = dict(raw_state)
                 updated = _apply_event_to_state(raw_state, payload, event_ts)
-                pipe.hset(config.state_key(customer_id), mapping=_redis_safe_mapping(updated))                
+                triggered, reason = _should_trigger_reoptimization(previous_state, updated, payload, config)
+                if triggered:
+                    remaining_budget = _safe_int(summary.get('closed_loop_budget_limit', config.default_budget_limit), config.default_budget_limit) - _safe_int(summary.get('closed_loop_budget_spent', 0), 0)
+                    remaining_capacity = _safe_int(summary.get('daily_channel_capacity', config.daily_channel_capacity), config.daily_channel_capacity) - _safe_int(summary.get('daily_channel_allocated', 0), 0)
+                    baseline_row = baseline_indexed.loc[customer_id] if customer_id in baseline_indexed.index else None
+                    action_update = _reoptimize_customer_action(
+                        current_state=updated,
+                        baseline_row=baseline_row,
+                        survival_predictions=survival_predictions,
+                        remaining_budget=max(remaining_budget, 0),
+                        remaining_capacity=max(remaining_capacity, 0),
+                    )
+                    updated.update(action_update)
+                    updated['latest_trigger_reason'] = reason if reason else str(updated.get('latest_trigger_reason', ''))
+                    updated['reoptimization_count'] = _safe_int(previous_state.get('reoptimization_count', 0), 0) + 1
+                    updated['last_reoptimized_at'] = event_ts.floor('s').isoformat()
+                else:
+                    updated['latest_trigger_reason'] = str(previous_state.get('latest_trigger_reason', ''))
+                    updated['reoptimization_count'] = _safe_int(previous_state.get('reoptimization_count', 0), 0)
+                    updated['last_reoptimized_at'] = str(previous_state.get('last_reoptimized_at', ''))
+
+                _update_running_summary_for_action(summary, previous_state, updated, triggered=triggered)
+                pipe.hset(config.state_key(customer_id), mapping=_redis_safe_mapping(updated))
                 pipe.zadd(config.ranking_key, {str(customer_id): float(updated['realtime_churn_score'])})
+                if str(updated.get('action_queue_status', '')) == 'queued':
+                    pipe.zadd(config.action_queue_key, {str(customer_id): float(_safe_float(updated.get('action_queue_priority', 0.0), 0.0))})
+                else:
+                    pipe.zrem(config.action_queue_key, str(customer_id))
+                if triggered:
+                    pipe.xadd(
+                        config.trigger_log_key,
+                        _redis_safe_mapping(
+                            {
+                                'customer_id': customer_id,
+                                'event_type': str(payload.get('event_type', 'unknown')),
+                                'timestamp': event_ts.floor('s').isoformat(),
+                                'realtime_churn_score': updated.get('realtime_churn_score', 0.0),
+                                'trigger_reason': updated.get('latest_trigger_reason', ''),
+                                'action_queue_status': updated.get('action_queue_status', 'idle'),
+                                'queued_intervention_intensity': updated.get('queued_intervention_intensity', ''),
+                                'queued_recommended_action': updated.get('queued_recommended_action', ''),
+                            }
+                        ),
+                        maxlen=50000,
+                        approximate=True,
+                    )
                 pipe.xack(config.stream_key, config.consumer_group, message_id)
                 processed += 1
                 last_consumed_event_at = event_ts.floor('s').isoformat()
                 if snapshot_every > 0 and processed % int(snapshot_every) == 0:
+                    summary['action_queue_size'] = int(client.zcard(config.action_queue_key))
+                    pipe.set(config.summary_key, json.dumps(summary, ensure_ascii=False))
                     pipe.execute()
                     pipe = client.pipeline(transaction=False)
         pipe.execute()
 
-    raw_summary = client.get(config.summary_key)
-    summary = json.loads(raw_summary) if raw_summary else {}
     summary.update(
         {
             'processed_events': _safe_int(summary.get('processed_events', 0), 0) + processed,
             'last_consumed_event_at': last_consumed_event_at,
             'consumer_name': config.consumer_name,
             'consumer_updated_at': pd.Timestamp.now(tz='UTC').floor('s').isoformat(),
+            'action_queue_size': int(client.zcard(config.action_queue_key)),
         }
     )
     client.set(config.summary_key, json.dumps(summary, ensure_ascii=False))
@@ -548,15 +939,31 @@ def get_current_realtime_scores(
         pass
 
     snapshot_csv, snapshot_json = _summary_paths(result_dir)
+    queue_csv, queue_json = _queue_paths(result_dir)
     summary: Dict[str, Any] = {}
     if snapshot_json.exists():
         try:
             summary = json.loads(snapshot_json.read_text(encoding='utf-8'))
         except json.JSONDecodeError:
             summary = {}
+    if queue_json.exists():
+        try:
+            queue_summary = json.loads(queue_json.read_text(encoding='utf-8'))
+            summary.update({
+                'action_queue_size': int(queue_summary.get('queue_size', summary.get('action_queue_size', 0))),
+                'high_priority_queue_size': int(queue_summary.get('high_priority_queue_size', summary.get('high_priority_queue_size', 0))),
+            })
+        except json.JSONDecodeError:
+            pass
     if snapshot_csv.exists():
         df = pd.read_csv(snapshot_csv).head(int(top_n))
     else:
         df = pd.DataFrame()
+    if queue_csv.exists() and 'action_queue_size' not in summary:
+        try:
+            queue_df = pd.read_csv(queue_csv)
+            summary['action_queue_size'] = int(len(queue_df))
+        except Exception:
+            pass
     summary['source'] = 'snapshot'
     return {'summary': summary, 'records': df.to_dict(orient='records') if not df.empty else []}

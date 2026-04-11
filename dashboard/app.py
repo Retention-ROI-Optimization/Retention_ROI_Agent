@@ -1012,6 +1012,16 @@ def inject_draggable_chat_dialog():
 
 inject_custom_css()
 
+CONTROL_DEFAULTS = {
+    "control_threshold": 0.50,
+    "control_budget": 5_000_000,
+    "control_top_n": 20,
+    "control_target_cap": 1000,
+    "control_recommendation_per_customer": 3,
+}
+for _state_key, _state_value in CONTROL_DEFAULTS.items():
+    st.session_state.setdefault(_state_key, _state_value)
+
 bundle = load_app_data()
 
 customers = bundle.customer_summary
@@ -1044,29 +1054,29 @@ with st.sidebar:
         label_visibility="visible",
     )
 
-    threshold = 0.50
-    budget = 5_000_000
-    top_n = 20
-    target_cap = 1000
-    recommendation_per_customer = 3
+    threshold = float(st.session_state.get("control_threshold", 0.50))
+    budget = int(st.session_state.get("control_budget", 5_000_000))
+    top_n = int(st.session_state.get("control_top_n", 20))
+    target_cap = int(st.session_state.get("control_target_cap", 1000))
+    recommendation_per_customer = int(st.session_state.get("control_recommendation_per_customer", 3))
 
     if view in {"1. 이탈현황", "4. 예산 배분 결과", "5. 예상 최적화 ROI", "6. 리텐션 대상 고객 목록", "8. Uplift/최적화 결과 (실시간)", "9. 개인화 추천", "12. 의사결정 엔진 비교"}:
         threshold = st.slider(
             "이탈 Threshold",
             min_value=0.10,
             max_value=0.90,
-            value=0.50,
             step=0.01,
+            key="control_threshold",
             help="이 값 이상인 고객을 이탈 위험군으로 간주합니다.",
         )
 
-    if view in {"3. Uplift + CLV 상위 고객", "6. 리텐션 대상 고객 목록", "10. 실시간 이탈 위험 스코어링", "11. 이탈 시점 예측 (Survival Analysis)"}:
+    if view in {"3. Uplift + CLV 상위 고객", "10. 실시간 이탈 위험 스코어링", "11. 이탈 시점 예측 (Survival Analysis)"}:
         top_n = st.slider(
             "표시 고객 수",
             min_value=5,
             max_value=50,
-            value=20,
             step=5,
+            key="control_top_n",
         )
 
     if view == "9. 개인화 추천":
@@ -1075,24 +1085,24 @@ with st.sidebar:
             "고객당 추천 개수",
             min_value=1,
             max_value=5,
-            value=3,
             step=1,
+            key="control_recommendation_per_customer",
         )
 
-    if view in {"4. 예산 배분 결과", "5. 예상 최적화 ROI", "8. Uplift/최적화 결과 (실시간)", "9. 개인화 추천", "12. 의사결정 엔진 비교"}:
+    if view in {"4. 예산 배분 결과", "5. 예상 최적화 ROI", "6. 리텐션 대상 고객 목록", "8. Uplift/최적화 결과 (실시간)", "9. 개인화 추천", "12. 의사결정 엔진 비교"}:
         budget = st.number_input(
             "총 마케팅 예산",
             min_value=100000,
             max_value=100000000,
-            value=5000000,
             step=100000,
+            key="control_budget",
         )
         target_cap = st.slider(
             "최대 타겟 고객 수",
             min_value=50,
             max_value=3000,
-            value=1000,
             step=50,
+            key="control_target_cap",
             help="예산이 충분하더라도 이 수를 넘겨 타겟팅하지 않습니다.",
         )
 
@@ -1104,14 +1114,17 @@ with st.sidebar:
             max_customers=target_cap,
         )
         final_target_count = int(len(preview_selected_customers))
+        default_display_n = int(st.session_state.get("control_top_n", 20))
         top_n = int(st.number_input(
             "표시 고객 수",
             min_value=1,
             max_value=max(final_target_count, 1),
-            value=min(20, max(final_target_count, 1)),
+            value=min(default_display_n, max(final_target_count, 1)),
             step=1,
+            key="control_recommendation_display_n",
             help="최종 타겟 고객 수를 넘지 않는 범위에서 입력합니다.",
         ))
+        st.session_state["control_top_n"] = max(5, min(int(top_n), 50))
         st.caption(f"최종 리텐션 타겟 고객군(예산/임계값 적용)에게만 추천을 생성합니다. 현재 조건의 최종 타겟 고객 수: {final_target_count:,}명")
 
     st.divider()
@@ -1647,13 +1660,14 @@ elif view == "5. 예상 최적화 ROI":
 
         st.plotly_chart(roi_fig, use_container_width=True)
 
-        top_roi = selected_customers.sort_values("expected_roi", ascending=False).head(
-            min(20, len(selected_customers))
-        )
+        top_roi = selected_customers.sort_values(["expected_roi", "expected_incremental_profit", "customer_id"], ascending=[False, False, True]).copy()
         display_df = top_roi[
             [
                 "customer_id",
                 "persona",
+                "uplift_segment",
+                "intervention_intensity",
+                "recommended_action",
                 "uplift_score",
                 "clv",
                 "coupon_cost",
@@ -1666,7 +1680,7 @@ elif view == "5. 예상 최적화 ROI":
         display_df["coupon_cost"] = display_df["coupon_cost"].map(money)
         display_df["expected_incremental_profit"] = display_df["expected_incremental_profit"].map(money)
         display_df["expected_roi"] = display_df["expected_roi"].map(lambda x: f"{x:.2%}")
-        _render_dataframe_with_count(display_df, label="ROI 상위 고객 테이블")
+        _render_dataframe_with_count(display_df, label="최적화로 선정된 전체 고객 테이블", height=min(900, 180 + 32 * len(display_df)))
 
     llm_payload = {
         "optimize_summary": optimize_summary,
@@ -1678,43 +1692,71 @@ elif view == "5. 예상 최적화 ROI":
 
 elif view == "6. 리텐션 대상 고객 목록":
     st.subheader("리텐션 대상 고객 목록")
+    st.caption("현재 budget / threshold / 최대 타겟 고객 수 조건에서 실제로 마케팅 대상으로 선정된 전체 고객을 보여줍니다.")
 
-    if retention_targets.empty:
+    optimized_targets = selected_customers.sort_values(
+        ["priority_score", "selection_score", "expected_incremental_profit", "customer_id"],
+        ascending=[False, False, False, True],
+    ).copy()
+
+    if optimized_targets.empty:
         st.warning("현재 조건에서 리텐션 타겟 고객이 없습니다.")
     else:
+        priority_chart_df = optimized_targets.head(min(15, len(optimized_targets))).copy()
         priority_fig = px.bar(
-            retention_targets.head(15),
+            priority_chart_df,
             x="customer_id",
             y="priority_score",
-            hover_data=["churn_probability", "uplift_score", "clv"],
+            color="intervention_intensity" if "intervention_intensity" in priority_chart_df.columns else None,
+            hover_data=["churn_probability", "uplift_score", "clv", "expected_incremental_profit", "expected_roi"],
             title="우선순위 상위 리텐션 대상 고객",
         )
         st.plotly_chart(priority_fig, use_container_width=True)
 
-        display_df = retention_targets[
-            [
-                "customer_id",
-                "persona",
-                "churn_probability",
-                "uplift_score",
-                "clv",
-                "uplift_segment",
-                "priority_score",
-            ]
-        ].copy()
-        display_df["churn_probability"] = display_df["churn_probability"].map(lambda x: f"{x:.3f}")
-        display_df["uplift_score"] = display_df["uplift_score"].map(lambda x: f"{x:.3f}")
-        display_df["clv"] = display_df["clv"].map(money)
-        display_df["priority_score"] = display_df["priority_score"].map(lambda x: f"{x:.3f}")
-        _render_dataframe_with_count(display_df, label="리텐션 타겟 고객 테이블")
+        display_columns = [
+            "customer_id",
+            "persona",
+            "uplift_segment",
+            "churn_probability",
+            "uplift_score",
+            "clv",
+            "intervention_intensity",
+            "recommended_action",
+            "coupon_cost",
+            "expected_incremental_profit",
+            "expected_roi",
+            "priority_score",
+            "recommended_intervention_window",
+        ]
+        display_df = optimized_targets[[col for col in display_columns if col in optimized_targets.columns]].copy()
+        if "churn_probability" in display_df.columns:
+            display_df["churn_probability"] = display_df["churn_probability"].map(lambda x: f"{x:.3f}")
+        if "uplift_score" in display_df.columns:
+            display_df["uplift_score"] = display_df["uplift_score"].map(lambda x: f"{x:.3f}")
+        if "clv" in display_df.columns:
+            display_df["clv"] = display_df["clv"].map(money)
+        if "coupon_cost" in display_df.columns:
+            display_df["coupon_cost"] = display_df["coupon_cost"].map(money)
+        if "expected_incremental_profit" in display_df.columns:
+            display_df["expected_incremental_profit"] = display_df["expected_incremental_profit"].map(money)
+        if "expected_roi" in display_df.columns:
+            display_df["expected_roi"] = display_df["expected_roi"].map(lambda x: f"{x:.2%}")
+        if "priority_score" in display_df.columns:
+            display_df["priority_score"] = display_df["priority_score"].map(lambda x: f"{x:.3f}")
+        _render_dataframe_with_count(
+            display_df,
+            label="최적화 후 실제 선정된 전체 마케팅 고객 테이블",
+            height=min(1100, 180 + 32 * len(display_df)),
+        )
 
     llm_payload = {
         "threshold": threshold,
-        "target_count": int(len(retention_targets)),
-        "persona_distribution": series_distribution(retention_targets, "persona"),
-        "segment_distribution": series_distribution(retention_targets, "uplift_segment"),
+        "budget": budget,
+        "target_count": int(len(optimized_targets)),
+        "persona_distribution": series_distribution(optimized_targets, "persona"),
+        "segment_distribution": series_distribution(optimized_targets, "uplift_segment"),
         "numeric_summary": numeric_summary(
-            retention_targets, ["priority_score", "churn_probability", "uplift_score", "clv"]
+            optimized_targets, ["priority_score", "selection_score", "churn_probability", "uplift_score", "clv", "expected_incremental_profit", "expected_roi"]
         ),
     }
 
@@ -1991,7 +2033,7 @@ elif view == "9. 개인화 추천":
 
 elif view == "10. 실시간 이탈 위험 스코어링":
     st.subheader("실시간 이탈 위험 스코어링")
-    st.caption("Redis Streams로 적재된 이벤트를 소비해 고객별 실시간 위험 점수를 갱신합니다. 배치 churn score는 초기값으로 사용하고, 최근 행동 시그널이 실시간 점수를 보정합니다.")
+    st.caption("Redis Streams로 적재된 이벤트를 소비해 고객별 실시간 위험 점수를 갱신합니다. 이제 점수 급등 시 전체 최적화를 다시 돌리지 않고, 해당 고객 중심으로 부분 재최적화해 액션 큐를 즉시 갱신합니다.")
 
     if realtime_error:
         st.error(f"실시간 스코어 API 호출 실패: {realtime_error}")
@@ -2002,8 +2044,14 @@ elif view == "10. 실시간 이탈 위험 스코어링":
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("추적 고객 수", f"{int(realtime_summary.get('tracked_customers', 0)):,}")
         m2.metric("고위험 고객 수", f"{int(realtime_summary.get('high_risk_customers', 0)):,}")
-        m3.metric("임계 위험 고객 수", f"{int(realtime_summary.get('critical_risk_customers', 0)):,}")
-        m4.metric("처리 이벤트 수", f"{int(realtime_summary.get('processed_events', 0)):,}")
+        m3.metric("재최적화 트리거 수", f"{int(realtime_summary.get('triggered_reoptimizations', 0)):,}")
+        m4.metric("액션 큐 적재 수", f"{int(realtime_summary.get('action_queue_size', 0)):,}")
+
+        q1, q2, q3, q4 = st.columns(4)
+        q1.metric("임계 위험 고객 수", f"{int(realtime_summary.get('critical_risk_customers', 0)):,}")
+        q2.metric("처리 이벤트 수", f"{int(realtime_summary.get('processed_events', 0)):,}")
+        q3.metric("폐쇄루프 예산 사용", money(int(realtime_summary.get('closed_loop_budget_spent', 0))))
+        q4.metric("채널 할당 수", f"{int(realtime_summary.get('daily_channel_allocated', 0)):,} / {int(realtime_summary.get('daily_channel_capacity', 0)):,}")
 
         chart_df = realtime_scores.head(min(len(realtime_scores), 20)).copy()
         chart_df['customer_id'] = chart_df['customer_id'].astype(str)
@@ -2011,21 +2059,49 @@ elif view == "10. 실시간 이탈 위험 스코어링":
             chart_df,
             x='customer_id',
             y='realtime_churn_score',
-            hover_data=['base_churn_probability', 'score_delta', 'last_event_type', 'persona'],
+            color='action_queue_status' if 'action_queue_status' in chart_df.columns else None,
+            hover_data=['base_churn_probability', 'score_delta', 'last_event_type', 'persona', 'latest_trigger_reason', 'queued_recommended_action'],
             title='실시간 이탈 위험 상위 고객',
         )
         st.plotly_chart(fig, use_container_width=True)
 
+        queued_df = realtime_scores[realtime_scores.get('action_queue_status', pd.Series(index=realtime_scores.index, dtype=object)).astype(str) == 'queued'].copy() if 'action_queue_status' in realtime_scores.columns else pd.DataFrame()
+        if not queued_df.empty:
+            queue_display = queued_df[[
+                col for col in [
+                    'customer_id',
+                    'persona',
+                    'uplift_segment',
+                    'realtime_churn_score',
+                    'queued_intervention_intensity',
+                    'queued_recommended_action',
+                    'queued_coupon_cost',
+                    'queued_expected_profit',
+                    'queued_expected_roi',
+                    'latest_trigger_reason',
+                    'reoptimization_count',
+                ] if col in queued_df.columns
+            ]].copy()
+            if 'realtime_churn_score' in queue_display.columns:
+                queue_display['realtime_churn_score'] = queue_display['realtime_churn_score'].map(lambda x: f"{float(x):.3f}")
+            if 'queued_coupon_cost' in queue_display.columns:
+                queue_display['queued_coupon_cost'] = queue_display['queued_coupon_cost'].map(money)
+            if 'queued_expected_profit' in queue_display.columns:
+                queue_display['queued_expected_profit'] = queue_display['queued_expected_profit'].map(money)
+            if 'queued_expected_roi' in queue_display.columns:
+                queue_display['queued_expected_roi'] = queue_display['queued_expected_roi'].map(lambda x: f"{float(x):.2%}")
+            _render_dataframe_with_count(queue_display, label="실시간 부분 재최적화 액션 큐", height=min(520, 180 + 32 * len(queue_display)))
+
         display_df = realtime_scores.copy()
-        for col in ['base_churn_probability', 'realtime_churn_score', 'score_delta', 'behavioral_risk', 'inactivity_signal']:
+        for col in ['base_churn_probability', 'realtime_churn_score', 'score_delta', 'behavioral_risk', 'inactivity_signal', 'queued_expected_roi']:
             if col in display_df.columns:
-                display_df[col] = display_df[col].map(lambda x: f"{float(x):.3f}")
-        if 'clv' in display_df.columns:
-            display_df['clv'] = display_df['clv'].map(money)
+                formatter = (lambda x: f"{float(x):.2%}") if col == 'queued_expected_roi' else (lambda x: f"{float(x):.3f}")
+                display_df[col] = display_df[col].map(formatter)
+        for money_col in ['clv', 'coupon_cost', 'queued_coupon_cost', 'queued_expected_profit']:
+            if money_col in display_df.columns:
+                display_df[money_col] = display_df[money_col].map(money)
         if 'expected_roi' in display_df.columns:
             display_df['expected_roi'] = display_df['expected_roi'].map(lambda x: f"{float(x):.3f}")
-        if 'coupon_cost' in display_df.columns:
-            display_df['coupon_cost'] = display_df['coupon_cost'].map(money)
         _render_dataframe_with_count(display_df, label="실시간 이탈 위험 테이블")
 
     llm_payload = {
@@ -2036,9 +2112,10 @@ elif view == "10. 실시간 이탈 위험 스코어링":
                 'customer_id',
                 'persona',
                 'realtime_churn_score',
-                'base_churn_probability',
                 'score_delta',
-                'last_event_type',
+                'action_queue_status',
+                'queued_recommended_action',
+                'latest_trigger_reason',
             ],
             max_rows=20,
         ) if not realtime_scores.empty else [],
