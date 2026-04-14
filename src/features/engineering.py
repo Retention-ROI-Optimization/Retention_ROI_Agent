@@ -102,6 +102,13 @@ def feature_dictionary() -> Dict[str, str]:
         'recent_visit_score': '최근 방문 점수',
         'recent_purchase_score': '최근 구매 점수',
         'recent_exposure_score': '최근 노출 점수',
+        'coupon_fatigue_score': '누적 쿠폰 피로도 점수',
+        'discount_dependency_score': '할인 의존도 점수',
+        'discount_pressure_score': '프로모션 압박 점수',
+        'discount_effect_penalty': '할인 과다 노출로 인한 기대효과 보정치',
+        'discount_fatigue_sensitivity': '할인 피로 민감도',
+        'offer_dependency_risk': '혜택 의존 위험도',
+        'brand_sensitivity': '브랜드/정가 훼손 민감도',
     }
 
 

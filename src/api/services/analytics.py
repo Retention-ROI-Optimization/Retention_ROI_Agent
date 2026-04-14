@@ -22,6 +22,8 @@ DEFAULT_SEGMENT_ORDER = [
     'Lost Causes',
 ]
 
+INTENSITY_ORDER = ['low', 'mid', 'high']
+
 
 def get_churn_status(customers: pd.DataFrame, threshold: float) -> Tuple[Dict[str, float], pd.DataFrame]:
     df = customers.copy()
@@ -48,17 +50,20 @@ def get_churn_status(customers: pd.DataFrame, threshold: float) -> Tuple[Dict[st
     return summary, risk_customers
 
 
-def get_top_high_value_customers(customers: pd.DataFrame, top_n: int = 20) -> pd.DataFrame:
+def get_top_high_value_customers(customers: pd.DataFrame, top_n: int | None = None) -> pd.DataFrame:
     df = customers.copy()
     if df.empty:
         return df.head(0)
     df['clv'] = pd.to_numeric(df.get('clv', 0.0), errors='coerce').fillna(0.0)
     df['uplift_score'] = pd.to_numeric(df.get('uplift_score', 0.0), errors='coerce').fillna(0.0)
     df['value_score'] = df['clv'] * df['uplift_score']
-    return df.sort_values(['value_score', 'clv', 'customer_id'], ascending=[False, False, True]).head(top_n)
+    ranked = df.sort_values(['value_score', 'clv', 'customer_id'], ascending=[False, False, True])
+    if top_n is None or int(top_n) <= 0:
+        return ranked
+    return ranked.head(int(top_n))
 
 
-def get_retention_targets(customers: pd.DataFrame, threshold: float, top_n: int = 30) -> pd.DataFrame:
+def get_retention_targets(customers: pd.DataFrame, threshold: float, top_n: int | None = None) -> pd.DataFrame:
     df = customers.copy()
     if df.empty:
         return df.head(0)
@@ -83,7 +88,10 @@ def get_retention_targets(customers: pd.DataFrame, threshold: float, top_n: int 
         + 0.25 * target['uplift_score']
         + 0.30 * (target['clv'] / max_clv)
     )
-    return target.sort_values(['priority_score', 'expected_roi', 'customer_id'], ascending=[False, False, True]).head(top_n)
+    ranked = target.sort_values(['priority_score', 'expected_roi', 'customer_id'], ascending=[False, False, True])
+    if top_n is None or int(top_n) <= 0:
+        return ranked
+    return ranked.head(int(top_n))
 
 
 def _segment_order(customers: pd.DataFrame) -> List[str]:
@@ -174,13 +182,17 @@ def budget_allocation_by_segment(
 
     if selected_customers.empty:
         return pd.DataFrame(
-            {
-                "uplift_segment": all_segments,
-                "intervention_intensity": ["-"] * len(all_segments),
-                "customer_count": [0] * len(all_segments),
-                "allocated_budget": [0.0] * len(all_segments),
-                "expected_profit": [0.0] * len(all_segments),
-            }
+            [
+                {
+                    "uplift_segment": segment,
+                    "intervention_intensity": intensity,
+                    "customer_count": 0,
+                    "allocated_budget": 0.0,
+                    "expected_profit": 0.0,
+                }
+                for segment in all_segments
+                for intensity in INTENSITY_ORDER
+            ]
         )
 
     grouped = (
@@ -190,9 +202,15 @@ def budget_allocation_by_segment(
             allocated_budget=("coupon_cost", "sum"),
             expected_profit=("expected_incremental_profit", "sum"),
         )
-        .sort_values(["allocated_budget", "expected_profit"], ascending=[False, False])
         .reset_index(drop=True)
     )
+    full_index = pd.MultiIndex.from_product([all_segments, INTENSITY_ORDER], names=["uplift_segment", "intervention_intensity"])
+    grouped = grouped.set_index(["uplift_segment", "intervention_intensity"]).reindex(full_index, fill_value=0).reset_index()
+    grouped["customer_count"] = grouped["customer_count"].astype(int)
+    grouped["allocated_budget"] = pd.to_numeric(grouped["allocated_budget"], errors="coerce").fillna(0.0)
+    grouped["expected_profit"] = pd.to_numeric(grouped["expected_profit"], errors="coerce").fillna(0.0)
+    grouped["intensity_order"] = grouped["intervention_intensity"].map({key: idx for idx, key in enumerate(INTENSITY_ORDER)})
+    grouped = grouped.sort_values(["uplift_segment", "intensity_order"]).drop(columns=["intensity_order"]).reset_index(drop=True)
     return grouped
 
 
@@ -244,9 +262,6 @@ def get_budget_result(
         resolved_survival = load_survival_predictions(result_dir)
     candidate = _build_candidate_pool(customers, threshold=threshold, survival_predictions=resolved_survival)
 
-    if max_customers is not None and max_customers > 0:
-        candidate = candidate.head(int(max_customers)).copy()
-
     if candidate.empty:
         summary = {
             'budget': int(budget),
@@ -269,10 +284,31 @@ def get_budget_result(
         candidate['uplift_segment'].value_counts().reindex(all_segments, fill_value=0).astype(int).to_dict()
     )
 
-    selected_rows = []
+    selected_rows: list[dict] = []
     used_customers: set[int] = set()
     spent = 0.0
+    selection_cap = int(max_customers) if max_customers is not None and int(max_customers) > 0 else None
+
+    intensity_seed_order = ["high", "mid", "low"]
+    for intensity in intensity_seed_order:
+        if selection_cap is not None and len(selected_rows) >= selection_cap:
+            break
+        seed_pool = candidate[candidate["intervention_intensity"].astype(str).str.lower() == intensity]
+        if seed_pool.empty:
+            continue
+        for row in seed_pool.itertuples(index=False):
+            customer_id = int(getattr(row, "customer_id"))
+            cost = float(getattr(row, "coupon_cost", 0.0))
+            if customer_id in used_customers or cost <= 0 or spent + cost > float(budget):
+                continue
+            selected_rows.append(row._asdict())
+            used_customers.add(customer_id)
+            spent += cost
+            break
+
     for row in candidate.itertuples(index=False):
+        if selection_cap is not None and len(selected_rows) >= selection_cap:
+            break
         customer_id = int(getattr(row, "customer_id"))
         cost = float(getattr(row, "coupon_cost", 0.0))
         if customer_id in used_customers:

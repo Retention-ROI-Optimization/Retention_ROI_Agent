@@ -46,14 +46,14 @@ def _candidate_api_base_urls() -> list[str]:
     return candidates
 
 
-def _request_json(path: str, params: Dict[str, Any] | None = None) -> Dict[str, Any]:
+def _request_json(path: str, params: Dict[str, Any] | None = None, *, method: str = 'GET') -> Dict[str, Any]:
     last_exc: Exception | None = None
     attempted: list[str] = []
     for base_url in _candidate_api_base_urls():
         url = f"{base_url}{path}"
         attempted.append(url)
         try:
-            response = requests.get(url, params=params, timeout=DEFAULT_TIMEOUT)
+            response = requests.request(method.upper(), url, params=params, timeout=DEFAULT_TIMEOUT)
             response.raise_for_status()
             return response.json()
         except requests.RequestException as exc:
@@ -119,14 +119,19 @@ def fetch_personalized_recommendations(
     max_customers: int,
     rebuild: bool = True,
 ) -> tuple[Dict[str, Any], pd.DataFrame]:
+    safe_limit = max(int(limit), 1)
+    safe_per_customer = min(max(int(per_customer), 1), 5)
+    safe_budget = max(int(budget), 1)
+    safe_threshold = min(max(float(threshold), 0.0), 1.0)
+    safe_max_customers = max(int(max_customers), 1)
     data = _request_json(
         '/api/v1/recommendations/personalized',
         {
-            'limit': limit,
-            'per_customer': per_customer,
-            'budget': budget,
-            'threshold': threshold,
-            'max_customers': max_customers,
+            'limit': safe_limit,
+            'per_customer': safe_per_customer,
+            'budget': safe_budget,
+            'threshold': safe_threshold,
+            'max_customers': safe_max_customers,
             'rebuild': str(bool(rebuild)).lower(),
         },
     )
@@ -165,4 +170,16 @@ def fetch_survival_summary(limit: int = 50) -> tuple[Dict[str, Any], pd.DataFram
         pd.DataFrame(data.get('predictions', [])),
         pd.DataFrame(data.get('coefficients', [])),
         data.get('image_paths', {}),
+    )
+
+
+def advance_realtime_stream(batch_size: int = 250, top_n: int = 50, reset_when_exhausted: bool = True) -> Dict[str, Any]:
+    return _request_json(
+        '/api/v1/realtime/tick',
+        {
+            'batch_size': int(batch_size),
+            'top_n': int(top_n),
+            'reset_when_exhausted': str(bool(reset_when_exhausted)).lower(),
+        },
+        method='POST',
     )

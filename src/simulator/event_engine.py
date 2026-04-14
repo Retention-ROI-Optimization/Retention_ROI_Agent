@@ -121,7 +121,7 @@ def simulate_events(
     rng = rng or np.random.default_rng(config.random_seed)
 
     sim = customers.merge(assignments, on="customer_id", how="left").sort_values("customer_id").reset_index(drop=True)
-    tracker = StateTracker(n_customers=len(sim))
+    tracker = StateTracker(n_customers=len(sim), coupon_fatigue_decay=config.coupon_fatigue_decay)
     coupon_cost_lookup = sim["coupon_cost"].to_numpy()
 
     event_frames: List[pd.DataFrame] = []
@@ -150,8 +150,17 @@ def simulate_events(
                 | (assigned_at_days == day_idx)
             )
         )
+        fatigue_penalty = np.clip(
+            (tracker.coupon_fatigue_score / max(config.coupon_fatigue_guardrail, 1e-6))
+            * sim.get("discount_fatigue_sensitivity", pd.Series(0.0, index=sim.index)).to_numpy(dtype=float),
+            0.0,
+            1.5,
+        )
+        brand_penalty = sim.get("brand_sensitivity", pd.Series(0.0, index=sim.index)).to_numpy(dtype=float)
         exposure_prob = np.clip(
-            0.18 + 0.30 * sim["coupon_affinity"].to_numpy() + 0.10 * (tracker.inactivity_days >= config.coupon_trigger_inactivity_days),
+            0.18 + 0.30 * sim["coupon_affinity"].to_numpy() + 0.10 * (tracker.inactivity_days >= config.coupon_trigger_inactivity_days)
+            - 0.20 * fatigue_penalty
+            - 0.08 * brand_penalty * fatigue_penalty,
             0.0,
             0.95,
         )
@@ -195,7 +204,7 @@ def simulate_events(
         purchase_prob = compute_purchase_probability(sim, visit_mask, add_to_cart_mask, coupon_open_mask, tracker)
         purchase_mask = visit_mask & (rng.random(len(sim)) < purchase_prob)
 
-        coupon_redeem_prob = compute_coupon_redeem_probability(sim, coupon_open_mask, purchase_mask)
+        coupon_redeem_prob = compute_coupon_redeem_probability(sim, coupon_open_mask, purchase_mask, tracker)
         coupon_redeem_mask = coupon_open_mask & purchase_mask & (rng.random(len(sim)) < coupon_redeem_prob)
         tracker.record_coupon_redeem(coupon_redeem_mask)
 
@@ -390,7 +399,7 @@ def simulate_events(
             for idx in purchase_idx:
                 cid = int(sim.iloc[idx]["customer_id"])
                 order_amounts[idx] = amount_lookup.get(cid, 0.0)
-            tracker.record_purchase(purchase_mask, order_amounts, day_idx)
+            tracker.record_purchase(purchase_mask, order_amounts, day_idx, coupon_redeem_mask=coupon_redeem_mask)
 
         if (day_idx % config.snapshot_frequency_days == 0) or (day_idx == len(dates) - 1):
             snapshot_frames.append(

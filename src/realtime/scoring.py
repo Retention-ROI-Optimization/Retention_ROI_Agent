@@ -5,6 +5,7 @@ import json
 import math
 from pathlib import Path
 import time
+import re
 from typing import Any, Dict, Iterable, Optional
 
 import numpy as np
@@ -148,23 +149,55 @@ def _decay(value: float, delta_seconds: float, half_life_hours: float) -> float:
     return float(value) * (0.5 ** (float(delta_seconds) / half_life_seconds))
 
 
-def _to_utc_timestamp(value: Any) -> pd.Timestamp | None:
+def _normalize_timestamp_value(value: Any) -> Any:
     if value is None:
         return None
-    if isinstance(value, str) and not value.strip():
+    if isinstance(value, bytes):
+        try:
+            value = value.decode('utf-8')
+        except Exception:
+            value = value.decode('utf-8', errors='ignore')
+    if not isinstance(value, str):
+        return value
+
+    candidate = value.strip()
+    if not candidate:
         return None
-    ts = pd.to_datetime(value, errors='coerce', utc=True)
+
+    candidate = re.sub(r'\s+', ' ', candidate)
+    candidate = re.sub(r'([T ]\d{2}:\d{2}:\d{2})\.$', r'\1', candidate)
+    candidate = re.sub(r'([T ]\d{2}:\d{2}:\d{2}):$', r'\1', candidate)
+    candidate = re.sub(r'([+-]\d{2}):$', r'\1:00', candidate)
+    candidate = re.sub(r'([+-]\d{2})$', r'\1:00', candidate)
+    candidate = re.sub(r'([+-]\d{2})(\d{2})$', r'\1:\2', candidate)
+    candidate = re.sub(r'Z$', '+00:00', candidate)
+    return candidate
+
+
+def _to_utc_timestamp(value: Any) -> pd.Timestamp | None:
+    candidate = _normalize_timestamp_value(value)
+    if candidate is None:
+        return None
+    ts = pd.to_datetime(candidate, errors='coerce', utc=True)
     if pd.isna(ts):
         return None
-    return pd.Timestamp(ts).tz_convert('UTC') if pd.Timestamp(ts).tzinfo is not None else pd.Timestamp(ts).tz_localize('UTC')
+    normalized = pd.Timestamp(ts)
+    return normalized.tz_convert('UTC') if normalized.tzinfo is not None else normalized.tz_localize('UTC')
 
 
 def _parse_timestamp(value: Any) -> pd.Timestamp:
-    ts = _to_utc_timestamp(value)
-    if ts is None:
-        raise RealtimeScoringError(f'유효하지 않은 timestamp입니다: {value}')
-    return ts
+    candidate = _normalize_timestamp_value(value)
+    ts = _to_utc_timestamp(candidate)
+    if ts is not None:
+        return ts
 
+    try:
+        fallback = pd.to_datetime(candidate, utc=True, errors='raise')
+        if pd.isna(fallback):
+            raise ValueError('NaT')
+        return pd.Timestamp(fallback)
+    except Exception as exc:
+        raise RealtimeScoringError(f'유효하지 않은 timestamp입니다: {value}') from exc
 
 def _redis_safe_value(value):
     if value is None:
@@ -240,6 +273,8 @@ def _initial_summary(config: RealtimeStreamConfig) -> Dict[str, Any]:
         'queued_actions_total': 0,
         'deferred_actions_total': 0,
         'action_queue_size': 0,
+        'invalid_timestamp_events_skipped': 0,
+        'last_invalid_timestamp': None,
     }
 
 
@@ -746,7 +781,11 @@ def produce_events_to_stream(
         client.delete(config.stream_key)
 
     usecols = ['customer_id', 'timestamp', 'event_type', 'session_id', 'item_category', 'quantity']
-    events = pd.read_csv(events_path, usecols=usecols, parse_dates=['timestamp']).sort_values('timestamp')
+    events = pd.read_csv(events_path, usecols=usecols, low_memory=False)
+    events['_parsed_timestamp'] = pd.to_datetime(events['timestamp'].map(_normalize_timestamp_value), errors='coerce', utc=True)
+    invalid_timestamp_rows = int(events['_parsed_timestamp'].isna().sum())
+    events = events.loc[~events['_parsed_timestamp'].isna()].copy()
+    events = events.sort_values('_parsed_timestamp')
     if event_types:
         normalized = {str(item).strip().lower() for item in event_types}
         events = events[events['event_type'].astype(str).str.lower().isin(normalized)]
@@ -758,7 +797,7 @@ def produce_events_to_stream(
     for _, row in events.iterrows():
         payload = {
             'customer_id': str(_safe_int(row['customer_id'], 0)),
-            'timestamp': _parse_timestamp(row['timestamp']).floor('s').isoformat(),
+            'timestamp': _parse_timestamp(row['_parsed_timestamp']).floor('s').isoformat(),
             'event_type': str(row.get('event_type', 'unknown')),
             'session_id': '' if pd.isna(row.get('session_id')) else str(row.get('session_id')),
             'item_category': '' if pd.isna(row.get('item_category')) else str(row.get('item_category')),
@@ -775,9 +814,12 @@ def produce_events_to_stream(
         {
             'last_produced_event_at': last_ts,
             'produced_events_total': _safe_int(summary.get('produced_events_total', 0), 0) + produced,
+            'invalid_timestamp_events_skipped': _safe_int(summary.get('invalid_timestamp_events_skipped', 0), 0) + invalid_timestamp_rows,
             'producer_updated_at': pd.Timestamp.now(tz='UTC').floor('s').isoformat(),
         }
     )
+    if invalid_timestamp_rows > 0:
+        summary['last_invalid_timestamp'] = 'producer: events.csv contained unparseable timestamp rows'
     client.set(config.summary_key, json.dumps(summary, ensure_ascii=False))
     _snapshot_from_redis(client, result_dir, config)
     return {'produced_events': produced, 'last_event_at': last_ts, 'summary': summary}
@@ -840,7 +882,13 @@ def consume_stream_events(
         for _, messages in response:
             for message_id, payload in messages:
                 customer_id = _safe_int(payload.get('customer_id', 0), 0)
-                event_ts = _parse_timestamp(payload.get('timestamp'))
+                try:
+                    event_ts = _parse_timestamp(payload.get('timestamp'))
+                except RealtimeScoringError:
+                    summary['invalid_timestamp_events_skipped'] = _safe_int(summary.get('invalid_timestamp_events_skipped', 0), 0) + 1
+                    summary['last_invalid_timestamp'] = str(payload.get('timestamp', ''))
+                    pipe.xack(config.stream_key, config.consumer_group, message_id)
+                    continue
                 raw_state = client.hgetall(config.state_key(customer_id))
                 if not raw_state:
                     row = baseline_indexed.loc[customer_id] if customer_id in baseline_indexed.index else None
@@ -921,6 +969,152 @@ def consume_stream_events(
     payload['summary'].update(summary)
     return payload
 
+
+
+def _replay_source_path(result_dir: Path) -> Path:
+    return result_dir / 'realtime_replay_source.csv'
+
+
+def prepare_realtime_replay_source(
+    data_dir: str | Path,
+    result_dir: str | Path,
+    *,
+    limit: int = 20000,
+    force_rebuild: bool = False,
+) -> tuple[Path, int]:
+    data_dir = Path(data_dir)
+    result_dir = _ensure_dir(result_dir)
+    source_path = _replay_source_path(result_dir)
+    if source_path.exists() and not force_rebuild:
+        try:
+            total_rows = max(sum(1 for _ in source_path.open('r', encoding='utf-8')) - 1, 0)
+            return source_path, int(total_rows)
+        except Exception:
+            pass
+
+    events_path = data_dir / 'events.csv'
+    if not events_path.exists():
+        raise RealtimeScoringError(f'필수 파일이 없습니다: {events_path}')
+
+    header = pd.read_csv(events_path, nrows=0).columns.tolist()
+    desired_usecols = ['customer_id', 'timestamp', 'event_type', 'session_id', 'item_category', 'quantity']
+    usecols = [column for column in desired_usecols if column in header]
+    if 'customer_id' not in usecols or 'timestamp' not in usecols or 'event_type' not in usecols:
+        raise RealtimeScoringError(f'events.csv 필수 컬럼이 누락되었습니다: {events_path}')
+
+    events = pd.read_csv(
+        events_path,
+        usecols=usecols,
+        parse_dates=['timestamp'] if 'timestamp' in usecols else None,
+        low_memory=False,
+    ).sort_values('timestamp')
+
+    for missing_col in ['session_id', 'item_category', 'quantity']:
+        if missing_col not in events.columns:
+            events[missing_col] = '' if missing_col != 'quantity' else 0
+
+    if limit and int(limit) > 0:
+        events = events.head(int(limit)).copy()
+    if not events.empty:
+        timestamps = pd.to_datetime(events['timestamp'].map(_normalize_timestamp_value), utc=True, errors='coerce')
+        events = events.loc[~timestamps.isna()].copy()
+        timestamps = pd.to_datetime(events['timestamp'].map(_normalize_timestamp_value), utc=True, errors='coerce')
+        events['timestamp'] = timestamps.dt.floor('s').dt.strftime('%Y-%m-%dT%H:%M:%S%z')
+        events['timestamp'] = events['timestamp'].str.replace(r'([+-]\d{2})(\d{2})$', r'\1:\2', regex=True)
+
+    events.to_csv(source_path, index=False)
+    return source_path, int(len(events))
+
+def _append_events_from_dataframe(client, config: RealtimeStreamConfig, events: pd.DataFrame) -> tuple[int, Optional[str]]:
+    produced = 0
+    last_ts: Optional[str] = None
+    if events.empty:
+        return produced, last_ts
+    for _, row in events.iterrows():
+        payload = {
+            'customer_id': str(_safe_int(row.get('customer_id', 0), 0)),
+            'timestamp': str(row.get('timestamp', '')),
+            'event_type': str(row.get('event_type', 'unknown')),
+            'session_id': '' if pd.isna(row.get('session_id')) else str(row.get('session_id')),
+            'item_category': '' if pd.isna(row.get('item_category')) else str(row.get('item_category')),
+            'quantity': str(_safe_int(row.get('quantity', 0), 0)),
+        }
+        client.xadd(config.stream_key, payload, maxlen=config.stream_maxlen, approximate=True)
+        produced += 1
+        last_ts = payload['timestamp']
+    return produced, last_ts
+
+
+def advance_realtime_tick(
+    data_dir: str | Path,
+    result_dir: str | Path,
+    config: RealtimeStreamConfig,
+    *,
+    top_n: int = 50,
+    batch_size: int = 250,
+    replay_limit: int = 20000,
+    reset_when_exhausted: bool = True,
+) -> Dict[str, Any]:
+    data_dir = Path(data_dir)
+    result_dir = _ensure_dir(result_dir)
+    client = _redis_client(config)
+
+    if not client.exists(config.ranking_key):
+        bootstrap_realtime_state(data_dir, result_dir, config, reset_stream=True)
+
+    source_path, total_events = prepare_realtime_replay_source(data_dir, result_dir, limit=replay_limit)
+    source_df = pd.read_csv(source_path, low_memory=False) if source_path.exists() else pd.DataFrame()
+    if total_events <= 0 or source_df.empty:
+        payload = get_current_realtime_scores(result_dir, config, top_n=top_n)
+        payload.setdefault('summary', {}).update({'last_tick_advanced': 0, 'replay_total_events': int(total_events)})
+        return payload
+    summary = _read_summary(client, config)
+    current_offset = _safe_int(summary.get('producer_offset', 0), 0)
+    replay_loops = _safe_int(summary.get('replay_loop_count', 0), 0)
+
+    if current_offset >= total_events and total_events > 0 and reset_when_exhausted:
+        replay_loops += 1
+        bootstrap_realtime_state(data_dir, result_dir, config, reset_stream=True)
+        summary = _read_summary(client, config)
+        current_offset = 0
+
+    next_offset = min(current_offset + max(int(batch_size), 1), total_events)
+    batch_df = source_df.iloc[current_offset:next_offset].copy() if not source_df.empty else pd.DataFrame()
+    produced, last_ts = _append_events_from_dataframe(client, config, batch_df)
+
+    summary = _read_summary(client, config)
+    summary.update({
+        'producer_offset': int(next_offset),
+        'replay_total_events': int(total_events),
+        'replay_loop_count': int(replay_loops),
+        'last_tick_advanced': int(produced),
+        'last_produced_event_at': last_ts,
+        'produced_events_total': _safe_int(summary.get('produced_events_total', 0), 0) + int(produced),
+        'producer_updated_at': pd.Timestamp.now(tz='UTC').floor('s').isoformat(),
+    })
+    client.set(config.summary_key, json.dumps(summary, ensure_ascii=False))
+
+    if produced > 0:
+        consume_stream_events(
+            data_dir,
+            result_dir,
+            config,
+            max_events=produced,
+            idle_cycles=1,
+            snapshot_every=max(min(produced, 250), 1),
+        )
+
+    payload = get_current_realtime_scores(result_dir, config, top_n=top_n)
+    payload_summary = payload.get('summary', {})
+    payload_summary.update({
+        'producer_offset': int(next_offset),
+        'replay_total_events': int(total_events),
+        'replay_loop_count': int(replay_loops),
+        'last_tick_advanced': int(produced),
+    })
+    payload['summary'] = payload_summary
+    client.set(config.summary_key, json.dumps(payload_summary, ensure_ascii=False))
+    return payload
 
 def get_current_realtime_scores(
     result_dir: str | Path,

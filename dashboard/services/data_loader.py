@@ -11,12 +11,12 @@ from dashboard.data.mock_data import generate_mock_cohort_retention, generate_mo
 RAW_CUSTOMER_SUMMARY = "customer_summary.csv"
 RAW_COHORT_RETENTION = "cohort_retention.csv"
 OPTIONAL_RAW_FILES = {
-    "customers": "customers.csv",
-    "events": "events.csv",
-    "orders": "orders.csv",
-    "campaign_exposures": "campaign_exposures.csv",
-    "state_snapshots": "state_snapshots.csv",
-    "treatment_assignments": "treatment_assignments.csv",
+    "customers": {"filename": "customers.csv", "usecols": ["customer_id", "persona", "region", "device_type", "acquisition_channel", "price_sensitivity", "coupon_affinity", "support_contact_propensity"]},
+    "events": {"filename": "events.csv", "usecols": ["customer_id", "timestamp", "event_type", "item_category", "quantity"]},
+    "orders": {"filename": "orders.csv", "usecols": ["customer_id", "order_time", "item_category", "net_amount", "coupon_used"]},
+    "campaign_exposures": {"filename": "campaign_exposures.csv", "usecols": ["customer_id", "exposure_time", "campaign_type", "coupon_cost"]},
+    "state_snapshots": {"filename": "state_snapshots.csv", "usecols": ["customer_id", "snapshot_date", "current_status", "inactivity_days", "coupon_fatigue_score", "discount_dependency_score"]},
+    "treatment_assignments": {"filename": "treatment_assignments.csv", "usecols": ["customer_id", "treatment_group", "campaign_type", "coupon_cost", "assigned_at"]},
 }
 
 
@@ -47,13 +47,12 @@ def _parse_date_columns(path: Path) -> List[str]:
     return mapping.get(path.name, [])
 
 
-def _read_csv(path: Path) -> pd.DataFrame:
+def _read_csv(path: Path, usecols: List[str] | None = None) -> pd.DataFrame:
     parse_dates = _parse_date_columns(path)
-    existing_parse_dates = []
-    if parse_dates:
-        header = pd.read_csv(path, nrows=0).columns.tolist()
-        existing_parse_dates = [col for col in parse_dates if col in header]
-    return pd.read_csv(path, parse_dates=existing_parse_dates or None, low_memory=False)
+    header = pd.read_csv(path, nrows=0).columns.tolist()
+    existing_usecols = [col for col in (usecols or header) if col in header]
+    existing_parse_dates = [col for col in parse_dates if col in header and col in existing_usecols]
+    return pd.read_csv(path, parse_dates=existing_parse_dates or None, usecols=existing_usecols or None, low_memory=False)
 
 
 def _candidate_data_dirs(data_dir: str) -> List[Path]:
@@ -85,6 +84,7 @@ def load_dashboard_bundle(
     fallback_to_mock: bool = True,
     mock_n_customers: int = 500,
     seed: int = 42,
+    include_optional: bool = False,
 ) -> DashboardDataBundle:
     """
     Dashboard의 현재 6개 화면에 꼭 필요한 파일은 customer_summary.csv와 cohort_retention.csv다.
@@ -96,9 +96,12 @@ def load_dashboard_bundle(
         cohort_path = base / RAW_COHORT_RETENTION
         if customer_path.exists() and cohort_path.exists():
             optionals: Dict[str, pd.DataFrame] = {}
-            for key, filename in OPTIONAL_RAW_FILES.items():
-                path = base / filename
-                optionals[key] = _read_csv(path) if path.exists() else _empty_df()
+            for key, config in OPTIONAL_RAW_FILES.items():
+                if not include_optional:
+                    optionals[key] = _empty_df()
+                    continue
+                path = base / str(config["filename"])
+                optionals[key] = _read_csv(path, usecols=list(config.get("usecols", []))) if path.exists() else _empty_df()
 
             return DashboardDataBundle(
                 customer_summary=_read_csv(customer_path),
@@ -139,12 +142,14 @@ def load_dashboard_data(
     fallback_to_mock: bool = True,
     mock_n_customers: int = 500,
     seed: int = 42,
+    include_optional: bool = False,
 ):
     bundle = load_dashboard_bundle(
         data_dir=data_dir,
         fallback_to_mock=fallback_to_mock,
         mock_n_customers=mock_n_customers,
         seed=seed,
+        include_optional=include_optional,
     )
     label = "mock data 사용 중" if bundle.used_mock else "실제 시뮬레이터 산출물 사용 중"
     return bundle.customer_summary, bundle.cohort_retention, label

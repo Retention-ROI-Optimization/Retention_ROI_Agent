@@ -179,7 +179,14 @@ def _build_customer_summary(
         + summary["frequency"] * np.maximum(avg_order_value, 20000) * 0.55
     ).clip(lower=15000)
 
-    summary["expected_incremental_profit"] = np.maximum(summary["clv"] * summary["uplift_score"], -50000)
+    fatigue = pd.to_numeric(summary.get("coupon_fatigue_score", 0.0), errors="coerce").fillna(0.0)
+    fatigue_sensitivity = pd.to_numeric(summary.get("discount_fatigue_sensitivity", 0.0), errors="coerce").fillna(0.0)
+    brand_sensitivity = pd.to_numeric(summary.get("brand_sensitivity", 0.0), errors="coerce").fillna(0.0)
+    dependency = pd.to_numeric(summary.get("discount_dependency_score", 0.0), errors="coerce").fillna(0.0)
+    summary["discount_pressure_score"] = (fatigue * (0.55 + 0.45 * fatigue_sensitivity) + 0.60 * dependency).clip(lower=0.0)
+    summary["discount_effect_penalty"] = np.clip(1.0 - 0.08 * summary["discount_pressure_score"] - 0.05 * brand_sensitivity, 0.55, 1.0)
+
+    summary["expected_incremental_profit"] = np.maximum(summary["clv"] * summary["uplift_score"] * summary["discount_effect_penalty"], -50000)
     summary["expected_roi"] = _safe_div(summary["expected_incremental_profit"] - summary["coupon_cost"], summary["coupon_cost"])
 
     summary["uplift_segment"] = np.select(
@@ -222,6 +229,13 @@ def _build_customer_summary(
         "coupon_exposure_count",
         "coupon_redeem_count",
         "inactivity_days",
+        "coupon_fatigue_score",
+        "discount_dependency_score",
+        "discount_pressure_score",
+        "discount_effect_penalty",
+        "discount_fatigue_sensitivity",
+        "offer_dependency_risk",
+        "brand_sensitivity",
     ]
 
     ordered = [c for c in columns if c in summary.columns]

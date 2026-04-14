@@ -150,7 +150,14 @@ def _apply_learned_dose_response(frame: pd.DataFrame, intensity_key: str, dose_r
         * value_basis
         * out["churn_timing_weight"]
     ).clip(lower=0.0)
-    out["expected_incremental_profit"] = (out["expected_revenue"] - out["coupon_cost"]).clip(lower=-out["coupon_cost"])
+    fatigue_guardrail = (
+        1.0
+        - 0.18 * normalize(column_or_default(out, "discount_pressure_score", 0.0)).clip(0.0, 1.0)
+        - 0.05 * normalize(column_or_default(out, "brand_sensitivity", 0.0)).clip(0.0, 1.0)
+    ).clip(lower=0.55, upper=1.0)
+    out["fatigue_guardrail_multiplier"] = fatigue_guardrail
+    out["expected_incremental_profit"] = ((out["expected_revenue"] * fatigue_guardrail) - out["coupon_cost"]).clip(lower=-out["coupon_cost"])
+    out["expected_revenue"] = (out["expected_incremental_profit"] + out["coupon_cost"]).clip(lower=0.0)
     out["expected_roi"] = out["expected_incremental_profit"] / out["coupon_cost"].where(out["coupon_cost"] > 0, 1.0)
     return out
 
@@ -194,13 +201,23 @@ def _apply_heuristic_intensity(frame: pd.DataFrame, intensity_key: str, profile:
             - 0.14 * (1.0 - response_readiness)
         )
 
+    discount_pressure = normalize(column_or_default(out, "discount_pressure_score", 0.0)).clip(0.0, 1.0)
+    fatigue_guardrail = (
+        1.0
+        - (0.08 if intensity_key == "low" else 0.14 if intensity_key == "mid" else 0.22) * discount_pressure
+        - 0.06 * normalize(column_or_default(out, "brand_sensitivity", 0.0)).clip(0.0, 1.0)
+    ).clip(lower=0.55, upper=1.0)
+
     out["intensity_effect_multiplier"] = (
         base_effect
         * timing_weight
         * out["segment_intensity_bias"]
         * intensity_fit
         * (1.0 + elasticity * (response_readiness - 0.5))
-    ).clip(lower=0.35, upper=1.25)
+        * fatigue_guardrail
+    ).clip(lower=0.30, upper=1.25)
+
+    out["fatigue_guardrail_multiplier"] = fatigue_guardrail
 
     out["expected_incremental_profit"] = (
         out["base_net_incremental_profit"]
@@ -289,6 +306,7 @@ def build_intensity_action_candidates(
     predicted_clv = column_or_default(action_candidates, "predicted_clv_12m", np.nan)
     fallback_clv = column_or_default(action_candidates, "clv", 0.0)
     action_candidates["value_rank_score"] = normalize(predicted_clv.where(predicted_clv.notna(), fallback_clv))
+    discount_penalty = normalize(column_or_default(action_candidates, "discount_pressure_score", 0.0)).clip(0.0, 1.0)
     action_candidates["priority_score"] = (
         0.26 * action_candidates["roi_rank_score"]
         + 0.24 * action_candidates["profit_rank_score"]
@@ -297,5 +315,6 @@ def build_intensity_action_candidates(
         + 0.12 * action_candidates["timing_urgency_score"]
         + 0.08 * (1.0 - action_candidates["window_rank_score"])
         + 0.06 * action_candidates["value_rank_score"]
+        - 0.08 * discount_penalty
     )
     return action_candidates

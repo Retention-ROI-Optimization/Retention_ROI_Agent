@@ -21,11 +21,13 @@ from src.workflows.pipeline_runner import (
     run_churn_training_pipeline,
     run_cohort_journey_pipeline,
     run_clv_prediction_pipeline,
+    run_explainability_pipeline,
     run_feature_engineering_pipeline,
     run_optimize_pipeline,
     run_recommendation_pipeline,
     run_segmentation_priority_pipeline,
     run_survival_pipeline,
+    run_simulation_fidelity_pipeline,
     run_uplift_pipeline,
 )
 
@@ -47,6 +49,8 @@ def build_parser() -> argparse.ArgumentParser:
             "recommend",
             "cohort",
             "survival",
+            "explain",
+            "fidelity",
             "realtime-bootstrap",
             "realtime-produce",
             "realtime-consume",
@@ -236,6 +240,23 @@ def main() -> int:
             model_dir,
             result_dir,
             feature_store_dir=feature_store_dir,
+            **common_simulation_kwargs,
+        )
+        return _print_result(result)
+
+    if args.mode == "explain":
+        result = run_explainability_pipeline(
+            data_dir,
+            result_dir,
+            feature_store_dir=feature_store_dir,
+            **common_simulation_kwargs,
+        )
+        return _print_result(result)
+
+    if args.mode == "fidelity":
+        result = run_simulation_fidelity_pipeline(
+            data_dir,
+            result_dir,
             **common_simulation_kwargs,
         )
         return _print_result(result)

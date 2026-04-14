@@ -134,6 +134,9 @@ def generate_customers(
     price_sensitivity = np.zeros(n, dtype=float)
     recovery_prob_base = np.zeros(n, dtype=float)
     treatment_lift_base = np.zeros(n, dtype=float)
+    discount_fatigue_sensitivity = np.zeros(n, dtype=float)
+    offer_dependency_risk = np.zeros(n, dtype=float)
+    brand_sensitivity = np.zeros(n, dtype=float)
 
     for persona_name, profile in personas.items():
         mask = persona == persona_name
@@ -155,6 +158,18 @@ def generate_customers(
         churn_sensitivity_base[mask] = np.clip(rng.normal(profile.churn_sensitivity, 0.10, size=count), 0.40, 1.90)
         price_sensitivity[mask] = np.clip(rng.normal(profile.price_sensitivity, 0.08, size=count), 0.05, 0.98)
         recovery_prob_base[mask] = np.clip(rng.normal(profile.recovery_prob, 0.05, size=count), 0.01, 0.82)
+
+        fatigue_base = 0.35 + 0.25 * price_sensitivity[mask] + 0.12 * churn_sensitivity_base[mask]
+        dependency_base = 0.22 + 0.38 * coupon_redeem_prob_base[mask] + 0.14 * price_sensitivity[mask]
+        brand_base = 0.20 + 0.28 * price_sensitivity[mask] + 0.10 * (persona_name in {"vip_loyal", "regular_loyal"})
+        if persona_name in {"price_sensitive", "explorer"}:
+            fatigue_base += 0.10
+            dependency_base += 0.08
+        if persona_name == "new_signup":
+            brand_base += 0.06
+        discount_fatigue_sensitivity[mask] = np.clip(rng.normal(fatigue_base, 0.06, size=count), 0.08, 0.98)
+        offer_dependency_risk[mask] = np.clip(rng.normal(dependency_base, 0.07, size=count), 0.05, 0.98)
+        brand_sensitivity[mask] = np.clip(rng.normal(brand_base, 0.05, size=count), 0.05, 0.95)
 
     for segment_name, profile in DEFAULT_UPLIFT_SEGMENTS.items():
         mask = uplift_segment == segment_name
@@ -194,6 +209,20 @@ def generate_customers(
         0.45,
     )
 
+    segment_fatigue_adjust = np.select(
+        [
+            uplift_segment == "persuadable",
+            uplift_segment == "sure_thing",
+            uplift_segment == "lost_cause",
+            uplift_segment == "sleeping_dog",
+        ],
+        [0.04, 0.02, 0.08, 0.10],
+        default=0.0,
+    )
+    discount_fatigue_sensitivity = np.clip(discount_fatigue_sensitivity + segment_fatigue_adjust, 0.08, 0.98)
+    offer_dependency_risk = np.clip(offer_dependency_risk + 0.10 * coupon_affinity, 0.05, 0.98)
+    brand_sensitivity = np.clip(brand_sensitivity + 0.08 * (coupon_affinity < 0.20), 0.05, 0.95)
+
     customers = pd.DataFrame(
         {
             "customer_id": customer_ids,
@@ -220,6 +249,9 @@ def generate_customers(
             "coupon_affinity": coupon_affinity,
             "recovery_prob_base": recovery_prob_base,
             "treatment_lift_base": treatment_lift_base,
+            "discount_fatigue_sensitivity": discount_fatigue_sensitivity,
+            "offer_dependency_risk": offer_dependency_risk,
+            "brand_sensitivity": brand_sensitivity,
             "basket_size_preference": basket_size_preference,
             "support_contact_propensity": support_contact_propensity,
         }

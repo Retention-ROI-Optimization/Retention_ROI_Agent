@@ -80,12 +80,38 @@ python src/main.py --mode recommend --budget 5000000 --threshold 0.5 --max-custo
 ```
 you can change the figures (threshod, max-customers)
 
+### Operational explainability
+
+```bash
+python src/main.py --mode explain
+```
+
+Creates operational explanation artifacts for selected or high-priority customers.
+This stage summarizes why a customer is risky, why intervention is recommended, and what guardrails should be considered.
+
+Main outputs:
+- `results/customer_operational_explanations.csv`
+- `results/customer_operational_explanations_summary.json`
+- `results/customer_operational_explanations.md`
+
 ## AB Test
 
 ```bash
 python src/main.py --mode abtest
 
 ```
+## Simulation fidelity audit
+
+```bash
+python src/main.py --mode fidelity
+```
+
+Audits whether the simulator behaves realistically enough for downstream experimentation.
+This includes treatment/control balance, funnel consistency, churn-risk alignment, and discount-pressure diagnostics.
+
+Main outputs:
+- `results/simulation_fidelity_summary.json`
+- `results/simulation_fidelity_report.md`
 
 ## Realtime Bootstrap
 
@@ -138,7 +164,9 @@ python src/main.py --mode clv
 python src/main.py --mode segment
 python src/main.py --mode optimize --budget 50000000
 python src/main.py --mode recommend --budget 5000000 --threshold 0.5 --max-customers 1000
+python src/main.py --mode explain
 python src/main.py --mode abtest
+python src/main.py --mode fidelity
 docker compose up -d --build
 python src/main.py --mode realtime-bootstrap
 python src/main.py --mode realtime-replay --stream-limit 20000 --stream-max-events 20000
@@ -156,7 +184,9 @@ python src/main.py --mode clv
 python src/main.py --mode segment
 python src/main.py --mode optimize --budget 50000000
 python src/main.py --mode recommend --budget 5000000 --threshold 0.5 --max-customers 1000
+python src/main.py --mode explain
 python src/main.py --mode abtest
+python src/main.py --mode fidelity
 docker compose up -d --build
 python src/main.py --mode realtime-bootstrap
 python src/main.py --mode realtime-replay --stream-limit 20000 --stream-max-events 20000

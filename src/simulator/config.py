@@ -50,6 +50,8 @@ class SimulationConfig:
     coupon_cooldown_days: int = 14
     coupon_trigger_inactivity_days: int = 10
     max_exposures_per_customer: int = 4
+    coupon_fatigue_decay: float = 0.94
+    coupon_fatigue_guardrail: float = 2.40
 
     # State snapshots
     snapshot_frequency_days: int = 7
@@ -85,6 +87,12 @@ class SimulationConfig:
 
         if self.coupon_min_cost <= 0 or self.coupon_max_cost < self.coupon_min_cost:
             raise ValueError("Coupon cost bounds are invalid.")
+
+        if not (0.0 < self.coupon_fatigue_decay <= 1.0):
+            raise ValueError("coupon_fatigue_decay must be in (0, 1].")
+
+        if self.coupon_fatigue_guardrail <= 0:
+            raise ValueError("coupon_fatigue_guardrail must be positive.")
 
     def with_seed(self, seed: Optional[int]) -> "SimulationConfig":
         return replace(self, random_seed=seed)

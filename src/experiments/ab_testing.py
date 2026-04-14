@@ -107,6 +107,8 @@ def run_ab_test_analysis(result_dir: Path) -> ABTestArtifacts:
     working = uplift.copy()
     working["retained_60d"] = pd.to_numeric(working["retained_60d"], errors="coerce").fillna(0).clip(0, 1)
     working["churned_60d"] = 1 - working["retained_60d"]
+    working["coupon_cost"] = pd.to_numeric(working.get("coupon_cost", 0.0), errors="coerce").fillna(0.0)
+    working["revenue_post_60d"] = pd.to_numeric(working.get("revenue_post_60d", 0.0), errors="coerce").fillna(0.0)
 
     treatment = working[working["treatment_group"] == "treatment"]
     control = working[working["treatment_group"] == "control"]
@@ -116,10 +118,10 @@ def run_ab_test_analysis(result_dir: Path) -> ABTestArtifacts:
     if n_t == 0 or n_c == 0:
         raise ValueError("A/B testing requires both treatment and control groups with at least one sample.")
 
-    churn_t = int(working.loc[working["treatment_group"] == "treatment", "churned_60d"].sum())
-    churn_c = int(working.loc[working["treatment_group"] == "control", "churned_60d"].sum())
-    retained_t = int(working.loc[working["treatment_group"] == "treatment", "retained_60d"].sum())
-    retained_c = int(working.loc[working["treatment_group"] == "control", "retained_60d"].sum())
+    churn_t = int(treatment["churned_60d"].sum())
+    churn_c = int(control["churned_60d"].sum())
+    retained_t = int(treatment["retained_60d"].sum())
+    retained_c = int(control["retained_60d"].sum())
 
     alpha = 0.05
     target_power = 0.80
@@ -134,6 +136,19 @@ def run_ab_test_analysis(result_dir: Path) -> ABTestArtifacts:
     control_churn_rate = float(ztest["control_rate"])
     churn_diff = float(ztest["difference"])
     rel_change = churn_diff / max(control_churn_rate, 1e-9)
+
+    treatment_retention_rate = retained_t / max(n_t, 1)
+    control_retention_rate = retained_c / max(n_c, 1)
+    incremental_retention_lift = treatment_retention_rate - control_retention_rate
+    incremental_churn_reduction = control_churn_rate - treatment_churn_rate
+    incremental_retained_customers = incremental_retention_lift * n_t
+    treatment_cost_total = float(treatment["coupon_cost"].sum())
+    avg_coupon_cost = treatment_cost_total / max(n_t, 1)
+    incremental_revenue_per_customer = float(treatment["revenue_post_60d"].mean() - control["revenue_post_60d"].mean())
+    total_incremental_revenue = incremental_revenue_per_customer * n_t
+    cost_per_incremental_retained_customer = treatment_cost_total / max(incremental_retained_customers, 1e-9) if incremental_retained_customers > 0 else None
+    incremental_profit_after_coupon = total_incremental_revenue - treatment_cost_total
+    incremental_roi = incremental_profit_after_coupon / max(treatment_cost_total, 1e-9) if treatment_cost_total > 0 else None
 
     result: Dict[str, Any] = {
         "experiment": {
@@ -159,8 +174,8 @@ def run_ab_test_analysis(result_dir: Path) -> ABTestArtifacts:
         "rates": {
             "treatment_churn_rate": round(treatment_churn_rate, 6),
             "control_churn_rate": round(control_churn_rate, 6),
-            "treatment_retention_rate": round(retained_t / max(n_t, 1), 6),
-            "control_retention_rate": round(retained_c / max(n_c, 1), 6),
+            "treatment_retention_rate": round(treatment_retention_rate, 6),
+            "control_retention_rate": round(control_retention_rate, 6),
             "absolute_difference_treatment_minus_control": round(churn_diff, 6),
             "relative_change_vs_control": round(rel_change, 6),
         },
@@ -190,9 +205,26 @@ def run_ab_test_analysis(result_dir: Path) -> ABTestArtifacts:
             "is_statistically_significant": bool(ztest["p_value"] < alpha),
             "significance_rule": "Statistically significant if p < 0.05.",
         },
+        "business_metrics": {
+            "incremental_retention_lift": round(float(incremental_retention_lift), 6),
+            "incremental_churn_reduction": round(float(incremental_churn_reduction), 6),
+            "incremental_retained_customers_estimate": round(float(incremental_retained_customers), 3),
+            "treatment_coupon_cost_total": round(treatment_cost_total, 2),
+            "avg_coupon_cost_treatment": round(avg_coupon_cost, 2),
+            "incremental_revenue_per_treated_customer": round(float(incremental_revenue_per_customer), 2),
+            "incremental_revenue_total_estimate": round(float(total_incremental_revenue), 2),
+            "incremental_profit_after_coupon": round(float(incremental_profit_after_coupon), 2),
+            "cost_per_incremental_retained_customer": round(float(cost_per_incremental_retained_customer), 2) if cost_per_incremental_retained_customer is not None else None,
+            "incremental_roi_after_coupon": round(float(incremental_roi), 6) if incremental_roi is not None else None,
+        },
     }
 
     significant_text = "유의하다" if result["hypothesis_test"]["is_statistically_significant"] else "유의하지 않다"
+    cpic_text = (
+        f"{result['business_metrics']['cost_per_incremental_retained_customer']:,.0f}원"
+        if result["business_metrics"]["cost_per_incremental_retained_customer"] is not None
+        else "산출 불가"
+    )
     report_markdown = f"""# A/B 테스트 결과 해석 리포트
 
 ## 1. 실험 설계
@@ -217,11 +249,15 @@ def run_ab_test_analysis(result_dir: Path) -> ABTestArtifacts:
 - 현재 표본으로 추정한 achieved power: **{achieved_power:.3f}**
 - 현재 최소 그룹 표본 수가 요구치를 충족하는가: **{'예' if min(n_t, n_c) >= required_n else '아니오'}**
 
-## 4. 이탈률 비교
+## 4. 이탈률 및 증분 효과
 - Treatment 이탈률: **{treatment_churn_rate:.3%}**
 - Control 이탈률: **{control_churn_rate:.3%}**
-- 이탈률 차이 (Treatment - Control): **{churn_diff:.3%}**
-- Control 대비 상대 변화율: **{rel_change:.3%}**
+- Treatment 유지율: **{treatment_retention_rate:.3%}**
+- Control 유지율: **{control_retention_rate:.3%}**
+- 순수 증분 유지율(Incremental Lift): **{incremental_retention_lift:.3%}**
+- 순수 증분 유지 고객 수 추정치: **{incremental_retained_customers:.2f}명**
+- 쿠폰비 총액: **{treatment_cost_total:,.0f}원**
+- 1명 순증 유지 고객 확보 비용(CPIC): **{cpic_text}**
 
 ## 5. 통계적 유의성 검정
 - Two-proportion Z-test p-value: **{float(ztest['p_value']):.6f}**
@@ -230,9 +266,14 @@ def run_ab_test_analysis(result_dir: Path) -> ABTestArtifacts:
 - 판정 기준: **p < 0.05 이면 통계적으로 유의함**
 - 최종 판정: **이번 결과는 통계적으로 {significant_text}.**
 
-## 6. 해석
+## 6. 비즈니스 해석
+- 처리군 1인당 추가 매출 추정: **{incremental_revenue_per_customer:,.0f}원**
+- 총 증분 매출 추정: **{total_incremental_revenue:,.0f}원**
+- 쿠폰비 반영 후 증분 이익: **{incremental_profit_after_coupon:,.0f}원**
+- 쿠폰비 반영 후 증분 ROI: **{(incremental_roi or 0.0):.3f}**
+
 {"- Treatment와 Control의 60일 이탈률 차이가 우연으로 보기 어려운 수준이므로, 개입 효과가 있다고 해석할 수 있다." if result['hypothesis_test']['is_statistically_significant'] else "- 현재 표본에서는 Treatment와 Control의 60일 이탈률 차이가 p < 0.05 기준을 충족하지 못했다. 즉, 관측된 차이가 통계적으로 유의하다고 단정하기 어렵다."}
-- 따라서 이 결과는 **이 프로젝트의 A/B 테스트 요구사항(파워 분석, 필요 표본 수 산출, Z-test/Chi-square, 95% 신뢰구간, p-value, 유의성 명시, 해석 리포트)** 을 모두 포함한다.
+- 따라서 이 결과는 **단순 정확도 비교를 넘어 증분 유지율, 증분 매출, CPIC, 쿠폰비 반영 ROI**까지 함께 해석할 수 있도록 확장되었다.
 """
 
     result["report_markdown"] = report_markdown
@@ -242,4 +283,7 @@ def run_ab_test_analysis(result_dir: Path) -> ABTestArtifacts:
     result_path.write_text(json.dumps(_to_builtin(result), ensure_ascii=False, indent=2), encoding="utf-8")
     report_path.write_text(report_markdown, encoding="utf-8")
 
-    return ABTestArtifacts(result_path=str(result_path), report_path=str(report_path))
+    return ABTestArtifacts(
+        result_path=str(result_path),
+        report_path=str(report_path),
+    )

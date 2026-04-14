@@ -1,4 +1,5 @@
 import hashlib
+import html
 import json
 import math
 import os
@@ -12,6 +13,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from dashboard.services.api_client import (
+    advance_realtime_stream,
     fetch_personalized_recommendations,
     fetch_realtime_scores,
     fetch_saved_results_artifacts,
@@ -30,6 +32,16 @@ from dashboard.services.cohort_service import (
     get_retention_mode_label,
 )
 from dashboard.services.data_loader import load_dashboard_bundle
+from dashboard.services.insight_service import (
+    build_coupon_risk_overview,
+    build_customer_explanations,
+    build_data_diagnostics,
+    build_experiment_overview,
+    build_global_feature_table,
+    build_operational_overview,
+    build_realtime_monitor_overview,
+    load_dashboard_insight_bundle,
+)
 from dashboard.services.decision_engine_service import (
     aggregate_enhanced_segment_allocation,
     get_baseline_budget_result,
@@ -63,12 +75,45 @@ DASHBOARD_VIEW_ITEMS: tuple[tuple[str, str], ...] = (
     ("7", "학습 결과 아티팩트"),
     ("8", "Uplift/최적화 결과 (실시간)"),
     ("9", "개인화 추천"),
-    ("10", "실시간 이탈 위험 스코어링"),
+    ("10", "실시간 위험 스코어링 / 운영 모니터"),
     ("11", "이탈 시점 예측 (Survival Analysis)"),
     ("12", "의사결정 엔진 비교"),
+    ("13", "운영 한눈에 보기"),
+    ("14", "증분 성과 / A-B 실험"),
+    ("15", "설명가능성 / 고객별 개입 이유"),
+    ("16", "데이터 진단 / 시뮬레이터 충실도"),
+    ("17", "할인·쿠폰 운영 리스크"),
 )
 
 DASHBOARD_VIEW_OPTIONS: tuple[str, ...] = tuple(f"{n}. {t}" for n, t in DASHBOARD_VIEW_ITEMS)
+VIEW_OPTION_BY_NUM: dict[str, str] = {num: f"{num}. {title}" for num, title in DASHBOARD_VIEW_ITEMS}
+DASHBOARD_VIEW_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("핵심 분석", ("1", "2", "3", "4", "5", "6", "7")),
+    ("실시간·예측", ("8", "9", "10", "11", "12")),
+    ("운영 인사이트", ("13", "14", "15", "16", "17")),
+)
+GROUP_TO_VIEW_OPTIONS: dict[str, tuple[str, ...]] = {
+    group: tuple(VIEW_OPTION_BY_NUM[num] for num in nums if num in VIEW_OPTION_BY_NUM)
+    for group, nums in DASHBOARD_VIEW_GROUPS
+}
+VIEW_TO_GROUP: dict[str, str] = {
+    option: group
+    for group, options in GROUP_TO_VIEW_OPTIONS.items()
+    for option in options
+}
+REALTIME_REFRESH_VIEWS: set[str] = {
+    "8. Uplift/최적화 결과 (실시간)",
+    "10. 실시간 위험 스코어링 / 운영 모니터",
+    "13. 운영 한눈에 보기",
+}
+INSIGHT_HEAVY_VIEWS: set[str] = {
+    "10. 실시간 위험 스코어링 / 운영 모니터",
+    "13. 운영 한눈에 보기",
+    "14. 증분 성과 / A-B 실험",
+    "15. 설명가능성 / 고객별 개입 이유",
+    "16. 데이터 진단 / 시뮬레이터 충실도",
+    "17. 할인·쿠폰 운영 리스크",
+}
 
 
 def _circled_num(n: str) -> str:
@@ -129,10 +174,12 @@ def inject_custom_css():
             border-right: 1px solid rgba(255,255,255,0.08);
         }
 
-        /* 사이드바 텍스트는 전체적으로 밝게 */
-        section[data-testid="stSidebar"],
-        section[data-testid="stSidebar"] * {
+        /* 사이드바 기본 텍스트 */
+        section[data-testid="stSidebar"] {
             color: #e5eefc !important;
+        }
+        section[data-testid="stSidebar"] * {
+            text-shadow: none !important;
         }
 
         section[data-testid="stSidebar"] .stSlider [data-baseweb="slider"] > div div {
@@ -264,6 +311,29 @@ def inject_custom_css():
         section[data-testid="stSidebar"] [data-baseweb="base-input"] button svg {
             fill: #111827 !important;
             color: #111827 !important;
+        }
+
+
+        /* selectbox / combobox는 흰 배경 위에서 진한 글씨로 고정 */
+        section[data-testid="stSidebar"] .stSelectbox [data-baseweb="select"] > div,
+        section[data-testid="stSidebar"] .stSelectbox [data-baseweb="select"] > div > div,
+        section[data-testid="stSidebar"] .stSelectbox [data-baseweb="select"] input,
+        section[data-testid="stSidebar"] .stSelectbox [data-baseweb="select"] span,
+        section[data-testid="stSidebar"] .stSelectbox [role="combobox"],
+        section[data-testid="stSidebar"] .stSelectbox svg {
+            background: #ffffff !important;
+            color: #111827 !important;
+            -webkit-text-fill-color: #111827 !important;
+            fill: #111827 !important;
+            opacity: 1 !important;
+        }
+        section[data-testid="stSidebar"] .stSelectbox [data-baseweb="select"] {
+            border-radius: 14px !important;
+        }
+        section[data-testid="stSidebar"] .stSelectbox [role="listbox"],
+        section[data-testid="stSidebar"] .stSelectbox [role="option"] {
+            color: #111827 !important;
+            -webkit-text-fill-color: #111827 !important;
         }
 
         .hero-card {
@@ -483,6 +553,53 @@ def inject_custom_css():
             color: rgba(255,255,255,0.78);
             font-weight: 600;
         }
+
+        .oai-table-wrapper {
+            overflow: auto;
+            border: 1px solid rgba(148,163,184,0.28);
+            border-radius: 16px;
+            background: rgba(255,255,255,0.96);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.7);
+        }
+
+        .oai-table-wrapper table {
+            width: max-content;
+            min-width: 100%;
+            border-collapse: collapse;
+            font-size: 0.92rem;
+            line-height: 1.45;
+        }
+
+        .oai-table-wrapper thead th {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            background: #f8fafc;
+            color: #0f172a;
+            text-align: left;
+            font-weight: 800;
+            border-bottom: 1px solid #cbd5e1;
+        }
+
+        .oai-table-wrapper th,
+        .oai-table-wrapper td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #e2e8f0;
+            vertical-align: top;
+            white-space: nowrap;
+        }
+
+        .oai-table-wrapper tbody tr:nth-child(even) {
+            background: rgba(248,250,252,0.8);
+        }
+
+        .oai-table-wrapper tbody tr:hover {
+            background: rgba(219,234,254,0.35);
+        }
+
+        .oai-table-controls {
+            margin: 4px 0 8px 0;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -509,8 +626,74 @@ def render_status_pill(message: str, variant: str = "success"):
     )
 
 
+def _project_root() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
+def _file_version_token(relative_paths: list[str]) -> str:
+    parts: list[str] = []
+    root = _project_root()
+    for relative_path in relative_paths:
+        resolved = (root / relative_path).resolve()
+        if resolved.exists():
+            stat = resolved.stat()
+            parts.append(f"{relative_path}:{stat.st_mtime_ns}:{stat.st_size}")
+        else:
+            parts.append(f"{relative_path}:missing")
+    return "|".join(parts)
+
+
+def _raw_data_token() -> str:
+    return _file_version_token([
+        "data/raw/customer_summary.csv",
+        "data/raw/cohort_retention.csv",
+    ])
+
+
+def _result_data_token() -> str:
+    return _file_version_token([
+        "results/churn_top10_feature_importance.json",
+        "results/optimization_selected_customers.csv",
+        "results/personalized_recommendations.csv",
+        "results/realtime_scores_snapshot.csv",
+        "results/realtime_scores_summary.json",
+        "results/realtime_action_queue_snapshot.csv",
+        "results/realtime_action_queue_summary.json",
+        "results/survival_predictions.csv",
+        "results/uplift_segmentation.csv",
+        "results/ab_test_results.json",
+        "results/dose_response_summary.json",
+        "results/customer_segment_summary.json",
+        "results/persuadables_analysis.json",
+        "results/optimization_summary.json",
+        "results/personalized_recommendation_summary.json",
+        "results/clv_validation_metrics.json",
+        "results/feature_engineering_summary.json",
+        "results/churn_metrics.json",
+    ])
+
+
+@st.cache_data(show_spinner=False)
+def _load_app_bundle_cached(_token: str):
+    return load_dashboard_bundle(include_optional=False)
+
+
+@st.cache_data(show_spinner=False)
+def _load_insight_bundle_cached(_raw_token: str, _result_token: str):
+    return load_dashboard_insight_bundle()
+
+
 def load_app_data():
-    return load_dashboard_bundle()
+    return _load_app_bundle_cached(_raw_data_token())
+
+
+def load_insight_data():
+    return _load_insight_bundle_cached(_raw_data_token(), _result_data_token())
+
+
+def clear_dashboard_caches() -> None:
+    _load_app_bundle_cached.clear()
+    _load_insight_bundle_cached.clear()
 
 
 def load_training_artifacts_api():
@@ -609,6 +792,131 @@ def _describe_table_count(df: pd.DataFrame, label: str = "테이블") -> str:
     return f"{label}: 행 {rows:,}개"
 
 
+def _make_unique_columns(columns: list[str]) -> list[str]:
+    seen: dict[str, int] = {}
+    unique: list[str] = []
+    for column in columns:
+        base = str(column) if column is not None else "column"
+        count = seen.get(base, 0)
+        seen[base] = count + 1
+        unique.append(base if count == 0 else f"{base}_{count + 1}")
+    return unique
+
+
+def _normalize_table_cell(value: Any) -> Any:
+    if value is None:
+        return ""
+    if isinstance(value, pd.Timestamp):
+        return value.isoformat()
+    if isinstance(value, (pd.Timedelta, Path)):
+        return str(value)
+    if isinstance(value, np.ndarray):
+        value = value.tolist()
+    if isinstance(value, (pd.Series, pd.Index)):
+        value = value.tolist()
+    if isinstance(value, (dict, list, tuple, set)):
+        try:
+            return json.dumps(value, ensure_ascii=False)
+        except TypeError:
+            return str(value)
+    try:
+        if pd.isna(value):
+            return ""
+    except Exception:
+        pass
+    if isinstance(value, (np.floating, float)):
+        numeric = float(value)
+        if math.isnan(numeric) or math.isinf(numeric):
+            return ""
+        return numeric
+    if isinstance(value, np.integer):
+        return int(value)
+    if isinstance(value, np.bool_):
+        return bool(value)
+    return value
+
+
+def _sanitize_display_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    if not isinstance(df, pd.DataFrame):
+        return pd.DataFrame()
+
+    safe_df = df.copy().reset_index(drop=True)
+    safe_df.columns = _make_unique_columns([str(col) for col in safe_df.columns])
+
+    for column in safe_df.columns:
+        normalized = safe_df[column].map(_normalize_table_cell)
+        non_empty = [value for value in normalized.tolist() if value not in ("", None)]
+        numeric_only = bool(non_empty) and all(isinstance(value, (int, float, bool, np.integer, np.floating, np.bool_)) for value in non_empty)
+        if numeric_only:
+            safe_df[column] = pd.to_numeric(normalized, errors="coerce")
+        else:
+            safe_df[column] = normalized.map(lambda value: "" if value is None else str(value))
+
+    return safe_df
+
+
+def _table_widget_key(label: str, suffix: str) -> str:
+    digest = hashlib.md5(f"{label}:{suffix}".encode("utf-8")).hexdigest()[:10]
+    return f"table_{suffix}_{digest}"
+
+
+def _render_html_table(
+    df: pd.DataFrame,
+    *,
+    label: str,
+    hide_index: bool = True,
+    max_height: int = 520,
+    prefer_static: bool = False,
+) -> None:
+    safe_df = _sanitize_display_dataframe(df)
+    st.caption(_describe_table_count(safe_df, label=label))
+
+    if safe_df.empty:
+        st.info("표시할 데이터가 없습니다.")
+        return
+
+    total_rows = int(len(safe_df))
+    view_df = safe_df
+    show_controls = (not prefer_static) and total_rows > 40
+    if show_controls:
+        controls = st.columns([1.2, 1.2, 4.6])
+        size_key = _table_widget_key(label, "page_size")
+        page_key = _table_widget_key(label, "page")
+        options = [50, 100, 250, 500, 1000]
+        options = [opt for opt in options if opt < total_rows]
+        options.append(total_rows if total_rows <= 5000 else 1000)
+        options = sorted(set(options))
+        default_page_size = 100 if total_rows >= 100 else total_rows
+        page_size = controls[0].selectbox(
+            "행/페이지",
+            options=options,
+            index=options.index(default_page_size if default_page_size in options else options[-1]),
+            key=size_key,
+        )
+        total_pages = max(1, math.ceil(total_rows / int(page_size)))
+        page = controls[1].number_input(
+            "페이지",
+            min_value=1,
+            max_value=total_pages,
+            value=min(st.session_state.get(page_key, 1), total_pages),
+            step=1,
+            key=page_key,
+        )
+        start = (int(page) - 1) * int(page_size)
+        end = min(start + int(page_size), total_rows)
+        controls[2].markdown(
+            f"<div class='oai-table-controls'>전체 <b>{total_rows:,}</b>행 중 <b>{start + 1:,}</b>–<b>{end:,}</b>행 표시</div>",
+            unsafe_allow_html=True,
+        )
+        view_df = safe_df.iloc[start:end].copy()
+
+    html_table = view_df.to_html(index=not hide_index, classes=["oai-data-table"], border=0, escape=True)
+    st.markdown(
+        f"<div class='oai-table-wrapper' style='max-height:{max(220, int(max_height))}px'>{html_table}</div>",
+        unsafe_allow_html=True,
+    )
+
+
 def _render_dataframe_with_count(
     df: pd.DataFrame,
     *,
@@ -616,9 +924,16 @@ def _render_dataframe_with_count(
     use_container_width: bool = True,
     hide_index: bool = True,
     height: int | None = None,
+    prefer_static: bool = False,
 ) -> None:
-    st.caption(_describe_table_count(df, label=label))
-    st.dataframe(df, use_container_width=use_container_width, hide_index=hide_index, height=height)
+    max_height = height if isinstance(height, int) and height > 0 else 520
+    _render_html_table(
+        df,
+        label=label,
+        hide_index=hide_index,
+        max_height=max_height,
+        prefer_static=prefer_static,
+    )
 
 
 def _render_artifact_table(
@@ -631,13 +946,15 @@ def _render_artifact_table(
     safe_df = _sanitize_artifact_dataframe(df)
     if safe_df.empty:
         return
+    _render_dataframe_with_count(
+        safe_df,
+        label=label,
+        hide_index=True,
+        height=height if isinstance(height, int) and height > 0 else 520,
+        prefer_static=not use_dataframe,
+    )
 
-    st.caption(_describe_table_count(safe_df, label=label))
 
-    if use_dataframe:
-        st.dataframe(safe_df, use_container_width=True, hide_index=True, height=height)
-    else:
-        st.table(safe_df)
 
 
 def _payload_hash(*parts: str) -> str:
@@ -1015,8 +1332,8 @@ inject_custom_css()
 CONTROL_DEFAULTS = {
     "control_threshold": 0.50,
     "control_budget": 5_000_000,
-    "control_top_n": 20,
-    "control_target_cap": 1000,
+    "control_top_n": 25,
+    "control_target_cap": 1500,
     "control_recommendation_per_customer": 3,
 }
 for _state_key, _state_value in CONTROL_DEFAULTS.items():
@@ -1041,26 +1358,44 @@ elif bundle.source_dir:
 with st.sidebar:
     st.header("제어 패널")
 
-    if "dashboard_view" not in st.session_state:
-        st.session_state.dashboard_view = DASHBOARD_VIEW_OPTIONS[0]
-    elif st.session_state.dashboard_view not in DASHBOARD_VIEW_OPTIONS:
-        st.session_state.dashboard_view = DASHBOARD_VIEW_OPTIONS[0]
+    st.session_state.setdefault("dashboard_view", DASHBOARD_VIEW_OPTIONS[0])
+    st.session_state.setdefault("dashboard_group", VIEW_TO_GROUP.get(st.session_state["dashboard_view"], DASHBOARD_VIEW_GROUPS[0][0]))
+    st.session_state.setdefault("control_threshold", 0.50)
+    st.session_state.setdefault("control_budget", 5_000_000)
+    st.session_state.setdefault("control_top_n", 25)
+    st.session_state.setdefault("control_target_cap", 1500)
+    st.session_state.setdefault("control_recommendation_per_customer", 3)
+
+    default_view = st.session_state.get("dashboard_view", DASHBOARD_VIEW_OPTIONS[0])
+    if default_view not in DASHBOARD_VIEW_OPTIONS:
+        default_view = DASHBOARD_VIEW_OPTIONS[0]
+        st.session_state["dashboard_view"] = default_view
+    default_group = VIEW_TO_GROUP.get(default_view, DASHBOARD_VIEW_GROUPS[0][0])
+    if st.session_state.get("dashboard_group") not in [g for g, _ in DASHBOARD_VIEW_GROUPS]:
+        st.session_state["dashboard_group"] = default_group
+
+    group_labels = [group for group, _ in DASHBOARD_VIEW_GROUPS]
+    selected_group = st.selectbox("대분류", options=group_labels, key="dashboard_group")
+
+    group_options = list(GROUP_TO_VIEW_OPTIONS.get(selected_group, DASHBOARD_VIEW_OPTIONS))
+    if st.session_state.get("dashboard_view") not in group_options:
+        st.session_state["dashboard_view"] = group_options[0]
 
     view = st.radio(
-        "조회 항목 선택",
-        options=list(DASHBOARD_VIEW_OPTIONS),
+        "세부 화면",
+        options=group_options,
         format_func=_view_title_from_option,
         key="dashboard_view",
         label_visibility="visible",
     )
 
-    threshold = float(st.session_state.get("control_threshold", 0.50))
-    budget = int(st.session_state.get("control_budget", 5_000_000))
-    top_n = int(st.session_state.get("control_top_n", 20))
-    target_cap = int(st.session_state.get("control_target_cap", 1000))
-    recommendation_per_customer = int(st.session_state.get("control_recommendation_per_customer", 3))
+    threshold = float(st.session_state["control_threshold"])
+    budget = int(st.session_state["control_budget"])
+    top_n = int(st.session_state["control_top_n"])
+    target_cap = int(st.session_state["control_target_cap"])
+    recommendation_per_customer = int(st.session_state["control_recommendation_per_customer"])
 
-    if view in {"1. 이탈현황", "4. 예산 배분 결과", "5. 예상 최적화 ROI", "6. 리텐션 대상 고객 목록", "8. Uplift/최적화 결과 (실시간)", "9. 개인화 추천", "12. 의사결정 엔진 비교"}:
+    if view in {"1. 이탈현황", "4. 예산 배분 결과", "5. 예상 최적화 ROI", "6. 리텐션 대상 고객 목록", "8. Uplift/최적화 결과 (실시간)", "9. 개인화 추천", "12. 의사결정 엔진 비교", "13. 운영 한눈에 보기"}:
         threshold = st.slider(
             "이탈 Threshold",
             min_value=0.10,
@@ -1070,11 +1405,11 @@ with st.sidebar:
             help="이 값 이상인 고객을 이탈 위험군으로 간주합니다.",
         )
 
-    if view in {"3. Uplift + CLV 상위 고객", "10. 실시간 이탈 위험 스코어링", "11. 이탈 시점 예측 (Survival Analysis)"}:
+    if view in {"10. 실시간 위험 스코어링 / 운영 모니터", "11. 이탈 시점 예측 (Survival Analysis)", "15. 설명가능성 / 고객별 개입 이유", "17. 할인·쿠폰 운영 리스크"}:
         top_n = st.slider(
-            "표시 고객 수",
+            "차트 기준 표시 고객 수",
             min_value=5,
-            max_value=50,
+            max_value=200,
             step=5,
             key="control_top_n",
         )
@@ -1089,19 +1424,13 @@ with st.sidebar:
             key="control_recommendation_per_customer",
         )
 
-    if view in {"4. 예산 배분 결과", "5. 예상 최적화 ROI", "6. 리텐션 대상 고객 목록", "8. Uplift/최적화 결과 (실시간)", "9. 개인화 추천", "12. 의사결정 엔진 비교"}:
-        budget = st.number_input(
-            "총 마케팅 예산",
-            min_value=100000,
-            max_value=100000000,
-            step=100000,
-            key="control_budget",
-        )
+    if view in {"4. 예산 배분 결과", "5. 예상 최적화 ROI", "6. 리텐션 대상 고객 목록", "8. Uplift/최적화 결과 (실시간)", "9. 개인화 추천", "12. 의사결정 엔진 비교", "13. 운영 한눈에 보기"}:
+        budget = int(st.number_input("총 마케팅 예산", step=100000, key="control_budget"))
         target_cap = st.slider(
             "최대 타겟 고객 수",
-            min_value=50,
-            max_value=3000,
-            step=50,
+            min_value=100,
+            max_value=5000,
+            step=100,
             key="control_target_cap",
             help="예산이 충분하더라도 이 수를 넘겨 타겟팅하지 않습니다.",
         )
@@ -1113,34 +1442,40 @@ with st.sidebar:
             threshold=threshold,
             max_customers=target_cap,
         )
-        final_target_count = int(len(preview_selected_customers))
-        default_display_n = int(st.session_state.get("control_top_n", 20))
-        top_n = int(st.number_input(
-            "표시 고객 수",
-            min_value=1,
-            max_value=max(final_target_count, 1),
-            value=min(default_display_n, max(final_target_count, 1)),
-            step=1,
-            key="control_recommendation_display_n",
-            help="최종 타겟 고객 수를 넘지 않는 범위에서 입력합니다.",
-        ))
-        st.session_state["control_top_n"] = max(5, min(int(top_n), 50))
-        st.caption(f"최종 리텐션 타겟 고객군(예산/임계값 적용)에게만 추천을 생성합니다. 현재 조건의 최종 타겟 고객 수: {final_target_count:,}명")
+        st.caption(f"현재 조건의 최종 타겟 고객 수: {int(len(preview_selected_customers)):,}명")
 
     st.divider()
     st.subheader("실행 / 새로고침")
+    if notice := st.session_state.pop("dashboard_refresh_notice", None):
+        st.success(notice)
+    if warning := st.session_state.pop("dashboard_refresh_warning", None):
+        st.warning(warning)
+
     if st.button("데이터/결과 새로고침", use_container_width=True):
+        refresh_notice = None
+        refresh_warning = None
+        if view in REALTIME_REFRESH_VIEWS:
+            try:
+                tick_payload = advance_realtime_stream(batch_size=250, top_n=max(int(top_n), 50), reset_when_exhausted=True)
+                tick_summary = tick_payload.get("summary", {}) if isinstance(tick_payload, dict) else {}
+                refresh_notice = (
+                    f"실시간 스트림을 {int(tick_summary.get('last_tick_advanced', 0) or 0):,}건 전진했습니다. "
+                    f"누적 처리 이벤트 수: {int(tick_summary.get('processed_events', 0) or 0):,}건"
+                )
+            except Exception as exc:
+                refresh_warning = f"실시간 tick 호출에는 실패했지만 화면 캐시는 새로고침했습니다: {exc}"
+        clear_dashboard_caches()
+        if refresh_notice:
+            st.session_state["dashboard_refresh_notice"] = refresh_notice
+        if refresh_warning:
+            st.session_state["dashboard_refresh_warning"] = refresh_warning
         st.rerun()
 
-    st.caption(
-        "4·5·8·9번 화면은 현재 조건으로 다시 계산됩니다. 7번 화면은 백엔드가 보관한 학습 결과를 읽기 전용으로 표시합니다."
-    )
+    st.caption("실시간 화면에서는 새로고침 시 스트림을 조금씩 더 재생해 수치가 변하도록 했습니다. 나머지 화면은 캐시를 비우고 다시 계산합니다.")
 
     st.divider()
     st.subheader("LLM 설정")
-    st.caption(
-        "권장: API 키는 코드에 쓰지 말고 환경변수 OPENAI_API_KEY 또는 Streamlit secrets로 관리하세요."
-    )
+    st.caption("권장: API 키는 코드에 쓰지 말고 환경변수 OPENAI_API_KEY 또는 Streamlit secrets로 관리하세요.")
 
     llm_enabled = st.toggle("LLM 요약/질문 기능 사용", value=True)
     llm_api_key = st.text_input(
@@ -1160,16 +1495,8 @@ with st.sidebar:
     ]
     _llm_preset_labels = [label for label, _ in _llm_presets]
     _llm_preset_models = {label: model for label, model in _llm_presets}
-
-    _default_label = next(
-        (label for label, model in _llm_presets if model == DEFAULT_MODEL_NAME),
-        _llm_presets[0][0],
-    )
-    llm_model_choice = st.selectbox(
-        "LLM 모델 선택",
-        options=_llm_preset_labels,
-        index=_llm_preset_labels.index(_default_label),
-    )
+    _default_label = next((label for label, model in _llm_presets if model == DEFAULT_MODEL_NAME), _llm_presets[0][0])
+    llm_model_choice = st.selectbox("LLM 모델 선택", options=_llm_preset_labels, index=_llm_preset_labels.index(_default_label))
     _chosen_model = _llm_preset_models.get(llm_model_choice, DEFAULT_MODEL_NAME)
     if _chosen_model == "__custom__":
         llm_model = st.text_input("LLM 모델명 (직접 입력)", value=DEFAULT_MODEL_NAME)
@@ -1190,7 +1517,7 @@ with st.sidebar:
 
 churn_summary, risk_customers = get_churn_status(customers, threshold)
 cohort_curve = get_cohort_curve(cohort_df)
-top_customers = get_top_high_value_customers(customers, top_n=top_n)
+top_customers = get_top_high_value_customers(customers, top_n=None)
 selected_customers, optimize_summary, segment_allocation = get_budget_result(
     customers,
     budget=budget,
@@ -1208,16 +1535,17 @@ if view == "12. 의사결정 엔진 비교":
 else:
     baseline_selected_customers, baseline_optimize_summary, baseline_segment_allocation = pd.DataFrame(), {}, pd.DataFrame()
 
-retention_targets = get_retention_targets(customers, threshold, top_n=top_n)
+retention_targets = get_retention_targets(customers, threshold)
 
 if view == "9. 개인화 추천":
     try:
+        recommendation_limit = max(int(len(selected_customers)), int(target_cap), 1)
         recommendation_summary, personalized_recommendations = fetch_personalized_recommendations(
-            limit=top_n,
+            limit=recommendation_limit,
             per_customer=recommendation_per_customer,
             budget=budget,
             threshold=threshold,
-            max_customers=target_cap,
+            max_customers=max(recommendation_limit, int(target_cap)),
             rebuild=True,
         )
     except Exception as exc:
@@ -1229,9 +1557,9 @@ else:
     recommendation_summary, personalized_recommendations = {}, pd.DataFrame()
     recommendation_error = None
 
-if view == "10. 실시간 이탈 위험 스코어링":
+if view == "10. 실시간 위험 스코어링 / 운영 모니터":
     try:
-        realtime_summary, realtime_scores = fetch_realtime_scores(limit=top_n)
+        realtime_summary, realtime_scores = fetch_realtime_scores(limit=max(int(top_n), 500))
     except Exception as exc:
         realtime_summary, realtime_scores = {}, pd.DataFrame()
         realtime_error = str(exc)
@@ -1252,6 +1580,63 @@ if view == "11. 이탈 시점 예측 (Survival Analysis)":
 else:
     survival_metrics, survival_predictions, survival_coefficients, survival_image_paths = {}, pd.DataFrame(), pd.DataFrame(), {}
     survival_error = None
+
+recommendation_context_df = personalized_recommendations.copy()
+survival_context_df = survival_predictions.copy()
+realtime_context_df = realtime_scores.copy()
+
+insight_bundle = None
+global_feature_table = pd.DataFrame()
+operational_overview: dict[str, Any] = {}
+experiment_overview: dict[str, Any] = {}
+realtime_monitor_overview: dict[str, Any] = {}
+coupon_risk_overview: dict[str, Any] = {}
+data_diagnostics: dict[str, Any] = {}
+customer_explanations = pd.DataFrame()
+
+if view in INSIGHT_HEAVY_VIEWS:
+    insight_bundle = load_insight_data()
+    if recommendation_context_df.empty:
+        recommendation_context_df = insight_bundle.personalized_recommendations.copy()
+    if survival_context_df.empty:
+        survival_context_df = insight_bundle.survival_predictions.copy()
+    if realtime_context_df.empty:
+        realtime_context_df = insight_bundle.realtime_scores.copy()
+
+    if view in {"13. 운영 한눈에 보기", "15. 설명가능성 / 고객별 개입 이유"}:
+        operational_overview = build_operational_overview(
+            customers=customers,
+            selected_customers=selected_customers,
+            optimize_summary=optimize_summary,
+            recommendation_summary=recommendation_summary,
+            realtime_summary=realtime_summary,
+            survival_metrics=survival_metrics,
+            insight_bundle=insight_bundle,
+        )
+
+    if view == "14. 증분 성과 / A-B 실험":
+        experiment_overview = build_experiment_overview(insight_bundle)
+
+    if view == "10. 실시간 위험 스코어링 / 운영 모니터":
+        realtime_monitor_overview = build_realtime_monitor_overview(insight_bundle, fallback_scores=realtime_context_df)
+
+    if view == "16. 데이터 진단 / 시뮬레이터 충실도":
+        data_diagnostics = build_data_diagnostics(insight_bundle)
+
+    if view == "17. 할인·쿠폰 운영 리스크":
+        coupon_risk_overview = build_coupon_risk_overview(insight_bundle)
+
+    if view == "15. 설명가능성 / 고객별 개입 이유":
+        global_feature_table = build_global_feature_table(insight_bundle)
+        explanation_limit = max(int(len(selected_customers)) if not selected_customers.empty else int(len(insight_bundle.optimization_selected_customers)), int(top_n), 1)
+        customer_explanations = build_customer_explanations(
+            customers=customers,
+            selected_customers=selected_customers if not selected_customers.empty else insight_bundle.optimization_selected_customers,
+            recommendation_df=recommendation_context_df,
+            survival_predictions=survival_context_df,
+            realtime_scores=realtime_context_df,
+            top_n=explanation_limit,
+        )
 
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("전체 고객 수", f"{churn_summary['total_customers']:,}")
@@ -1485,7 +1870,7 @@ elif view == "2. 코호트 리텐션 곡선":
 elif view == "3. Uplift + CLV 상위 고객":
     st.subheader("Uplift Score + CLV 상위 고가치 고객 목록")
 
-    plot_df = top_customers.copy()
+    plot_df = top_customers.head(min(len(top_customers), 500)).copy()
     plot_df["customer_label"] = plot_df["customer_id"].astype(str)
     plot_df["bubble_size"] = plot_df["value_score"].clip(lower=0.01)
 
@@ -1508,10 +1893,10 @@ elif view == "3. Uplift + CLV 상위 고객":
     st.plotly_chart(scatter_fig, use_container_width=True)
 
     st.caption(
-        "버블 크기는 expected_incremental_profit 대신 value_score(CLV × uplift_score)를 사용합니다."
+        "버블 크기는 expected_incremental_profit 대신 value_score(CLV × uplift_score)를 사용합니다. 차트는 성능을 위해 상위 500명만, 아래 테이블은 전체 정렬 결과를 보여줍니다."
     )
 
-    display_df = plot_df[
+    display_df = top_customers[
         [
             "customer_id",
             "persona",
@@ -1531,7 +1916,7 @@ elif view == "3. Uplift + CLV 상위 고객":
     _render_dataframe_with_count(display_df, label="상위 고객 테이블")
 
     llm_payload = {
-        "top_n": top_n,
+        "top_n": int(len(top_customers)),
         "segment_distribution": series_distribution(plot_df, "uplift_segment"),
         "numeric_summary": numeric_summary(
             plot_df,
@@ -1548,7 +1933,7 @@ elif view == "3. Uplift + CLV 상위 고객":
                 "expected_incremental_profit",
                 "uplift_segment",
             ],
-            max_rows=min(top_n, 15),
+            max_rows=15,
         ),
     }
 
@@ -1902,7 +2287,7 @@ elif view == "8. Uplift/최적화 결과 (실시간)":
 
             if not uplift_segmentation_df.empty:
                 _render_dataframe_with_count(
-                    uplift_segmentation_df.head(30),
+                    uplift_segmentation_df,
                     label="Uplift 세그먼트 미리보기",
                 )
 
@@ -1946,7 +2331,7 @@ elif view == "8. Uplift/최적화 결과 (실시간)":
             if not optimization_selected_customers_df.empty:
                 st.markdown("### 현재 조건에서 선정된 고객")
                 _render_dataframe_with_count(
-                    optimization_selected_customers_df.head(30),
+                    optimization_selected_customers_df,
                     label="현재 조건에서 선정된 고객",
                 )
 
@@ -2031,9 +2416,9 @@ elif view == "9. 개인화 추천":
         ) if not personalized_recommendations.empty else [],
     }
 
-elif view == "10. 실시간 이탈 위험 스코어링":
-    st.subheader("실시간 이탈 위험 스코어링")
-    st.caption("Redis Streams로 적재된 이벤트를 소비해 고객별 실시간 위험 점수를 갱신합니다. 이제 점수 급등 시 전체 최적화를 다시 돌리지 않고, 해당 고객 중심으로 부분 재최적화해 액션 큐를 즉시 갱신합니다.")
+elif view == "10. 실시간 위험 스코어링 / 운영 모니터":
+    st.subheader("실시간 위험 스코어링 / 운영 모니터")
+    st.caption("Redis Streams로 적재된 이벤트를 조금씩 재생하며 고객별 실시간 위험 점수와 액션 큐 상태를 함께 갱신합니다.")
 
     if realtime_error:
         st.error(f"실시간 스코어 API 호출 실패: {realtime_error}")
@@ -2104,8 +2489,50 @@ elif view == "10. 실시간 이탈 위험 스코어링":
             display_df['expected_roi'] = display_df['expected_roi'].map(lambda x: f"{float(x):.3f}")
         _render_dataframe_with_count(display_df, label="실시간 이탈 위험 테이블")
 
+    realtime_summary_display = realtime_monitor_overview.get("summary", realtime_summary) if realtime_monitor_overview else realtime_summary
+    st.markdown("### 운영 모니터")
+    q1, q2, q3, q4, q5 = st.columns(5)
+    q1.metric("처리 이벤트 수", f"{int(realtime_summary_display.get('processed_events', 0) or 0):,}")
+    q2.metric("재최적화 횟수", f"{int(realtime_summary_display.get('triggered_reoptimizations', 0) or 0):,}")
+    q3.metric("큐 적재 수", f"{int(realtime_summary_display.get('queued_actions_total', realtime_summary_display.get('action_queue_size', 0)) or 0):,}")
+    cap = int(realtime_summary_display.get('daily_channel_capacity', 0) or 0)
+    alloc = int(realtime_summary_display.get('daily_channel_allocated', 0) or 0)
+    utilization = alloc / cap if cap > 0 else 0.0
+    q4.metric("채널 용량 사용률", pct(utilization))
+    q5.metric("고우선순위 큐", f"{int(realtime_summary_display.get('high_priority_queue_size', 0) or 0):,}")
+
+    if realtime_monitor_overview:
+        tab1, tab2, tab3 = st.tabs(["큐 상태", "트리거 이유", "행동 신호"])
+        with tab1:
+            status_df = realtime_monitor_overview.get("status_df", pd.DataFrame())
+            queue_df = realtime_monitor_overview.get("queue_df", pd.DataFrame())
+            if not status_df.empty:
+                fig = px.pie(status_df, names="status", values="count", title="액션 큐 상태 구성")
+                st.plotly_chart(fig, use_container_width=True)
+            if not queue_df.empty:
+                display_df = queue_df.copy()
+                for col in ["queued_coupon_cost", "queued_expected_profit"]:
+                    if col in display_df.columns:
+                        display_df[col] = display_df[col].map(lambda x: money(float(x)) if pd.notna(x) else "")
+                for col in ["queued_expected_roi", "realtime_churn_score"]:
+                    if col in display_df.columns:
+                        display_df[col] = display_df[col].map(lambda x: f"{float(x):.3f}" if pd.notna(x) else "")
+                _render_dataframe_with_count(display_df, label="실시간 액션 큐 상세", height=min(1200, 220 + 28 * len(display_df)))
+        with tab2:
+            trigger_df = realtime_monitor_overview.get("trigger_df", pd.DataFrame())
+            if not trigger_df.empty:
+                fig = px.bar(trigger_df.head(15), x="trigger_reason", y="count", title="주요 트리거 이유", text="count")
+                st.plotly_chart(fig, use_container_width=True)
+                _render_dataframe_with_count(trigger_df, label="트리거 이유 빈도", prefer_static=True)
+        with tab3:
+            signal_df = realtime_monitor_overview.get("signal_df", pd.DataFrame())
+            if not signal_df.empty:
+                fig = px.bar(signal_df, x="signal", y="mean_value", title="행동 신호 평균값")
+                st.plotly_chart(fig, use_container_width=True)
+                _render_dataframe_with_count(signal_df, label="행동 신호 평균", prefer_static=True)
+
     llm_payload = {
-        'realtime_summary': realtime_summary,
+        'realtime_summary': realtime_summary_display,
         'realtime_preview': dataframe_snapshot(
             realtime_scores,
             columns=[
@@ -2119,6 +2546,7 @@ elif view == "10. 실시간 이탈 위험 스코어링":
             ],
             max_rows=20,
         ) if not realtime_scores.empty else [],
+        'queue_preview': dataframe_snapshot(realtime_monitor_overview.get("queue_df", pd.DataFrame()), max_rows=20) if realtime_monitor_overview and not realtime_monitor_overview.get("queue_df", pd.DataFrame()).empty else [],
     }
 
 elif view == "11. 이탈 시점 예측 (Survival Analysis)":
@@ -2402,6 +2830,320 @@ elif view == "12. 의사결정 엔진 비교":
             ],
             max_rows=15,
         ) if not selected_customers.empty else [],
+    }
+
+elif view == "13. 운영 한눈에 보기":
+    st.subheader("운영 한눈에 보기")
+    st.caption("현 시점의 위험 고객 규모, 예산 집행, 추천 생성, 실시간 액션 큐, 세그먼트 구성을 한 화면에서 묶어 보여줍니다.")
+
+    overview_cards = operational_overview.get("summary_cards", {})
+    m1, m2, m3, m4, m5 = st.columns(5)
+    m1.metric("현재 리텐션 타겟", f"{int(overview_cards.get('selected_count', 0)):,}명")
+    m2.metric("예상 증분 이익", money(float(overview_cards.get('expected_profit', 0.0))))
+    m3.metric("예상 ROI", pct(float(overview_cards.get('overall_roi', 0.0))))
+    m4.metric("추천 생성 건수", f"{int(overview_cards.get('recommended_rows', 0)):,}건")
+    m5.metric("실시간 큐 적재", f"{int(overview_cards.get('queued_actions', 0)):,}건")
+
+    st.info(
+        "사용자가 보통 궁금해하는 질문을 기준으로 묶었습니다: 지금 누구를 잡고 있는가, 왜 그 고객들인가, "
+        "이벤트는 어느 단계에서 많이 쌓이고 있는가, 실시간 큐에 얼마나 액션이 대기 중인가, 어떤 세그먼트가 가장 중요한가."
+    )
+
+    tab1, tab2, tab3 = st.tabs(["운영 파이프라인", "행동/세그먼트", "지금 봐야 할 포인트"])
+
+    with tab1:
+        pipeline_rows = pd.DataFrame([
+            {"stage": "전체 고객", "count": int(len(customers)), "note": "현재 customer_summary 기준 전체 모수"},
+            {"stage": "위험 고객(현재 threshold)", "count": int(churn_summary.get('at_risk_customers', 0)), "note": "threshold 이상인 고객"},
+            {"stage": "최종 타겟 고객", "count": int(len(selected_customers)), "note": "예산·ROI·타이밍을 고려해 선별"},
+            {"stage": "개인화 추천 생성", "count": int(recommendation_summary.get('rows', 0) or 0), "note": "최종 타겟 대상 추천 산출"},
+            {"stage": "실시간 액션 큐", "count": int(realtime_monitor_overview.get('summary', {}).get('queued_actions_total', 0) or 0), "note": "즉시/후속 조치 대기"},
+        ])
+        fig = px.funnel(pipeline_rows, x="count", y="stage", title="운영 파이프라인 요약")
+        st.plotly_chart(fig, use_container_width=True)
+        _render_dataframe_with_count(pipeline_rows, label="운영 파이프라인 단계")
+
+    with tab2:
+        funnel_df = operational_overview.get("funnel_df", pd.DataFrame())
+        persona_df = operational_overview.get("persona_df", pd.DataFrame())
+        segment_df = operational_overview.get("segment_df", pd.DataFrame())
+
+        left, right = st.columns(2)
+        with left:
+            if not funnel_df.empty:
+                fig = px.bar(funnel_df, x="stage", y="events", title="이벤트 단계별 발생량", text="events")
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.warning("이벤트 믹스를 계산할 데이터가 없습니다.")
+        with right:
+            if not persona_df.empty:
+                plot_df = persona_df.head(10).copy()
+                fig = px.bar(
+                    plot_df,
+                    x="persona",
+                    y="avg_churn_probability",
+                    hover_data=[col for col in ["customers", "avg_uplift_score", "avg_clv"] if col in plot_df.columns],
+                    title="페르소나별 평균 이탈 위험",
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.warning("페르소나 집계를 계산할 수 없습니다.")
+
+        if not segment_df.empty:
+            display_segment_df = segment_df.head(10).copy()
+            for col in ["avg_clv", "avg_priority_score"]:
+                if col in display_segment_df.columns:
+                    display_segment_df[col] = display_segment_df[col].map(money)
+            for col in ["avg_churn_probability", "avg_uplift"]:
+                if col in display_segment_df.columns:
+                    display_segment_df[col] = display_segment_df[col].map(lambda x: f"{float(x):.3f}")
+            _render_dataframe_with_count(display_segment_df, label="핵심 고객 세그먼트")
+
+    with tab3:
+        cA, cB, cC = st.columns(3)
+        cA.metric("평균 개입 윈도우", f"{float(overview_cards.get('avg_window', 0.0)):.1f}일")
+        cB.metric("Survival C-index", f"{float(overview_cards.get('survival_c_index', 0.0)):.4f}")
+        cC.metric("누적 주문 건수", f"{int(overview_cards.get('order_count', 0)):,}건")
+        st.markdown("### 지금 바로 확인할 것")
+        st.markdown(
+            "- 현재 threshold와 예산에서 실제로 선별된 고객 수가 얼마나 되는지\n"
+            "- 세그먼트별로 churn만 높은지, uplift와 CLV까지 같이 높은지\n"
+            "- 실시간 액션 큐가 채널 용량보다 빠르게 늘고 있지 않은지\n"
+            "- 추천 건수는 충분한데 실제 선택 고객이 적다면 예산/ROI 제약이 과한지"
+        )
+
+    llm_payload = {
+        "overview_cards": overview_cards,
+        "pipeline": pipeline_rows.to_dict(orient="records"),
+        "persona_summary": operational_overview.get("persona_df", pd.DataFrame()).head(10).to_dict(orient="records") if not operational_overview.get("persona_df", pd.DataFrame()).empty else [],
+        "segment_summary": operational_overview.get("segment_df", pd.DataFrame()).head(10).to_dict(orient="records") if not operational_overview.get("segment_df", pd.DataFrame()).empty else [],
+    }
+
+elif view == "14. 증분 성과 / A-B 실험":
+    st.subheader("증분 성과 / A-B 실험")
+    st.caption("정확도보다 더 중요한 운영 지표인 증분 리텐션, 추가 유지 고객 수, 비용 대비 유지 성과, dose-response 결과를 함께 봅니다.")
+
+    exp_metrics = experiment_overview.get("metrics", {})
+    m1, m2, m3, m4, m5 = st.columns(5)
+    m1.metric("증분 리텐션", pct(float(exp_metrics.get('incremental_retention', 0.0))))
+    m2.metric("추가 유지 고객 수", f"{int(round(float(exp_metrics.get('incremental_retained_customers', 0.0)))):,}명")
+    m3.metric("쿠폰 집행 총액", money(float(exp_metrics.get('coupon_spend_total', 0.0))))
+    cpic_val = exp_metrics.get('incremental_cpic', np.nan)
+    m4.metric("CPIC", money(float(cpic_val)) if pd.notna(cpic_val) else "-")
+    m5.metric("Z-test p-value", f"{float(exp_metrics.get('p_value', np.nan)):.6f}" if pd.notna(exp_metrics.get('p_value', np.nan)) else "-")
+
+    tab1, tab2, tab3 = st.tabs(["A/B 해석", "개입 강도 효과", "Persuadables 프로필"])
+
+    with tab1:
+        ab_test = experiment_overview.get("ab_test", {})
+        if ab_test:
+            report_md = ab_test.get("report_markdown", "")
+            if report_md:
+                st.markdown(report_md)
+        else:
+            st.warning("A/B 테스트 산출물을 찾지 못했습니다.")
+
+    with tab2:
+        dose_df = experiment_overview.get("dose_df", pd.DataFrame())
+        if not dose_df.empty:
+            chart_df = dose_df.copy()
+            fig = px.bar(
+                chart_df,
+                x="arm",
+                y="retention_rate",
+                hover_data=["samples", "avg_coupon_cost", "effect_prior", "cost_multiplier"],
+                title="개입 강도별 retention rate",
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            display_df = dose_df.copy()
+            for col in ["retention_rate", "effect_prior"]:
+                if col in display_df.columns:
+                    display_df[col] = display_df[col].map(lambda x: f"{float(x):.3f}")
+            for col in ["avg_coupon_cost", "avg_revenue_post_horizon"]:
+                if col in display_df.columns:
+                    display_df[col] = display_df[col].map(money)
+            _render_dataframe_with_count(display_df, label="dose-response arm 요약")
+        else:
+            st.warning("dose-response 요약을 찾지 못했습니다.")
+
+    with tab3:
+        persuadables = experiment_overview.get("persuadables", {})
+        st.metric("Persuadables 비중", pct(float(persuadables.get('persuadables_share', 0.0))))
+        rules = persuadables.get("derived_targeting_rules", [])
+        if rules:
+            st.markdown("### 도출된 타겟팅 규칙")
+            for rule in rules:
+                st.markdown(f"- {rule}")
+        numeric_deltas = experiment_overview.get("numeric_deltas", pd.DataFrame())
+        if not numeric_deltas.empty:
+            _render_dataframe_with_count(numeric_deltas, label="Persuadables 수치 프로필 차이")
+
+    llm_payload = {
+        "experiment_metrics": exp_metrics,
+        "dose_response": experiment_overview.get("dose_df", pd.DataFrame()).to_dict(orient="records") if not experiment_overview.get("dose_df", pd.DataFrame()).empty else [],
+        "persuadables": experiment_overview.get("persuadables", {}),
+    }
+
+elif view == "15. 설명가능성 / 고객별 개입 이유":
+    st.subheader("설명가능성 / 고객별 개입 이유")
+    st.caption("왜 이 고객이 위험군인지, 왜 개입 후보로 뽑혔는지, 무엇을 조심해야 하는지를 운영 언어로 풀어 보여줍니다.")
+
+    tab1, tab2 = st.tabs(["전역 설명", "고객별 설명"])
+
+    with tab1:
+        if not global_feature_table.empty:
+            chart_df = global_feature_table.head(10).copy()
+            fig = px.bar(chart_df.iloc[::-1], x="importance", y="feature_display", orientation="h", title="전역 중요 변수 Top 10")
+            st.plotly_chart(fig, use_container_width=True)
+            display_df = global_feature_table[["feature_display", "importance", "importance_share"]].copy()
+            display_df.columns = ["feature", "importance", "importance_share"]
+            display_df["importance"] = display_df["importance"].map(lambda x: f"{float(x):.4f}")
+            display_df["importance_share"] = display_df["importance_share"].map(lambda x: f"{float(x):.2%}")
+            _render_dataframe_with_count(display_df, label="전역 중요 변수")
+        else:
+            st.warning("전역 중요 변수 파일을 찾지 못했습니다.")
+
+        if not operational_overview.get("persona_df", pd.DataFrame()).empty:
+            persona_reason_df = operational_overview["persona_df"].copy()
+            if "avg_churn_probability" in persona_reason_df.columns:
+                persona_reason_df["avg_churn_probability"] = persona_reason_df["avg_churn_probability"].map(lambda x: f"{float(x):.3f}")
+            if "avg_uplift_score" in persona_reason_df.columns:
+                persona_reason_df["avg_uplift_score"] = persona_reason_df["avg_uplift_score"].map(lambda x: f"{float(x):.3f}")
+            if "avg_clv" in persona_reason_df.columns:
+                persona_reason_df["avg_clv"] = persona_reason_df["avg_clv"].map(money)
+            _render_dataframe_with_count(persona_reason_df, label="페르소나별 위험·가치 프로필")
+
+    with tab2:
+        if not customer_explanations.empty:
+            display_df = customer_explanations.copy()
+            for col in ["churn_probability", "realtime_churn_score", "uplift_score", "expected_roi", "survival_prob_30d"]:
+                if col in display_df.columns:
+                    display_df[col] = display_df[col].map(lambda x: f"{float(x):.3f}" if pd.notna(x) else "")
+            for col in ["clv", "expected_incremental_profit"]:
+                if col in display_df.columns:
+                    display_df[col] = display_df[col].map(lambda x: money(float(x)) if pd.notna(x) else "")
+            _render_dataframe_with_count(display_df, label="고객별 선택 이유 / 주의사항", height=min(760, 220 + 34 * len(display_df)))
+        else:
+            st.warning("설명가능성 테이블을 만들 데이터가 부족합니다.")
+
+    llm_payload = {
+        "global_feature_table": global_feature_table.head(15).to_dict(orient="records") if not global_feature_table.empty else [],
+        "customer_explanations": customer_explanations.head(20).to_dict(orient="records") if not customer_explanations.empty else [],
+    }
+
+elif view == "16. 데이터 진단 / 시뮬레이터 충실도":
+    st.subheader("데이터 진단 / 시뮬레이터 충실도")
+    st.caption("시뮬레이터가 만든 원천 데이터와 파생 산출물이 운영형 분석에 쓰기 적절한지, 기본적인 정합성과 분포를 함께 점검합니다.")
+
+    checks_df = data_diagnostics.get("checks_df", pd.DataFrame())
+    volumes_df = data_diagnostics.get("volumes_df", pd.DataFrame())
+    event_mix_df = data_diagnostics.get("event_mix_df", pd.DataFrame())
+    distribution_df = data_diagnostics.get("distribution_df", pd.DataFrame())
+
+    if not checks_df.empty:
+        status_counts = checks_df["status"].value_counts().to_dict()
+        st.info(f"양호 {status_counts.get('양호', 0)}개 / 주의 {status_counts.get('주의', 0)}개 점검 항목")
+        _render_dataframe_with_count(checks_df, label="정합성 점검 결과", prefer_static=True)
+
+    tab1, tab2, tab3 = st.tabs(["데이터 볼륨", "행동 분포", "고객 분포"])
+
+    with tab1:
+        _render_dataframe_with_count(volumes_df, label="원천/산출 데이터 볼륨", prefer_static=True)
+
+    with tab2:
+        if not event_mix_df.empty:
+            fig = px.bar(event_mix_df, x="event_type", y="count", title="이벤트 타입 분포", text="count")
+            st.plotly_chart(fig, use_container_width=True)
+            display_df = event_mix_df.copy()
+            if "share" in display_df.columns:
+                display_df["share"] = display_df["share"].map(lambda x: f"{float(x):.2%}")
+            _render_dataframe_with_count(display_df, label="이벤트 타입 분포", prefer_static=True)
+        else:
+            st.warning("이벤트 분포를 계산할 데이터가 없습니다.")
+
+    with tab3:
+        if not distribution_df.empty:
+            selected_dimension = st.selectbox("분포 차원 선택", options=sorted(distribution_df["dimension"].unique()), key="diagnostic_dimension")
+            subset = distribution_df[distribution_df["dimension"] == selected_dimension].copy()
+            fig = px.bar(subset, x="value", y="count", title=f"{selected_dimension} 분포", text="count")
+            st.plotly_chart(fig, use_container_width=True)
+            subset["share"] = subset["share"].map(lambda x: f"{float(x):.2%}")
+            _render_dataframe_with_count(subset, label=f"{selected_dimension} 분포", prefer_static=True)
+        else:
+            st.warning("고객 분포를 계산할 데이터가 없습니다.")
+
+    llm_payload = {
+        "checks": checks_df.to_dict(orient="records") if not checks_df.empty else [],
+        "volumes": volumes_df.to_dict(orient="records") if not volumes_df.empty else [],
+        "event_mix": event_mix_df.head(20).to_dict(orient="records") if not event_mix_df.empty else [],
+        "distribution": distribution_df.head(30).to_dict(orient="records") if not distribution_df.empty else [],
+    }
+
+elif view == "17. 할인·쿠폰 운영 리스크":
+    st.subheader("할인·쿠폰 운영 리스크")
+    st.caption("쿠폰 노출 누적, 리딤 효율, 강도별 효과, 추천/개입 믹스를 같이 보면서 할인 남발의 부작용 가능성을 점검합니다.")
+
+    risk_metrics = coupon_risk_overview.get("metrics", {})
+    m1, m2, m3, m4, m5 = st.columns(5)
+    m1.metric("노출 고객 수", f"{int(risk_metrics.get('exposed_customers', 0)):,}명")
+    m2.metric("고노출 고객 수", f"{int(risk_metrics.get('high_exposure_customers', 0)):,}명")
+    m3.metric("전체 노출 수", f"{int(risk_metrics.get('total_exposures', 0)):,}회")
+    m4.metric("오픈율", pct(float(risk_metrics.get('open_rate', 0.0))) if pd.notna(risk_metrics.get('open_rate', np.nan)) else "-")
+    m5.metric("리딤률", pct(float(risk_metrics.get('redeem_rate', 0.0))) if pd.notna(risk_metrics.get('redeem_rate', np.nan)) else "-")
+
+    flags_df = coupon_risk_overview.get("flags_df", pd.DataFrame())
+    if not flags_df.empty:
+        _render_dataframe_with_count(flags_df, label="쿠폰 운영 리스크 플래그", prefer_static=True)
+
+    tab1, tab2, tab3 = st.tabs(["페르소나별 노출", "추천/강도 믹스", "운영 해석"])
+
+    with tab1:
+        segment_df = coupon_risk_overview.get("segment_df", pd.DataFrame())
+        if not segment_df.empty:
+            fig = px.bar(segment_df.head(12), x="persona", y="avg_coupon_exposure", hover_data=[col for col in ["avg_churn_probability", "avg_expected_roi"] if col in segment_df.columns], title="페르소나별 평균 쿠폰 노출")
+            st.plotly_chart(fig, use_container_width=True)
+            display_df = segment_df.copy()
+            for col in ["avg_churn_probability", "avg_expected_roi"]:
+                if col in display_df.columns:
+                    display_df[col] = display_df[col].map(lambda x: f"{float(x):.3f}")
+            _render_dataframe_with_count(display_df, label="페르소나별 쿠폰 노출/성과")
+        else:
+            st.warning("쿠폰 노출 집계를 계산할 데이터가 없습니다.")
+
+    with tab2:
+        left, right = st.columns(2)
+        recommendation_mix = coupon_risk_overview.get("recommendation_mix", pd.DataFrame())
+        intensity_mix = coupon_risk_overview.get("intensity_mix", pd.DataFrame())
+        with left:
+            if not recommendation_mix.empty:
+                fig = px.pie(recommendation_mix, names="recommended_category", values="count", title="추천 카테고리 믹스")
+                st.plotly_chart(fig, use_container_width=True)
+        with right:
+            if not intensity_mix.empty:
+                fig = px.bar(intensity_mix, x="intervention_intensity", y="count", title="선정된 개입 강도 믹스", text="count")
+                st.plotly_chart(fig, use_container_width=True)
+
+    with tab3:
+        high_prior = insight_bundle.dose_response_summary.get("effect_priors", {}).get("high") if insight_bundle.dose_response_summary else None
+        st.markdown("### 운영 해석")
+        if high_prior is not None:
+            st.markdown(
+                "- 고강도 개입의 prior effect가 음수이면 혜택을 세게 줄수록 오히려 성과가 악화될 수 있습니다.\n"
+                f"- 현재 high 강도 prior effect: **{float(high_prior):.3f}**"
+            )
+        else:
+            st.markdown("- high 강도 prior effect를 찾지 못했습니다.")
+        st.markdown(
+            "- 노출 고객 수와 리딤률을 함께 봐야 합니다. 노출은 많은데 리딤이 낮으면 학습효과/피로 누적 가능성이 큽니다.\n"
+            "- price_sensitive 성향이 강한 고객군은 단기 반응은 좋을 수 있지만, 장기적으로는 마진 희석과 할인 의존이 커질 수 있습니다.\n"
+            "- support 이슈형 고객은 쿠폰보다 서비스 회복 메시지나 CS 해결이 더 나을 수 있습니다."
+        )
+
+    llm_payload = {
+        "coupon_risk_metrics": risk_metrics,
+        "risk_flags": flags_df.to_dict(orient="records") if not flags_df.empty else [],
+        "segment_df": coupon_risk_overview.get("segment_df", pd.DataFrame()).head(15).to_dict(orient="records") if not coupon_risk_overview.get("segment_df", pd.DataFrame()).empty else [],
+        "intensity_mix": coupon_risk_overview.get("intensity_mix", pd.DataFrame()).to_dict(orient="records") if not coupon_risk_overview.get("intensity_mix", pd.DataFrame()).empty else [],
     }
 
 if llm_enabled:

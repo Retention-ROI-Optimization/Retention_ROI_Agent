@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional
 import pandas as pd
 
 from src.analytics.cohort_journey import run_cohort_and_journey_analysis
+from src.analytics.explainability import run_operational_explainability
 from src.clv.modeling import run_clv_pipeline
 from src.experiments.ab_testing import run_ab_test_analysis
 from src.features.engineering import build_feature_dataset
@@ -22,6 +23,7 @@ from src.recommendations.modeling import run_personalized_recommendation_pipelin
 from src.segmentation.prioritization import run_segmentation_pipeline
 from src.simulator.config import DEFAULT_CONFIG, SimulationConfig
 from src.simulator.pipeline import run_simulation
+from src.simulator.fidelity import run_simulation_fidelity_audit
 from src.survival.modeling import run_survival_pipeline as run_survival_modeling_pipeline
 from src.uplift.modeling import run_uplift_modeling
 
@@ -473,12 +475,17 @@ def run_optimize_pipeline(
     )
 
     artifacts = run_budget_optimization(result_dir=result_dir, budget=budget)
+    explain_artifacts = run_operational_explainability(
+        data_dir=data_dir,
+        result_dir=result_dir,
+        feature_store_dir=resolved_feature_store_dir,
+    )
     return {
         'mode': 'optimize',
         'model_path': None,
         'metrics_path': artifacts.summary_path,
         'primary_result_path': artifacts.segment_path,
-        'extra_result_paths': [artifacts.selected_path, artifacts.scenario_path],
+        'extra_result_paths': [artifacts.selected_path, artifacts.scenario_path, explain_artifacts.explanations_path, explain_artifacts.summary_path, explain_artifacts.markdown_path],
         'metadata': artifacts.summary,
     }
 
@@ -619,6 +626,11 @@ def run_recommendation_pipeline(
         target_customers=selected_customers,
         target_source='optimized_targets',
     )
+    run_operational_explainability(
+        data_dir=data_dir,
+        result_dir=result_dir,
+        feature_store_dir=resolved_feature_store_dir,
+    )
     summary = json.loads(Path(artifacts.summary_path).read_text(encoding='utf-8'))
     budget_summary['threshold'] = float(threshold)
     summary['budget_context'] = budget_summary
@@ -671,6 +683,65 @@ def run_survival_pipeline(
         'primary_result_path': artifacts.predictions_path,
         'extra_result_paths': [artifacts.coefficients_path, artifacts.risk_plot_path],
         'metadata': artifacts.metrics,
+    }
+
+
+def run_explainability_pipeline(
+    data_dir: Path,
+    result_dir: Path,
+    feature_store_dir: Path | None = None,
+    force_simulation: bool = False,
+    simulation_seed: Optional[int] = None,
+    randomize_simulation: bool = False,
+) -> Dict[str, Any]:
+    result_dir = ensure_directory(result_dir)
+    resolved_feature_store_dir = ensure_directory(feature_store_dir or Path('data/feature_store'))
+    ensure_simulation_outputs(
+        data_dir,
+        force=force_simulation,
+        random_seed=simulation_seed,
+        randomize=randomize_simulation,
+    )
+    build_feature_dataset(data_dir=data_dir, feature_store_dir=resolved_feature_store_dir)
+    artifacts = run_operational_explainability(
+        data_dir=data_dir,
+        result_dir=result_dir,
+        feature_store_dir=resolved_feature_store_dir,
+    )
+    summary = json.loads(Path(artifacts.summary_path).read_text(encoding='utf-8'))
+    return {
+        'mode': 'explain',
+        'model_path': None,
+        'metrics_path': artifacts.summary_path,
+        'primary_result_path': artifacts.explanations_path,
+        'extra_result_paths': [artifacts.markdown_path],
+        'metadata': summary,
+    }
+
+
+def run_simulation_fidelity_pipeline(
+    data_dir: Path,
+    result_dir: Path,
+    force_simulation: bool = False,
+    simulation_seed: Optional[int] = None,
+    randomize_simulation: bool = False,
+) -> Dict[str, Any]:
+    result_dir = ensure_directory(result_dir)
+    ensure_simulation_outputs(
+        data_dir,
+        force=force_simulation,
+        random_seed=simulation_seed,
+        randomize=randomize_simulation,
+    )
+    artifacts = run_simulation_fidelity_audit(data_dir=data_dir, result_dir=result_dir)
+    summary = json.loads(Path(artifacts.summary_path).read_text(encoding='utf-8'))
+    return {
+        'mode': 'fidelity',
+        'model_path': None,
+        'metrics_path': artifacts.summary_path,
+        'primary_result_path': artifacts.markdown_path,
+        'extra_result_paths': [],
+        'metadata': summary,
     }
 
 

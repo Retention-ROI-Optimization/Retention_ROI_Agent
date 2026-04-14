@@ -7,7 +7,7 @@ from typing import Dict
 
 import pandas as pd
 
-from src.optimization.dose_response import load_dose_response_policy_model, load_dose_response_summary
+from src.optimization.dose_response import ACTION_INTENSITIES, load_dose_response_policy_model, load_dose_response_summary
 from src.optimization.policy import build_intensity_action_candidates, normalize
 from src.optimization.timing import load_survival_predictions
 
@@ -20,6 +20,51 @@ class OptimizationArtifacts:
     segment_path: str
     summary_path: str
     scenario_path: str
+
+
+INTENSITY_ORDER = list(ACTION_INTENSITIES)
+
+
+def _complete_intensity_counts(selected: pd.DataFrame) -> Dict[str, int]:
+    counts = {intensity: 0 for intensity in INTENSITY_ORDER}
+    if selected.empty or 'intervention_intensity' not in selected.columns:
+        return counts
+    observed = selected['intervention_intensity'].astype(str).str.lower().value_counts()
+    for intensity in INTENSITY_ORDER:
+        counts[intensity] = int(observed.get(intensity, 0))
+    return counts
+
+
+def _complete_segment_intensity_grid(allocation: pd.DataFrame, selected: pd.DataFrame) -> pd.DataFrame:
+    if allocation.empty:
+        return pd.DataFrame(
+            [
+                {
+                    'customer_segment': 'ALL',
+                    'intervention_intensity': intensity,
+                    'customer_count': 0,
+                    'allocated_budget': 0.0,
+                    'expected_revenue': 0.0,
+                    'expected_roi': 0.0,
+                }
+                for intensity in INTENSITY_ORDER
+            ]
+        )
+
+    all_segments = allocation['customer_segment'].astype(str).drop_duplicates().tolist()
+    full_index = pd.MultiIndex.from_product([all_segments, INTENSITY_ORDER], names=['customer_segment', 'intervention_intensity'])
+    completed = (
+        allocation.set_index(['customer_segment', 'intervention_intensity'])
+        .reindex(full_index, fill_value=0)
+        .reset_index()
+    )
+    completed['customer_count'] = completed['customer_count'].astype(int)
+    completed['allocated_budget'] = pd.to_numeric(completed['allocated_budget'], errors='coerce').fillna(0.0)
+    completed['expected_revenue'] = pd.to_numeric(completed['expected_revenue'], errors='coerce').fillna(0.0)
+    completed['expected_roi'] = pd.to_numeric(completed['expected_roi'], errors='coerce').fillna(0.0)
+    completed['intensity_order'] = completed['intervention_intensity'].map({key: idx for idx, key in enumerate(INTENSITY_ORDER)})
+    completed = completed.sort_values(['customer_segment', 'intensity_order']).drop(columns=['intensity_order'])
+    return completed.reset_index(drop=True)
 
 
 STRATEGY_BY_SEGMENT = {
@@ -121,7 +166,7 @@ def _greedy_select(candidates: pd.DataFrame, budget: int) -> pd.DataFrame:
 
 def _segment_allocation(selected: pd.DataFrame) -> pd.DataFrame:
     if selected.empty:
-        return pd.DataFrame(columns=["customer_segment", "intervention_intensity", "customer_count", "allocated_budget", "expected_revenue", "expected_roi"])
+        return _complete_segment_intensity_grid(pd.DataFrame(), selected)
     allocation = (
         selected.groupby(["customer_segment", "intervention_intensity"], as_index=False)
         .agg(
@@ -131,7 +176,7 @@ def _segment_allocation(selected: pd.DataFrame) -> pd.DataFrame:
         )
     )
     allocation["expected_roi"] = (allocation["expected_revenue"] - allocation["allocated_budget"]) / allocation["allocated_budget"].where(allocation["allocated_budget"] > 0, 1.0)
-    allocation = allocation.sort_values(["allocated_budget", "expected_revenue"], ascending=[False, False])
+    allocation = _complete_segment_intensity_grid(allocation, selected)
     return allocation
 
 
@@ -177,6 +222,8 @@ def run_budget_optimization(result_dir: Path, budget: int) -> OptimizationArtifa
         "spent": int(round(spent)),
         "remaining": int(round(budget - spent)),
         "num_targeted": int(len(selected)),
+        "avg_selected_discount_pressure": round(float(selected.get("discount_pressure_score", pd.Series(dtype=float)).mean()), 6) if len(selected) and "discount_pressure_score" in selected.columns else 0.0,
+        "avg_selected_fatigue_guardrail_multiplier": round(float(selected.get("fatigue_guardrail_multiplier", pd.Series(dtype=float)).mean()), 6) if len(selected) and "fatigue_guardrail_multiplier" in selected.columns else 0.0,
         "candidate_customers": int(candidates["customer_id"].nunique()) if len(candidates) else 0,
         "candidate_actions": int(len(candidates)),
         "expected_revenue": round(revenue, 2),
@@ -184,7 +231,7 @@ def run_budget_optimization(result_dir: Path, budget: int) -> OptimizationArtifa
         "overall_roi": round(roi, 6),
         "baseline_method": "Greedy multiple-choice selection over customer × timing × intensity actions",
         "objective": "Maximize Σ(learned dose-response uplift × value basis × survival timing − action cost)",
-        "selected_intensity_counts": selected["intervention_intensity"].value_counts().to_dict() if len(selected) else {},
+        "selected_intensity_counts": _complete_intensity_counts(selected),
         "survival_enriched": bool(not survival_predictions.empty),
         "dose_response_enriched": bool(len(candidates) and candidates.get("dose_response_enabled", pd.Series(dtype=bool)).fillna(False).any()),
         "dose_response_model_version": str(candidates["dose_response_model_version"].iloc[0]) if len(candidates) and "dose_response_model_version" in candidates.columns else None,

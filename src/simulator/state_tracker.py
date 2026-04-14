@@ -15,6 +15,7 @@ class StateTracker:
     """
 
     n_customers: int
+    coupon_fatigue_decay: float = 0.94
 
     def __post_init__(self) -> None:
         n = self.n_customers
@@ -38,6 +39,8 @@ class StateTracker:
         self.recent_purchase_score = np.zeros(n, dtype=float)
         self.recent_exposure_score = np.zeros(n, dtype=float)
         self.recent_cart_abandon_score = np.zeros(n, dtype=float)
+        self.coupon_fatigue_score = np.zeros(n, dtype=float)
+        self.discount_dependency_score = np.zeros(n, dtype=float)
 
     def start_day(self, active_mask: np.ndarray | None = None) -> None:
         if active_mask is None:
@@ -51,12 +54,15 @@ class StateTracker:
             self.recent_purchase_score[active_mask] *= 0.91
             self.recent_exposure_score[active_mask] *= 0.68
             self.recent_cart_abandon_score[active_mask] *= 0.88
+            self.coupon_fatigue_score[active_mask] *= self.coupon_fatigue_decay
+            self.discount_dependency_score[active_mask] *= 0.96
 
     def record_exposure(self, mask: np.ndarray) -> None:
         if mask.any():
             self.exposures_total[mask] += 1
             self.days_since_last_coupon[mask] = 0
             self.recent_exposure_score[mask] += 1.0
+            self.coupon_fatigue_score[mask] += 1.0
 
     def record_coupon_open(self, mask: np.ndarray) -> None:
         if mask.any():
@@ -65,6 +71,8 @@ class StateTracker:
     def record_coupon_redeem(self, mask: np.ndarray) -> None:
         if mask.any():
             self.coupon_redeemed_total[mask] += 1
+            self.coupon_fatigue_score[mask] += 0.35
+            self.discount_dependency_score[mask] += 0.55
 
     def record_visit(self, mask: np.ndarray, day_idx: int) -> None:
         if mask.any():
@@ -82,14 +90,37 @@ class StateTracker:
             self.cart_balance[mask] = np.maximum(self.cart_balance[mask] - 1, 0)
             self.recent_cart_abandon_score[mask] += 1.0
 
-    def record_purchase(self, mask: np.ndarray, order_amounts: np.ndarray, day_idx: int) -> None:
-        if mask.any():
-            self.last_purchase_day[mask] = day_idx
-            self.purchases_total[mask] += 1
-            self.monetary_total[mask] += order_amounts[mask]
-            self.inactivity_days[mask] = 0
-            self.recent_purchase_score[mask] += 1.5
-            self.cart_balance[mask] = np.maximum(self.cart_balance[mask] - 1, 0)
+    def record_purchase(
+        self,
+        mask: np.ndarray,
+        order_amounts: np.ndarray,
+        day_idx: int,
+        coupon_redeem_mask: np.ndarray | None = None,
+    ) -> None:
+        if not mask.any():
+            return
+        self.last_purchase_day[mask] = day_idx
+        self.purchases_total[mask] += 1
+        self.monetary_total[mask] += order_amounts[mask]
+        self.inactivity_days[mask] = 0
+        self.recent_purchase_score[mask] += 1.5
+        self.cart_balance[mask] = np.maximum(self.cart_balance[mask] - 1, 0)
+
+        if coupon_redeem_mask is None:
+            coupon_redeem_mask = np.zeros(self.n_customers, dtype=bool)
+        coupon_redeem_mask = coupon_redeem_mask & mask
+        organic_purchase_mask = mask & ~coupon_redeem_mask
+        if organic_purchase_mask.any():
+            self.coupon_fatigue_score[organic_purchase_mask] = np.maximum(
+                self.coupon_fatigue_score[organic_purchase_mask] - 0.35,
+                0.0,
+            )
+            self.discount_dependency_score[organic_purchase_mask] = np.maximum(
+                self.discount_dependency_score[organic_purchase_mask] - 0.25,
+                0.0,
+            )
+        if coupon_redeem_mask.any():
+            self.discount_dependency_score[coupon_redeem_mask] += 0.20
 
     def to_snapshot(
         self,
@@ -130,6 +161,8 @@ class StateTracker:
                 "recent_visit_score": self.recent_visit_score.astype(float),
                 "recent_purchase_score": self.recent_purchase_score.astype(float),
                 "recent_exposure_score": self.recent_exposure_score.astype(float),
+                "coupon_fatigue_score": self.coupon_fatigue_score.astype(float),
+                "discount_dependency_score": self.discount_dependency_score.astype(float),
             }
         )
 
@@ -152,5 +185,7 @@ class StateTracker:
                 "coupon_opens": self.coupon_open_total.astype(int),
                 "coupon_redeemed": self.coupon_redeemed_total.astype(int),
                 "inactivity_days": self.inactivity_days.astype(int),
+                "coupon_fatigue_score": self.coupon_fatigue_score.astype(float),
+                "discount_dependency_score": self.discount_dependency_score.astype(float),
             }
         )
