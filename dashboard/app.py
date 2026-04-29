@@ -433,6 +433,24 @@ def inject_custom_css():
         [data-testid="stMetricValue"] {
             color: #111827;
             font-weight: 800;
+            font-size: clamp(1.35rem, 1.1vw + 0.75rem, 2.05rem);
+            line-height: 1.08;
+            white-space: normal;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+            max-width: 100%;
+        }
+        [data-testid="stMetricValue"] > div,
+        [data-testid="stMetricValue"] p {
+            font-size: clamp(1.1rem, 0.75vw + 0.65rem, 2.05rem) !important;
+            line-height: 1.12 !important;
+            white-space: normal !important;
+            overflow-wrap: anywhere !important;
+            word-break: break-word !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
+            margin: 0 !important;
+            max-width: 100% !important;
         }
 
         .stPlotlyChart, .stDataFrame, [data-testid="stImage"] {
