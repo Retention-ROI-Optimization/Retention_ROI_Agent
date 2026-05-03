@@ -1,0 +1,56 @@
+name: Feature request
+description: Suggest an improvement for the dashboard, mock data, or optimization logic.
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an improvement.
+
+  - type: input
+    id: goal
+    attributes:
+      label: Goal
+      description: What do you want to add or improve?
+      placeholder: e.g. Add a downloadable CSV for retention targets.
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or background
+      description: What limitation are you facing right now?
+      placeholder: It is hard to export selected customer lists for demos.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe your preferred solution.
+      placeholder: Add a button that exports the filtered dataframe as CSV.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any workaround or alternative idea?
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Dashboard UI
+        - Mock data generation
+        - Churn logic
+        - Uplift logic
+        - Budget optimization
+        - CI / GitHub Actions
+        - Documentation

@@ -1,0 +1,23 @@
+.vscode/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.DS_Store
+.env
+
+# Generated simulation data
+data/*
+!data/raw/.gitkeep
+
+# Generated feature store
+data/feature_store/*
+!data/feature_store/.gitkeep
+
+# Trained models
+models/*
+!models/.gitkeep
+
+# Generated reports / plots / optimization outputs
+results/*
+!results/.gitkeep

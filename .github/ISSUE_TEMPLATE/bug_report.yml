@@ -1,0 +1,66 @@
+
+### 4) `.github/ISSUE_TEMPLATE/bug_report.yml`
+
+```yaml
+name: Bug report
+description: Report a reproducible problem in the dashboard or project configuration.
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please provide enough detail so the issue can be reproduced.
+
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      description: What is the problem?
+      placeholder: e.g. Streamlit dashboard crashes when opening the ROI tab.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: List the exact steps needed to reproduce the issue.
+      placeholder: |
+        1. Run `streamlit run dashboard/app.py`
+        2. Open "예상 최적화 ROI"
+        3. Change budget to 100000
+        4. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      placeholder: The page should render without errors.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      placeholder: A traceback is shown in the browser.
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS / Python version / browser / runtime info
+      placeholder: e.g. macOS 14, Python 3.10.13, Chrome 135
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Paste the traceback, terminal logs, or screenshots if available.
+      render: shell

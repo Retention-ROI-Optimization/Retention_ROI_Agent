@@ -1,0 +1,70 @@
+name: Python CI
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+    branches:
+      - main
+      - dev
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-smoke-test:
+    name: Lint and smoke test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install flake8
+
+      - name: Run flake8
+        run: |
+          flake8 dashboard --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 dashboard --count --exit-zero --max-complexity=12 --max-line-length=127 --statistics
+
+      - name: Run smoke test
+        run: |
+          python - <<'PY'
+          from dashboard.data.mock_data import generate_mock_customers, generate_mock_cohort_retention
+          from dashboard.services.churn_service import get_churn_status
+          from dashboard.services.cohort_service import get_cohort_curve
+          from dashboard.services.uplift_service import get_top_high_value_customers, get_retention_targets
+          from dashboard.services.optimize_service import get_budget_result
+
+          customers = generate_mock_customers(n_customers=200, seed=42)
+          cohort = generate_mock_cohort_retention(seed=42)
+
+          summary, risk_customers = get_churn_status(customers, threshold=0.5)
+          cohort_curve = get_cohort_curve(cohort)
+          top_customers = get_top_high_value_customers(customers, top_n=10)
+          selected_customers, optimize_summary, segment_allocation = get_budget_result(customers, budget=5_000_000)
+          retention_targets = get_retention_targets(customers, threshold=0.5, top_n=10)
+
+          assert summary['total_customers'] == 200
+          assert len(cohort_curve) > 0
+          assert len(top_customers) == 10
+          assert optimize_summary['budget'] == 5_000_000
+          assert segment_allocation is not None
+          assert retention_targets is not None
+          assert risk_customers is not None
+          assert selected_customers is not None
+
+          print('Smoke test passed.')
+          PY
