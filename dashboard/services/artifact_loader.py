@@ -7,6 +7,8 @@ from typing import Dict, Optional
 
 import pandas as pd
 
+from src.autoops_universal.dashboard_contract import ensure_dashboard_contract
+
 
 @dataclass(frozen=True)
 class DashboardArtifactsBundle:
@@ -67,7 +69,10 @@ def _safe_json_df(path: Path) -> pd.DataFrame:
 def _safe_csv(path: Path) -> pd.DataFrame:
     if not path.exists():
         return pd.DataFrame()
-    return pd.read_csv(path, low_memory=False)
+    df = pd.read_csv(path, low_memory=False)
+    if "customer_id" in df.columns:
+        return ensure_dashboard_contract(df)
+    return df
 
 
 def _safe_path(path: Path) -> Optional[str]:

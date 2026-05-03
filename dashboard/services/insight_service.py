@@ -8,6 +8,8 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import pandas as pd
 
+from src.autoops_universal.dashboard_contract import ensure_dashboard_contract
+
 
 INTENSITY_ORDER = ['low', 'mid', 'high']
 
@@ -28,6 +30,8 @@ class DashboardInsightBundle:
     realtime_scores: pd.DataFrame
     realtime_action_queue: pd.DataFrame
     survival_predictions: pd.DataFrame
+    survival_coefficients: pd.DataFrame
+    survival_metrics: Dict[str, Any]
     uplift_segmentation: pd.DataFrame
     top_feature_importance: pd.DataFrame
     ab_test_results: Dict[str, Any]
@@ -154,19 +158,21 @@ def load_dashboard_insight_bundle(
     return DashboardInsightBundle(
         result_dir=str(result_base),
         data_dir=str(data_base),
-        customer_summary=_safe_csv(data_base / "customer_summary.csv"),
+        customer_summary=ensure_dashboard_contract(_safe_csv(data_base / "customer_summary.csv"), frame_name="insight_customer_summary"),
         customers=_safe_csv(data_base / "customers.csv"),
         events=_safe_csv(data_base / "events.csv"),
         orders=_safe_csv(data_base / "orders.csv"),
         campaign_exposures=_safe_csv(data_base / "campaign_exposures.csv"),
         state_snapshots=_safe_csv(data_base / "state_snapshots.csv"),
         treatment_assignments=_safe_csv(data_base / "treatment_assignments.csv"),
-        optimization_selected_customers=_safe_csv(result_base / "optimization_selected_customers.csv"),
-        personalized_recommendations=_safe_csv(result_base / "personalized_recommendations.csv"),
-        realtime_scores=_safe_csv(result_base / "realtime_scores_snapshot.csv"),
-        realtime_action_queue=_safe_csv(result_base / "realtime_action_queue_snapshot.csv"),
-        survival_predictions=_safe_csv(result_base / "survival_predictions.csv"),
-        uplift_segmentation=_safe_csv(result_base / "uplift_segmentation.csv"),
+        optimization_selected_customers=ensure_dashboard_contract(_safe_csv(result_base / "optimization_selected_customers.csv"), frame_name="optimization_selected_customers"),
+        personalized_recommendations=ensure_dashboard_contract(_safe_csv(result_base / "personalized_recommendations.csv"), frame_name="personalized_recommendations"),
+        realtime_scores=ensure_dashboard_contract(_safe_csv(result_base / "realtime_scores_snapshot.csv"), frame_name="realtime_scores"),
+        realtime_action_queue=ensure_dashboard_contract(_safe_csv(result_base / "realtime_action_queue_snapshot.csv"), frame_name="realtime_action_queue"),
+        survival_predictions=ensure_dashboard_contract(_safe_csv(result_base / "survival_predictions.csv"), frame_name="survival_predictions"),
+        survival_coefficients=_safe_csv(result_base / "survival_top_coefficients.csv"),
+        survival_metrics=_safe_json(result_base / "survival_metrics.json"),
+        uplift_segmentation=ensure_dashboard_contract(_safe_csv(result_base / "uplift_segmentation.csv"), frame_name="uplift_segmentation"),
         top_feature_importance=_safe_json_df(result_base / "churn_top10_feature_importance.json"),
         ab_test_results=_safe_json(result_base / "ab_test_results.json"),
         dose_response_summary=_safe_json(result_base / "dose_response_summary.json"),
@@ -199,6 +205,42 @@ def _safe_int(value: Any, default: int = 0) -> int:
         return int(default)
 
 
+def _summary_records(value: Any, *, name_column: str, count_column: str = "customers") -> list[dict[str, Any]]:
+    """Normalize summary JSON values that may be saved as records or as a mapping.
+
+    Older pipeline outputs stored e.g. {"segments": {"A": 10, "B": 20}},
+    while some dashboard views expect [{"segment": "A", "customers": 10}, ...].
+    This helper accepts both formats so Streamlit does not crash while rendering.
+    """
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [row for row in value if isinstance(row, dict)]
+    if isinstance(value, dict):
+        rows: list[dict[str, Any]] = []
+        for key, raw in value.items():
+            if isinstance(raw, dict):
+                row = {name_column: key}
+                row.update(raw)
+            else:
+                row = {name_column: key, count_column: raw}
+            rows.append(row)
+        return rows
+    return []
+
+
+def _id_values(df: pd.DataFrame, id_col: str = "customer_id") -> set[str]:
+    if df.empty or id_col not in df.columns:
+        return set()
+    return set(df[id_col].dropna().astype(str).tolist())
+
+
+def _safe_nunique(df: pd.DataFrame, column: str = "customer_id") -> int:
+    if df.empty or column not in df.columns:
+        return 0
+    return int(df[column].nunique())
+
+
 def _normalize_feature_name(raw_name: str) -> str:
     name = str(raw_name)
     for prefix in ("num__", "cat__"):
@@ -229,6 +271,8 @@ def build_operational_overview(
     survival_metrics: Dict[str, Any],
     insight_bundle: DashboardInsightBundle,
 ) -> Dict[str, Any]:
+    customers = ensure_dashboard_contract(customers, frame_name="operational_customers")
+    selected_customers = ensure_dashboard_contract(selected_customers, frame_name="operational_selected")
     total_customers = int(len(customers))
     risk_count = int((pd.to_numeric(customers.get("churn_probability"), errors="coerce") >= 0.5).sum()) if not customers.empty and "churn_probability" in customers.columns else 0
     selected_count = int(len(selected_customers))
@@ -266,7 +310,11 @@ def build_operational_overview(
             .sort_values(["avg_churn_probability", "avg_uplift_score"], ascending=False)
         )
 
-    segment_rows = insight_bundle.customer_segment_summary.get("segments", [])
+    segment_rows = _summary_records(
+        insight_bundle.customer_segment_summary.get("segments", []),
+        name_column="customer_segment",
+        count_column="customers",
+    )
     segment_df = pd.DataFrame(segment_rows)
 
     summary_cards = {
@@ -492,19 +540,19 @@ def build_data_diagnostics(bundle: DashboardInsightBundle) -> Dict[str, Any]:
     snapshots = bundle.state_snapshots.copy()
     treatment = bundle.treatment_assignments.copy()
 
-    customer_ids = set(pd.to_numeric(customers.get("customer_id"), errors="coerce").dropna().astype(int).tolist()) if not customers.empty else set()
+    customer_ids = _id_values(customers)
 
     def _orphan_count(df: pd.DataFrame, id_col: str = "customer_id") -> int:
         if df.empty or id_col not in df.columns:
             return 0
-        values = set(pd.to_numeric(df[id_col], errors="coerce").dropna().astype(int).tolist())
+        values = _id_values(df, id_col)
         return int(len(values - customer_ids))
 
     checks = [
         {
             "check": "customer_summary 중복 고객 여부",
-            "status": "양호" if customers.empty or customers["customer_id"].is_unique else "주의",
-            "detail": f"중복 수: {int(customers['customer_id'].duplicated().sum()) if not customers.empty else 0}",
+            "status": "양호" if customers.empty or "customer_id" not in customers.columns or customers["customer_id"].is_unique else "주의",
+            "detail": f"중복 수: {int(customers['customer_id'].duplicated().sum()) if not customers.empty and 'customer_id' in customers.columns else 0}",
         },
         {
             "check": "events의 고아 customer_id",
@@ -518,13 +566,13 @@ def build_data_diagnostics(bundle: DashboardInsightBundle) -> Dict[str, Any]:
         },
         {
             "check": "state snapshot 고객 커버리지",
-            "status": "양호" if snapshots.empty or snapshots["customer_id"].nunique() == max(len(customer_ids), 1) else "주의",
-            "detail": f"snapshot 고객 수: {snapshots['customer_id'].nunique() if not snapshots.empty else 0:,} / 전체 고객 수: {len(customer_ids):,}",
+            "status": "양호" if snapshots.empty or _safe_nunique(snapshots) == max(len(customer_ids), 1) else "주의",
+            "detail": f"snapshot 고객 수: {_safe_nunique(snapshots):,} / 전체 고객 수: {len(customer_ids):,}",
         },
         {
             "check": "treatment assignment 커버리지",
-            "status": "양호" if treatment.empty or treatment["customer_id"].nunique() == max(len(customer_ids), 1) else "주의",
-            "detail": f"assignment 고객 수: {treatment['customer_id'].nunique() if not treatment.empty else 0:,} / 전체 고객 수: {len(customer_ids):,}",
+            "status": "양호" if treatment.empty or _safe_nunique(treatment) == max(len(customer_ids), 1) else "주의",
+            "detail": f"assignment 고객 수: {_safe_nunique(treatment):,} / 전체 고객 수: {len(customer_ids):,}",
         },
         {
             "check": "핵심 스코어 결측",
@@ -537,13 +585,13 @@ def build_data_diagnostics(bundle: DashboardInsightBundle) -> Dict[str, Any]:
     checks_df = pd.DataFrame(checks)
 
     volumes_df = pd.DataFrame([
-        {"dataset": "customer_summary", "rows": int(len(customers)), "unique_customers": int(customers['customer_id'].nunique()) if not customers.empty else 0},
-        {"dataset": "customers", "rows": int(len(base_customers)), "unique_customers": int(base_customers['customer_id'].nunique()) if not base_customers.empty else 0},
-        {"dataset": "events", "rows": int(len(events)), "unique_customers": int(events['customer_id'].nunique()) if not events.empty else 0},
-        {"dataset": "orders", "rows": int(len(orders)), "unique_customers": int(orders['customer_id'].nunique()) if not orders.empty else 0},
-        {"dataset": "campaign_exposures", "rows": int(len(exposures)), "unique_customers": int(exposures['customer_id'].nunique()) if not exposures.empty else 0},
-        {"dataset": "state_snapshots", "rows": int(len(snapshots)), "unique_customers": int(snapshots['customer_id'].nunique()) if not snapshots.empty else 0},
-        {"dataset": "treatment_assignments", "rows": int(len(treatment)), "unique_customers": int(treatment['customer_id'].nunique()) if not treatment.empty else 0},
+        {"dataset": "customer_summary", "rows": int(len(customers)), "unique_customers": _safe_nunique(customers)},
+        {"dataset": "customers", "rows": int(len(base_customers)), "unique_customers": _safe_nunique(base_customers)},
+        {"dataset": "events", "rows": int(len(events)), "unique_customers": _safe_nunique(events)},
+        {"dataset": "orders", "rows": int(len(orders)), "unique_customers": _safe_nunique(orders)},
+        {"dataset": "campaign_exposures", "rows": int(len(exposures)), "unique_customers": _safe_nunique(exposures)},
+        {"dataset": "state_snapshots", "rows": int(len(snapshots)), "unique_customers": _safe_nunique(snapshots)},
+        {"dataset": "treatment_assignments", "rows": int(len(treatment)), "unique_customers": _safe_nunique(treatment)},
     ])
 
     event_mix_df = pd.DataFrame()

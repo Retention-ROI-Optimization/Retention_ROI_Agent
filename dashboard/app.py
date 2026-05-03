@@ -31,6 +31,7 @@ from dashboard.services.cohort_service import (
     get_cohort_summary,
     get_retention_mode_label,
 )
+from dashboard.services.artifact_loader import load_dashboard_artifacts
 from dashboard.services.data_loader import load_dashboard_bundle
 from dashboard.services.insight_service import (
     build_coupon_risk_overview,
@@ -58,6 +59,7 @@ from dashboard.services.llm_service import (
     series_distribution,
 )
 from dashboard.services.optimize_service import get_budget_result
+from src.autoops_universal.dashboard_contract import load_runtime_config, save_runtime_config, ensure_dashboard_contract
 from dashboard.services.uplift_service import (
     get_retention_targets,
     get_top_high_value_customers,
@@ -714,8 +716,92 @@ def clear_dashboard_caches() -> None:
     _load_insight_bundle_cached.clear()
 
 
+def _frame_to_records(df: pd.DataFrame, max_rows: int | None = None) -> list[dict[str, Any]]:
+    if df is None or df.empty:
+        return []
+    out = df.head(max_rows).copy() if max_rows is not None else df.copy()
+    out = out.replace({np.nan: None})
+    return out.to_dict(orient="records")
+
+
+def _normalize_optimization_summary(summary: Dict[str, Any] | None, selected_df: pd.DataFrame | None = None, *, budget: int = 0) -> Dict[str, Any]:
+    normalized = dict(summary or {})
+    selected_count = int(len(selected_df)) if isinstance(selected_df, pd.DataFrame) and not selected_df.empty else int(normalized.get("selected_customers", normalized.get("num_targeted", 0)) or 0)
+    spent = float(normalized.get("spent", normalized.get("budget_spent", 0.0)) or 0.0)
+    expected_profit = float(normalized.get("expected_incremental_profit", normalized.get("expected_profit", 0.0)) or 0.0)
+    effective_budget = int(normalized.get("budget", budget) or budget or 0)
+    normalized.setdefault("budget", effective_budget)
+    normalized.setdefault("spent", int(round(spent)))
+    normalized.setdefault("budget_spent", spent)
+    normalized.setdefault("remaining", int(round(max(effective_budget - spent, 0.0))))
+    normalized.setdefault("num_targeted", selected_count)
+    normalized.setdefault("selected_customers", selected_count)
+    normalized.setdefault("expected_incremental_profit", expected_profit)
+    normalized.setdefault("expected_profit", expected_profit)
+    normalized.setdefault("overall_roi", float(expected_profit / spent) if spent > 0 else float(normalized.get("expected_roi", 0.0) or 0.0))
+    normalized.setdefault("expected_roi", normalized.get("overall_roi", 0.0))
+    return normalized
+
+
+def _local_training_artifacts_payload(exc: Exception | None = None) -> Dict[str, Any]:
+    artifacts = load_dashboard_artifacts()
+    payload = {
+        "churn_metrics": artifacts.churn_metrics or {},
+        "threshold_analysis": artifacts.threshold_analysis or {},
+        "top_feature_importance": _frame_to_records(artifacts.top_feature_importance),
+        "customer_features": _frame_to_records(artifacts.customer_features, max_rows=200),
+        "image_paths": artifacts.image_paths or {},
+        "model_paths": artifacts.model_paths or {},
+        "training_parameters": (artifacts.churn_metrics or {}).get("training_parameters", {}),
+        "__source__": "local_files",
+    }
+    if exc is not None:
+        payload["__warning__"] = f"API 연결 실패로 results/models/data/feature_store의 로컬 산출물을 표시합니다: {exc}"
+    return payload
+
+
+def _local_saved_results_artifacts_payload(
+    budget: int,
+    threshold: float,
+    max_customers: int | None,
+    exc: Exception | None = None,
+) -> Dict[str, Any]:
+    artifacts = load_dashboard_artifacts()
+    uplift_summary = dict(artifacts.uplift_summary or {})
+    if "segment_counts" not in uplift_summary and isinstance(uplift_summary.get("segments"), dict):
+        uplift_summary["segment_counts"] = uplift_summary.get("segments", {})
+
+    optimization_summary = _normalize_optimization_summary(
+        artifacts.optimization_summary or {},
+        artifacts.optimization_selected_customers,
+        budget=int(budget),
+    )
+    payload = {
+        "uplift_summary": uplift_summary,
+        "uplift_segmentation": _frame_to_records(artifacts.uplift_segmentation),
+        "optimization_summary": optimization_summary,
+        "optimization_segment_budget": _frame_to_records(artifacts.optimization_segment_budget),
+        "optimization_selected_customers": _frame_to_records(artifacts.optimization_selected_customers),
+        "parameters": {
+            "budget": int(budget),
+            "threshold": float(threshold),
+            "max_customers": int(max_customers or 0),
+            "source": "local_files",
+        },
+        "__source__": "local_files",
+    }
+    if exc is not None:
+        payload["__warning__"] = f"API 연결 실패로 results/의 저장 산출물을 표시합니다: {exc}"
+    return payload
+
+
 def load_training_artifacts_api():
-    return fetch_training_artifacts()
+    try:
+        payload = fetch_training_artifacts()
+        payload["__source__"] = "api"
+        return payload
+    except Exception as exc:
+        return _local_training_artifacts_payload(exc)
 
 
 def load_saved_results_artifacts_api(
@@ -724,12 +810,22 @@ def load_saved_results_artifacts_api(
     max_customers: int | None,
     rebuild: bool = False,
 ):
-    return fetch_saved_results_artifacts(
-        budget=budget,
-        threshold=threshold,
-        max_customers=max_customers,
-        rebuild=rebuild,
-    )
+    try:
+        payload = fetch_saved_results_artifacts(
+            budget=budget,
+            threshold=threshold,
+            max_customers=max_customers,
+            rebuild=rebuild,
+        )
+        payload["__source__"] = "api"
+        return payload
+    except Exception as exc:
+        return _local_saved_results_artifacts_payload(
+            budget=budget,
+            threshold=threshold,
+            max_customers=max_customers,
+            exc=exc,
+        )
 
 
 def _normalize_artifact_value(value: Any) -> Any:
@@ -795,6 +891,10 @@ def _sanitize_artifact_dataframe(df: pd.DataFrame, max_columns: int | None = Non
 
 def _artifact_frame(records, max_columns: int | None = None) -> pd.DataFrame:
     return _sanitize_artifact_dataframe(pd.DataFrame(records or []), max_columns=max_columns)
+
+
+def _existing_columns(df: pd.DataFrame, columns: list[str]) -> list[str]:
+    return [col for col in columns if isinstance(df, pd.DataFrame) and col in df.columns]
 
 
 def _describe_table_count(df: pd.DataFrame, label: str = "테이블") -> str:
@@ -1348,10 +1448,10 @@ def inject_draggable_chat_dialog():
 inject_custom_css()
 
 CONTROL_DEFAULTS = {
-    "control_threshold": 0.50,
-    "control_budget": 5_000_000,
+    "control_threshold": float(load_runtime_config(ROOT).get("threshold", 0.50) or 0.50),
+    "control_budget": int(load_runtime_config(ROOT).get("budget", 5_000_000) or 5_000_000),
     "control_top_n": 25,
-    "control_target_cap": 1500,
+    "control_target_cap": int(load_runtime_config(ROOT).get("max_customers", 1500) or 1500),
     "control_recommendation_per_customer": 3,
 }
 for _state_key, _state_value in CONTROL_DEFAULTS.items():
@@ -1359,7 +1459,7 @@ for _state_key, _state_value in CONTROL_DEFAULTS.items():
 
 bundle = load_app_data()
 
-customers = bundle.customer_summary
+customers = ensure_dashboard_contract(bundle.customer_summary, threshold=float(st.session_state.get("control_threshold", 0.50)))
 cohort_df = bundle.cohort_retention
 
 render_hero(
@@ -1378,10 +1478,11 @@ with st.sidebar:
 
     st.session_state.setdefault("dashboard_view", DASHBOARD_VIEW_OPTIONS[0])
     st.session_state.setdefault("dashboard_group", VIEW_TO_GROUP.get(st.session_state["dashboard_view"], DASHBOARD_VIEW_GROUPS[0][0]))
-    st.session_state.setdefault("control_threshold", 0.50)
-    st.session_state.setdefault("control_budget", 5_000_000)
+    _runtime_defaults = load_runtime_config(ROOT)
+    st.session_state.setdefault("control_threshold", float(_runtime_defaults.get("threshold", 0.50) or 0.50))
+    st.session_state.setdefault("control_budget", int(_runtime_defaults.get("budget", 5_000_000) or 5_000_000))
     st.session_state.setdefault("control_top_n", 25)
-    st.session_state.setdefault("control_target_cap", 1500)
+    st.session_state.setdefault("control_target_cap", int(_runtime_defaults.get("max_customers", 1500) or 1500))
     st.session_state.setdefault("control_recommendation_per_customer", 3)
 
     default_view = st.session_state.get("dashboard_view", DASHBOARD_VIEW_OPTIONS[0])
@@ -1444,6 +1545,10 @@ with st.sidebar:
 
     if view in {"4. 예산 배분 결과", "5. 예상 최적화 ROI", "6. 리텐션 대상 고객 목록", "8. Uplift/최적화 결과 (실시간)", "9. 개인화 추천", "12. 의사결정 엔진 비교", "13. 운영 한눈에 보기"}:
         budget = int(st.number_input("총 마케팅 예산", step=100000, key="control_budget"))
+        try:
+            save_runtime_config(result_dir=ROOT / "results", budget=budget, threshold=threshold, max_customers=int(st.session_state.get("control_target_cap", 1500)))
+        except Exception:
+            pass
         target_cap = st.slider(
             "최대 타겟 고객 수",
             min_value=100,
@@ -1452,6 +1557,10 @@ with st.sidebar:
             key="control_target_cap",
             help="예산이 충분하더라도 이 수를 넘겨 타겟팅하지 않습니다.",
         )
+        try:
+            save_runtime_config(result_dir=ROOT / "results", budget=budget, threshold=threshold, max_customers=target_cap)
+        except Exception:
+            pass
 
     if view == "9. 개인화 추천":
         preview_selected_customers, _, _ = get_budget_result(
@@ -1566,38 +1675,56 @@ if view == "9. 개인화 추천":
             max_customers=max(recommendation_limit, int(target_cap)),
             rebuild=True,
         )
-    except Exception as exc:
-        recommendation_summary, personalized_recommendations = {}, pd.DataFrame()
-        recommendation_error = str(exc)
-    else:
         recommendation_error = None
+        recommendation_warning = None
+    except Exception as exc:
+        local_bundle = load_insight_data()
+        personalized_recommendations = local_bundle.personalized_recommendations.copy()
+        recommendation_summary = dict(local_bundle.personalized_recommendation_summary or {})
+        recommendation_summary.setdefault("rows", int(len(personalized_recommendations)))
+        recommendation_summary.setdefault("customers_covered", int(personalized_recommendations["customer_id"].nunique()) if not personalized_recommendations.empty and "customer_id" in personalized_recommendations.columns else 0)
+        recommendation_error = str(exc) if personalized_recommendations.empty else None
+        recommendation_warning = f"추천 API 연결 실패로 results/personalized_recommendations.csv 저장본을 표시합니다: {exc}" if not personalized_recommendations.empty else None
 else:
     recommendation_summary, personalized_recommendations = {}, pd.DataFrame()
     recommendation_error = None
+    recommendation_warning = None
 
 if view == "10. 실시간 위험 스코어링 / 운영 모니터":
     try:
         realtime_summary, realtime_scores = fetch_realtime_scores(limit=max(int(top_n), 500))
-    except Exception as exc:
-        realtime_summary, realtime_scores = {}, pd.DataFrame()
-        realtime_error = str(exc)
-    else:
         realtime_error = None
+        realtime_warning = None
+    except Exception as exc:
+        local_bundle = load_insight_data()
+        realtime_summary = dict(local_bundle.realtime_scores_summary or {})
+        realtime_scores = local_bundle.realtime_scores.copy()
+        realtime_error = str(exc) if realtime_scores.empty else None
+        realtime_warning = f"실시간 API 연결 실패로 results/realtime_scores_snapshot.csv 저장본을 표시합니다: {exc}" if not realtime_scores.empty else None
 else:
     realtime_summary, realtime_scores = {}, pd.DataFrame()
     realtime_error = None
+    realtime_warning = None
 
 if view == "11. 이탈 시점 예측 (Survival Analysis)":
     try:
         survival_metrics, survival_predictions, survival_coefficients, survival_image_paths = fetch_survival_summary(limit=top_n)
-    except Exception as exc:
-        survival_metrics, survival_predictions, survival_coefficients, survival_image_paths = {}, pd.DataFrame(), pd.DataFrame(), {}
-        survival_error = str(exc)
-    else:
         survival_error = None
+        survival_warning = None
+    except Exception as exc:
+        local_bundle = load_insight_data()
+        survival_metrics = dict(local_bundle.survival_metrics or {})
+        survival_predictions = local_bundle.survival_predictions.copy()
+        survival_coefficients = local_bundle.survival_coefficients.copy()
+        result_base = Path(local_bundle.result_dir)
+        risk_img = result_base / "survival_risk_stratification.png"
+        survival_image_paths = {"risk_stratification": str(risk_img) if risk_img.exists() else None}
+        survival_error = str(exc) if survival_predictions.empty and not survival_metrics else None
+        survival_warning = f"Survival API 연결 실패로 results/survival_* 저장본을 표시합니다: {exc}" if survival_predictions.empty is False or survival_metrics else None
 else:
     survival_metrics, survival_predictions, survival_coefficients, survival_image_paths = {}, pd.DataFrame(), pd.DataFrame(), {}
     survival_error = None
+    survival_warning = None
 
 recommendation_context_df = personalized_recommendations.copy()
 survival_context_df = survival_predictions.copy()
@@ -1898,13 +2025,10 @@ elif view == "3. Uplift + CLV 상위 고객":
         y="clv",
         size="bubble_size",
         color="uplift_segment",
-        hover_data=[
-            "customer_id",
-            "persona",
-            "churn_probability",
-            "expected_incremental_profit",
-            "value_score",
-        ],
+        hover_data=_existing_columns(
+            plot_df,
+            ["customer_id", "persona", "churn_probability", "expected_incremental_profit", "value_score"],
+        ),
         title="상위 고객의 Uplift-CLV 분포",
         labels={"bubble_size": "value_score"},
     )
@@ -1914,7 +2038,8 @@ elif view == "3. Uplift + CLV 상위 고객":
         "버블 크기는 expected_incremental_profit 대신 value_score(CLV × uplift_score)를 사용합니다. 차트는 성능을 위해 상위 500명만, 아래 테이블은 전체 정렬 결과를 보여줍니다."
     )
 
-    display_df = top_customers[
+    display_columns = _existing_columns(
+        top_customers,
         [
             "customer_id",
             "persona",
@@ -1923,14 +2048,24 @@ elif view == "3. Uplift + CLV 상위 고객":
             "clv",
             "value_score",
             "expected_incremental_profit",
+            "expected_roi",
             "uplift_segment",
-        ]
-    ].copy()
-    display_df["churn_probability"] = display_df["churn_probability"].map(lambda x: f"{x:.3f}")
-    display_df["uplift_score"] = display_df["uplift_score"].map(lambda x: f"{x:.3f}")
-    display_df["clv"] = display_df["clv"].map(money)
-    display_df["value_score"] = display_df["value_score"].map(money)
-    display_df["expected_incremental_profit"] = display_df["expected_incremental_profit"].map(money)
+            "recommended_action",
+        ],
+    )
+    display_df = top_customers[display_columns].copy()
+    if "churn_probability" in display_df.columns:
+        display_df["churn_probability"] = display_df["churn_probability"].map(lambda x: f"{float(x):.3f}")
+    if "uplift_score" in display_df.columns:
+        display_df["uplift_score"] = display_df["uplift_score"].map(lambda x: f"{float(x):.3f}")
+    if "clv" in display_df.columns:
+        display_df["clv"] = display_df["clv"].map(money)
+    if "value_score" in display_df.columns:
+        display_df["value_score"] = display_df["value_score"].map(money)
+    if "expected_incremental_profit" in display_df.columns:
+        display_df["expected_incremental_profit"] = display_df["expected_incremental_profit"].map(money)
+    if "expected_roi" in display_df.columns:
+        display_df["expected_roi"] = display_df["expected_roi"].map(lambda x: f"{float(x):.2%}")
     _render_dataframe_with_count(display_df, label="상위 고객 테이블")
 
     llm_payload = {
@@ -2170,8 +2305,11 @@ elif view == "7. 학습 결과 아티팩트":
     try:
         training_payload = load_training_artifacts_api()
     except Exception as exc:
-        st.error(f"학습 결과 API 호출 실패: {exc}")
+        st.error(f"학습 결과 산출물 로드 실패: {exc}")
         training_payload = {}
+
+    if training_payload.get("__warning__"):
+        st.warning(training_payload["__warning__"])
 
     churn_metrics = training_payload.get("churn_metrics", {})
     threshold_analysis = training_payload.get("threshold_analysis", {})
@@ -2265,8 +2403,11 @@ elif view == "8. Uplift/최적화 결과 (실시간)":
             rebuild=rebuild_saved_results,
         )
     except Exception as exc:
-        st.error(f"저장 결과 API 호출 실패: {exc}")
+        st.error(f"저장 결과 산출물 로드 실패: {exc}")
         saved_payload = {}
+
+    if saved_payload.get("__warning__"):
+        st.warning(saved_payload["__warning__"])
 
     uplift_summary = saved_payload.get("uplift_summary", {})
     uplift_segmentation_df = _artifact_frame(saved_payload.get("uplift_segmentation"))
@@ -2368,8 +2509,10 @@ elif view == "9. 개인화 추천":
     st.subheader("최종 타겟 고객 대상 개인화 추천")
     st.caption("예산/임계값으로 선별된 최종 리텐션 타겟 고객에게만 추천을 생성합니다. 추천 점수는 구매 이력 + 최근 관심 + 세그먼트 인기 + 전역 인기를 혼합해 계산합니다.")
 
+    if recommendation_warning:
+        st.warning(recommendation_warning)
     if recommendation_error:
-        st.error(f"추천 API 호출 실패: {recommendation_error}")
+        st.error(f"추천 결과 로드 실패: {recommendation_error}")
     elif personalized_recommendations.empty:
         st.warning("표시할 추천 결과가 없습니다. 현재 예산/임계값 조건에서 최종 타겟 고객이 없을 수 있습니다.")
     else:
@@ -2395,9 +2538,9 @@ elif view == "9. 개인화 추천":
 
         display_df = personalized_recommendations.copy()
         if 'churn_probability' in display_df.columns:
-            display_df['churn_probability'] = display_df['churn_probability'].map(lambda x: f"{x:.3f}")
+            display_df['churn_probability'] = display_df['churn_probability'].map(lambda x: f"{float(x):.3f}")
         if 'uplift_score' in display_df.columns:
-            display_df['uplift_score'] = display_df['uplift_score'].map(lambda x: f"{x:.3f}")
+            display_df['uplift_score'] = display_df['uplift_score'].map(lambda x: f"{float(x):.3f}")
         if 'clv' in display_df.columns:
             display_df['clv'] = display_df['clv'].map(money)
         if 'expected_incremental_profit' in display_df.columns:
@@ -2407,7 +2550,7 @@ elif view == "9. 개인화 추천":
         if 'expected_roi' in display_df.columns:
             display_df['expected_roi'] = display_df['expected_roi'].map(lambda x: f"{x:.3f}")
         if 'recommendation_priority' in display_df.columns:
-            display_df['recommendation_priority'] = display_df['recommendation_priority'].map(lambda x: f"{x:.3f}")
+            display_df['recommendation_priority'] = display_df['recommendation_priority'].map(lambda x: f"{float(x):.3f}" if pd.to_numeric(pd.Series([x]), errors='coerce').notna().iloc[0] else str(x))
         if 'target_priority_score' in display_df.columns:
             display_df['target_priority_score'] = display_df['target_priority_score'].map(lambda x: f"{x:.3f}")
         if 'recommendation_score' in display_df.columns:
@@ -2438,9 +2581,11 @@ elif view == "10. 실시간 위험 스코어링 / 운영 모니터":
     st.subheader("실시간 위험 스코어링 / 운영 모니터")
     st.caption("Redis Streams로 적재된 이벤트를 조금씩 재생하며 고객별 실시간 위험 점수와 액션 큐 상태를 함께 갱신합니다.")
 
+    if realtime_warning:
+        st.warning(realtime_warning)
     if realtime_error:
-        st.error(f"실시간 스코어 API 호출 실패: {realtime_error}")
-        st.info("먼저 Redis를 실행한 뒤 realtime-bootstrap / realtime-produce / realtime-consume(또는 realtime-replay) 명령을 수행하세요.")
+        st.error(f"실시간 스코어 결과 로드 실패: {realtime_error}")
+        st.info("먼저 Redis/API를 실행하거나, results/realtime_scores_snapshot.csv가 생성되어 있는지 확인하세요.")
     elif realtime_scores.empty:
         st.warning("실시간 스코어 스냅샷이 없습니다. 스트림 소비 결과가 아직 생성되지 않았을 수 있습니다.")
     else:
@@ -2463,7 +2608,7 @@ elif view == "10. 실시간 위험 스코어링 / 운영 모니터":
             x='customer_id',
             y='realtime_churn_score',
             color='action_queue_status' if 'action_queue_status' in chart_df.columns else None,
-            hover_data=['base_churn_probability', 'score_delta', 'last_event_type', 'persona', 'latest_trigger_reason', 'queued_recommended_action'],
+            hover_data=[c for c in ['base_churn_probability', 'score_delta', 'last_event_type', 'persona', 'latest_trigger_reason', 'queued_recommended_action'] if c in chart_df.columns],
             title='실시간 이탈 위험 상위 고객',
         )
         st.plotly_chart(fig, use_container_width=True)
@@ -2571,8 +2716,10 @@ elif view == "11. 이탈 시점 예측 (Survival Analysis)":
     st.subheader("이탈 시점 예측 (Survival Analysis)")
     st.caption('Cox Proportional Hazards 기반으로 landmark 시점 이후 얼마 안에 churn risk 상태로 진입할지를 추정합니다. 분류 모델과 달리 "언제" 위험이 커지는지를 함께 봅니다.')
 
+    if survival_warning:
+        st.warning(survival_warning)
     if survival_error:
-        st.error(f"Survival API 호출 실패: {survival_error}")
+        st.error(f"Survival 결과 로드 실패: {survival_error}")
     elif not survival_metrics:
         st.warning("Survival 분석 결과를 아직 불러오지 못했습니다.")
     else:

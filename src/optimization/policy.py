@@ -278,11 +278,10 @@ def build_intensity_action_candidates(
     base = _base_strategy_profile(df)
     base = apply_survival_timing(base, survival_predictions=survival_predictions, customer_id_col=customer_id_col)
 
-    base["customer_id"] = pd.to_numeric(base[customer_id_col], errors="coerce")
-    base = base.dropna(subset=["customer_id"]).copy()
+    base["customer_id"] = base[customer_id_col].astype(str).replace({"nan": ""})
+    base = base[base["customer_id"].astype(str).str.len() > 0].copy()
     if base.empty:
         return base
-    base["customer_id"] = base["customer_id"].astype(int)
 
     base["coupon_affinity_norm"] = normalize(column_or_default(base, "coupon_affinity", 0.0)).clip(0.0, 1.0)
     base["price_sensitivity_norm"] = normalize(column_or_default(base, "price_sensitivity", 0.0)).clip(0.0, 1.0)

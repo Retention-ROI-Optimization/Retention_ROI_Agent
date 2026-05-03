@@ -6,6 +6,7 @@ from typing import Dict, List, Optional
 
 import pandas as pd
 
+from src.autoops_universal.dashboard_contract import ensure_dashboard_contract
 from dashboard.data.mock_data import generate_mock_cohort_retention, generate_mock_customers
 
 RAW_CUSTOMER_SUMMARY = "customer_summary.csv"
@@ -104,7 +105,7 @@ def load_dashboard_bundle(
                 optionals[key] = _read_csv(path, usecols=list(config.get("usecols", []))) if path.exists() else _empty_df()
 
             return DashboardDataBundle(
-                customer_summary=_read_csv(customer_path),
+                customer_summary=ensure_dashboard_contract(_read_csv(customer_path)),
                 cohort_retention=_read_csv(cohort_path),
                 customers=optionals["customers"],
                 events=optionals["events"],
@@ -124,7 +125,7 @@ def load_dashboard_bundle(
         )
 
     return DashboardDataBundle(
-        customer_summary=generate_mock_customers(n_customers=mock_n_customers, seed=seed),
+        customer_summary=ensure_dashboard_contract(generate_mock_customers(n_customers=mock_n_customers, seed=seed)),
         cohort_retention=generate_mock_cohort_retention(seed=seed),
         customers=_empty_df(),
         events=_empty_df(),

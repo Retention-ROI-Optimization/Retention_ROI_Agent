@@ -122,9 +122,8 @@ def apply_survival_timing(
         return _default_timing_frame(df, horizon_days=int(default_horizon_days))
 
     out = df.copy()
-    out[customer_id_col] = pd.to_numeric(out[customer_id_col], errors='coerce')
-    out = out.dropna(subset=[customer_id_col]).copy()
-    out[customer_id_col] = out[customer_id_col].astype(int)
+    out[customer_id_col] = out[customer_id_col].astype(str).replace({'nan': ''})
+    out = out[out[customer_id_col].astype(str).str.len() > 0].copy()
 
     if survival_predictions is None or survival_predictions.empty:
         return _default_timing_frame(out, horizon_days=int(default_horizon_days))
@@ -133,11 +132,10 @@ def apply_survival_timing(
     if customer_id_col not in surv.columns:
         return _default_timing_frame(out, horizon_days=int(default_horizon_days))
 
-    surv[customer_id_col] = pd.to_numeric(surv[customer_id_col], errors='coerce')
-    surv = surv.dropna(subset=[customer_id_col]).copy()
+    surv[customer_id_col] = surv[customer_id_col].astype(str).replace({'nan': ''})
+    surv = surv[surv[customer_id_col].astype(str).str.len() > 0].copy()
     if surv.empty:
         return _default_timing_frame(out, horizon_days=int(default_horizon_days))
-    surv[customer_id_col] = surv[customer_id_col].astype(int)
 
     survival_prob_cols = [column for column in surv.columns if re.fullmatch(r'survival_prob_\d+d', str(column))]
     keep_columns = [customer_id_col] + [column for column in SURVIVAL_REQUIRED_COLUMNS if column in surv.columns and column != customer_id_col] + survival_prob_cols

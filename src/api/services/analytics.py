@@ -50,12 +50,44 @@ def get_churn_status(customers: pd.DataFrame, threshold: float) -> Tuple[Dict[st
     return summary, risk_customers
 
 
+def _ensure_numeric_column(df: pd.DataFrame, column: str, default: float = 0.0) -> pd.Series:
+    if column in df.columns:
+        return pd.to_numeric(df[column], errors='coerce').fillna(float(default))
+    return pd.Series(float(default), index=df.index, dtype='float64')
+
+
 def get_top_high_value_customers(customers: pd.DataFrame, top_n: int | None = None) -> pd.DataFrame:
     df = customers.copy()
     if df.empty:
         return df.head(0)
-    df['clv'] = pd.to_numeric(df.get('clv', 0.0), errors='coerce').fillna(0.0)
-    df['uplift_score'] = pd.to_numeric(df.get('uplift_score', 0.0), errors='coerce').fillna(0.0)
+
+    if 'customer_id' not in df.columns:
+        df['customer_id'] = df.index.astype(str)
+
+    df['clv'] = _ensure_numeric_column(df, 'clv', 0.0)
+    df['uplift_score'] = _ensure_numeric_column(df, 'uplift_score', 0.0)
+    df['churn_probability'] = _ensure_numeric_column(df, 'churn_probability', 0.0)
+    df['coupon_cost'] = _ensure_numeric_column(df, 'coupon_cost', 0.0)
+
+    # A few uploaded datasets produce only clv/uplift columns. The dashboard still
+    # expects expected_incremental_profit and expected_roi for hover text, tables,
+    # and summaries, so derive safe proxy values when they are absent.
+    if 'expected_incremental_profit' not in df.columns:
+        df['expected_incremental_profit'] = (df['clv'] * df['uplift_score'].clip(lower=0.0) - df['coupon_cost']).fillna(0.0)
+    else:
+        df['expected_incremental_profit'] = _ensure_numeric_column(df, 'expected_incremental_profit', 0.0)
+
+    if 'expected_roi' not in df.columns:
+        denom = df['coupon_cost'].where(df['coupon_cost'] > 0, 1.0)
+        df['expected_roi'] = (df['expected_incremental_profit'] / denom).replace([float('inf'), float('-inf')], 0.0).fillna(0.0)
+    else:
+        df['expected_roi'] = _ensure_numeric_column(df, 'expected_roi', 0.0)
+
+    if 'uplift_segment' not in df.columns:
+        df['uplift_segment'] = 'Unknown'
+    if 'persona' not in df.columns:
+        df['persona'] = 'unknown'
+
     df['value_score'] = df['clv'] * df['uplift_score']
     ranked = df.sort_values(['value_score', 'clv', 'customer_id'], ascending=[False, False, True])
     if top_n is None or int(top_n) <= 0:
@@ -88,6 +120,8 @@ def get_retention_targets(customers: pd.DataFrame, threshold: float, top_n: int 
         + 0.25 * target['uplift_score']
         + 0.30 * (target['clv'] / max_clv)
     )
+    if 'expected_roi' not in target.columns:
+        target['expected_roi'] = 0.0
     ranked = target.sort_values(['priority_score', 'expected_roi', 'customer_id'], ascending=[False, False, True])
     if top_n is None or int(top_n) <= 0:
         return ranked
@@ -285,7 +319,7 @@ def get_budget_result(
     )
 
     selected_rows: list[dict] = []
-    used_customers: set[int] = set()
+    used_customers: set[str] = set()
     spent = 0.0
     selection_cap = int(max_customers) if max_customers is not None and int(max_customers) > 0 else None
 
@@ -297,7 +331,7 @@ def get_budget_result(
         if seed_pool.empty:
             continue
         for row in seed_pool.itertuples(index=False):
-            customer_id = int(getattr(row, "customer_id"))
+            customer_id = str(getattr(row, "customer_id"))
             cost = float(getattr(row, "coupon_cost", 0.0))
             if customer_id in used_customers or cost <= 0 or spent + cost > float(budget):
                 continue
@@ -309,7 +343,7 @@ def get_budget_result(
     for row in candidate.itertuples(index=False):
         if selection_cap is not None and len(selected_rows) >= selection_cap:
             break
-        customer_id = int(getattr(row, "customer_id"))
+        customer_id = str(getattr(row, "customer_id"))
         cost = float(getattr(row, "coupon_cost", 0.0))
         if customer_id in used_customers:
             continue
