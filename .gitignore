@@ -20,4 +20,5 @@ models/*
 
 # Generated reports / plots / optimization outputs
 results/*
-!results/.gitkeep
+!results/.gitkeepdata/uploads/transaction_data.csv
+data/uploads/transaction_data.csv
