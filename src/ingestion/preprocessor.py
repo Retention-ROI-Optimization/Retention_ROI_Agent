@@ -142,14 +142,7 @@ EVENT_VALUE_SYNONYMS: Dict[str, Set[str]] = {
 
 
 def _normalize_event_type(value: Any) -> str:
-    """
-    사용자 event_type 값 → 내부 표준 6종 중 하나로 매핑.
-    1) 정확 매칭 우선
-    2) 부분 매칭은 '가장 긴 키워드'를 가진 후보가 이김
-       (예: "ticket_open"은 "open"(visit, 4글자)보다 "ticket"(support, 6글자)이 우선)
-    3) 너무 짧은 키워드(view/buy 등 4글자 미만)는 정확매칭만 인정 — substring 오매칭 방지
-    매칭 실패 시 'other'.
-    """
+
     if value is None or (isinstance(value, float) and np.isnan(value)):
         return "other"
     norm = re.sub(r"[^a-z0-9가-힣]", "_", str(value).strip().lower())
@@ -176,7 +169,6 @@ def _normalize_event_type(value: Any) -> str:
 
 
 def _build_event_type_mapping_report(original_values: pd.Series) -> Dict[str, Any]:
-    """매핑 결과 리포트 — 사용자에게 어떤 값이 어떻게 매핑되었는지 보여주기 위함."""
     mapping: Dict[str, str] = {}
     counts: Dict[str, int] = {}
     for raw in original_values.dropna().astype(str).unique():
@@ -221,13 +213,6 @@ def _infer_churn_label(
     schema: Dict[str, str],
     inactivity_threshold_days: int = 30,
 ) -> pd.Series:
-    """
-    Infer churn labels from data.
-    NOTE: 이 함수는 preprocess_uploaded_data Step 1 이후에 호출되므로,
-    df의 customer_id 컬럼은 이미 "customer_id"로 표준화되어 있다.
-
-    inactivity_threshold_days: "이탈" 정의 — 마지막 활동 이후 N일 이상 비활성이면 이탈.
-    """
     if "churn_flag" in schema and schema["churn_flag"] in df.columns:
         col = schema["churn_flag"]
         series = df[col].copy()
@@ -350,14 +335,7 @@ def _extract_real_events(
     schema: Dict[str, str],
     user_mapping: Optional[Dict[str, str]] = None,
 ) -> Tuple[Optional[pd.DataFrame], Optional[Dict[str, Any]]]:
-    """
-    사용자가 올린 데이터에 event_type + timestamp가 모두 있으면 실제 이벤트 테이블 구성.
-    값을 내부 표준 6종으로 매핑한 결과와 매핑 리포트를 함께 반환.
-    하나라도 빠지면 (None, None) → 호출부에서 합성으로 fallback.
 
-    user_mapping: 사용자가 수동으로 확정한 매핑 ({"product_view": "page_view", ...}).
-                  지정되면 자동 매핑보다 우선. "ignore"/"skip" 값이면 해당 행 제외.
-    """
     ev_col = schema.get("event_type")
     ts_col = schema.get("timestamp")
     if not ev_col or not ts_col or ev_col not in df.columns or ts_col not in df.columns:
@@ -439,10 +417,7 @@ def _build_orders_from_real_events(
     schema: Dict[str, str],
     rng: np.random.Generator,
 ) -> pd.DataFrame:
-    """
-    사용자 데이터에 amount 컬럼이 있으면 실제 금액으로 orders 구성.
-    purchase로 매핑된 이벤트만 추출하고, (customer_id, timestamp) 기준 머지로 원본 amount를 가져온다.
-    """
+
     amount_col = schema["amount"]
     ts_col = schema.get("timestamp")
 
@@ -565,10 +540,7 @@ def _generate_treatment_assignments(customer_summary: pd.DataFrame, rng: np.rand
 
 
 def _generate_state_snapshots(customer_summary: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame:
-    """
-    Generate state snapshot data — fully vectorized.
-    각 고객당 12개월 스냅샷을 한 번에 생성. iterrows 대신 cross-join으로 O(N) 처리.
-    """
+
     n = len(customer_summary)
     if n == 0:
         return pd.DataFrame(columns=[
@@ -709,23 +681,7 @@ def preprocess_uploaded_data(
     churn_inactivity_days: int = 30,
     seed: int = 42,
 ) -> PreprocessingResult:
-    """
-    Transform uploaded data into the full internal schema.
-
-    Parameters
-    ----------
-    column_mapping_override : Dict[str, str], optional
-        사용자가 수동으로 수정한 컬럼 → 역할 매핑
-        (예: {"customer_id": "user_id", "timestamp": "event_time"})
-        지정되면 validation.detected_schema를 덮어씀.
-    event_value_mapping : Dict[str, str], optional
-        사용자가 수동으로 지정한 event_type 값 → 내부 표준값 매핑
-        (예: {"product_view": "page_view", "checkout_start": "purchase"})
-        지정되면 자동 매핑(_normalize_event_type)을 덮어씀.
-        값이 "ignore" 또는 "skip"이면 해당 행은 events에서 제외.
-    seed : int
-        난수 시드.
-    """
+    """Transform uploaded data into the full internal schema."""
     rng = np.random.default_rng(seed)
     # 사용자 컬럼 매핑이 들어오면 그것을 우선, 없으면 자동 감지된 schema 사용
     schema = dict(column_mapping_override) if column_mapping_override else dict(validation.detected_schema)
@@ -974,7 +930,6 @@ def preprocess_uploaded_data(
                 f"{' ...' if len(mapping_report['unmapped_values']) > 5 else ''} "
                 f"→ 'other'로 분류됨 (매핑 커버리지: {mapping_report['coverage_rate']:.0%})"
             )
-        # amount 컬럼이 있으면 실제 금액 기반 orders 사용
         amount_col_for_orders = schema.get("amount")
         if amount_col_for_orders and amount_col_for_orders in df.columns:
             orders_df = _build_orders_from_real_events(df, real_events, schema, rng)
@@ -994,7 +949,6 @@ def preprocess_uploaded_data(
     state_snapshots = _generate_state_snapshots(customer_summary, rng)
     cohort_retention = _build_cohort_retention(customer_summary)
 
-    # Customers base table — 시뮬레이터 호환을 위해 ML 단계가 요구하는 컬럼들도 포함
     _customers_cols = [
         "customer_id", "persona", "signup_date", "acquisition_month",
         "region", "device_type", "acquisition_channel",

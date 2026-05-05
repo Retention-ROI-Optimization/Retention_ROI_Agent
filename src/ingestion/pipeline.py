@@ -39,7 +39,6 @@ class IngestionPipelineResult:
 
 @dataclass
 class MappingPreview:
-    """업로드된 CSV의 매핑 초안 — 사용자가 검토·수정할 정보."""
     validation: ValidationResult
     column_mapping: Dict[str, str]              # 역할 → 원본 컬럼명 (자동 추측)
     event_value_mapping: Dict[str, str]         # 사용자 event 값 → 표준 6종 (자동 추측)
@@ -53,17 +52,11 @@ class MappingPreview:
 
 
 def prepare_mapping_preview(file_path: str | Path) -> MappingPreview:
-    """
-    업로드된 CSV의 검증 + 자동 매핑 추측을 수행. 학습은 하지 않음.
-    UI 단계에서 사용자에게 보여줄 초안 매핑을 생성한다.
-    """
     file_path = Path(file_path)
     validation = validate_csv(file_path)
 
-    # column 매핑 (역할 → 원본 컬럼명)
     column_mapping = dict(validation.detected_schema)
 
-    # event_value 매핑 추측 (있을 때만)
     event_value_mapping: Dict[str, str] = {}
     event_value_counts: Dict[str, int] = {}
     has_event_data = False
@@ -76,7 +69,6 @@ def prepare_mapping_preview(file_path: str | Path) -> MappingPreview:
     ts_col = column_mapping.get("timestamp")
 
     if validation.is_valid and ev_col and ts_col:
-        # 파일 일부만 읽어서 unique 값 + 빈도 추출 (UI 응답성 위해 최대 200k행만 샘플링)
         try:
             for enc in ["utf-8", "cp949", "euc-kr", "latin-1"]:
                 try:
@@ -106,7 +98,6 @@ def prepare_mapping_preview(file_path: str | Path) -> MappingPreview:
                     coverage_rate = report["coverage_rate"]
                     unmapped_values = report["unmapped_values"]
         except Exception:
-            # 미리보기 실패해도 진행 가능 — 그냥 빈 매핑으로
             pass
 
     return MappingPreview(
