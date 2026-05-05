@@ -9,6 +9,11 @@ venv/
 # Generated simulation data
 data/*
 !data/raw/.gitkeep
+!data/raw_simulator/.gitkeep
+!data/raw_user/.gitkeep
+!data/feature_store/.gitkeep
+!data/feature_store_simulator/.gitkeep
+!data/feature_store_user/.gitkeep
 
 # Generated feature store
 data/feature_store/*
@@ -17,7 +22,15 @@ data/feature_store/*
 # Trained models
 models/*
 !models/.gitkeep
+models_simulator/*
+!models_simulator/.gitkeep
+models_user/*
+!models_user/.gitkeep
 
 # Generated reports / plots / optimization outputs
 results/*
 !results/.gitkeep
+results_simulator/*
+!results_simulator/.gitkeep
+results_user/*
+!results_user/.gitkeep

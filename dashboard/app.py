@@ -586,14 +586,16 @@ def inject_custom_css():
             border-collapse: collapse;
             font-size: 0.92rem;
             line-height: 1.45;
+            color: #0f172a;
         }
 
         .oai-table-wrapper thead th {
             position: sticky;
             top: 0;
             z-index: 2;
-            background: #f8fafc;
-            color: #0f172a;
+            background: #f8fafc !important;
+            color: #0f172a !important;
+            -webkit-text-fill-color: #0f172a !important;
             text-align: left;
             font-weight: 800;
             border-bottom: 1px solid #cbd5e1;
@@ -605,6 +607,13 @@ def inject_custom_css():
             border-bottom: 1px solid #e2e8f0;
             vertical-align: top;
             white-space: nowrap;
+            color: #0f172a !important;
+            -webkit-text-fill-color: #0f172a !important;
+            background: transparent;
+        }
+        .oai-table-wrapper td * {
+            color: #0f172a !important;
+            -webkit-text-fill-color: #0f172a !important;
         }
 
         .oai-table-wrapper tbody tr:nth-child(even) {
@@ -617,6 +626,267 @@ def inject_custom_css():
 
         .oai-table-controls {
             margin: 4px 0 8px 0;
+        }
+
+        /* ── 메인 영역 radio 가시성 보장 (사이드바와 완전히 분리) ── */
+        /* 사이드바(stSidebar)는 어두운 남색 배경 + 흰 글씨 → 기존 CSS 유지
+           메인(stMain)은 흰 배경 + 진한 글씨로만 적용 */
+        section[data-testid="stMain"] div[data-testid="stRadio"] [role="radiogroup"] > label {
+            background: rgba(243,244,246,0.6) !important;
+            border: 1px solid rgba(148,163,184,0.35) !important;
+            border-radius: 8px !important;
+            padding: 6px 12px !important;
+            margin: 2px !important;
+            color: #1f2937 !important;
+        }
+        section[data-testid="stMain"] div[data-testid="stRadio"] [role="radiogroup"] > label p,
+        section[data-testid="stMain"] div[data-testid="stRadio"] [role="radiogroup"] > label div {
+            color: #1f2937 !important;
+            -webkit-text-fill-color: #1f2937 !important;
+            font-weight: 600 !important;
+            opacity: 1 !important;
+        }
+        section[data-testid="stMain"] div[data-testid="stRadio"] [role="radiogroup"] > label:hover {
+            background: rgba(219,234,254,0.7) !important;
+            border-color: #2563eb !important;
+        }
+        section[data-testid="stMain"] div[data-testid="stRadio"] [role="radiogroup"] > label:has(input:checked) {
+            background: #2563eb !important;
+            border-color: #2563eb !important;
+        }
+        section[data-testid="stMain"] div[data-testid="stRadio"] [role="radiogroup"] > label:has(input:checked) p,
+        section[data-testid="stMain"] div[data-testid="stRadio"] [role="radiogroup"] > label:has(input:checked) div {
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+            font-weight: 700 !important;
+        }
+        /* horizontal radio 줄바꿈 정렬 */
+        section[data-testid="stMain"] div[data-testid="stRadio"] [role="radiogroup"] {
+            flex-wrap: wrap !important;
+            gap: 4px !important;
+        }
+
+        /* ── 추가 가독성 보장: 라디오 옵션 안의 모든 텍스트 노드 강제 진하게 ── */
+        /* 메인 영역 라디오 - 미선택 상태 */
+        section[data-testid="stMain"] div[data-testid="stRadio"] [role="radiogroup"] > label *,
+        .main .block-container div[data-testid="stRadio"] [role="radiogroup"] > label * {
+            color: #1f2937 !important;
+            -webkit-text-fill-color: #1f2937 !important;
+        }
+        /* 메인 영역 라디오 - 선택된 상태 (파란 배경 위 흰 글씨) */
+        section[data-testid="stMain"] div[data-testid="stRadio"] [role="radiogroup"] > label:has(input:checked) *,
+        .main .block-container div[data-testid="stRadio"] [role="radiogroup"] > label:has(input:checked) * {
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+        }
+        /* 라디오의 라벨 텍스트 (st.radio의 메인 label) — 메인 영역에서 진하게 */
+        section[data-testid="stMain"] div[data-testid="stRadio"] > label,
+        section[data-testid="stMain"] div[data-testid="stRadio"] > label *,
+        .main .block-container div[data-testid="stRadio"] > label,
+        .main .block-container div[data-testid="stRadio"] > label * {
+            color: #1e293b !important;
+            -webkit-text-fill-color: #1e293b !important;
+            font-weight: 600 !important;
+        }
+        /* 사이드바 라디오 옵션 안의 모든 자식 노드 — 흰 글씨 강제 (남색 배경 대비) */
+        section[data-testid="stSidebar"] div[data-testid="stRadio"] [role="radiogroup"] > label *,
+        section[data-testid="stSidebar"] div[data-testid="stRadio"] [role="radiogroup"] > label {
+            color: #e5eefc !important;
+            -webkit-text-fill-color: #e5eefc !important;
+        }
+        section[data-testid="stSidebar"] div[data-testid="stRadio"] [role="radiogroup"] > label:has(input:checked) *,
+        section[data-testid="stSidebar"] div[data-testid="stRadio"] [role="radiogroup"] > label:has(input:checked) {
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+            font-weight: 700 !important;
+        }
+        /* 사이드바의 markdown 텍스트, subheader, caption 등 흰색 계열로 강제 */
+        section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"],
+        section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] *,
+        section[data-testid="stSidebar"] h1,
+        section[data-testid="stSidebar"] h2,
+        section[data-testid="stSidebar"] h3,
+        section[data-testid="stSidebar"] h4,
+        section[data-testid="stSidebar"] h5,
+        section[data-testid="stSidebar"] [data-testid="stCaptionContainer"],
+        section[data-testid="stSidebar"] .stCaption {
+            color: #e5eefc !important;
+            -webkit-text-fill-color: #e5eefc !important;
+        }
+
+        /* ── 사이드바 metric (st.metric) — 흰 배경 카드 제거 + 글자 흰 계열 ── */
+        section[data-testid="stSidebar"] [data-testid="stMetric"],
+        section[data-testid="stSidebar"] [data-testid="stMetricContainer"],
+        section[data-testid="stSidebar"] div[data-testid="metric-container"] {
+            background: rgba(255,255,255,0.06) !important;
+            border: 1px solid rgba(255,255,255,0.12) !important;
+            border-radius: 8px !important;
+            padding: 6px 8px !important;
+            margin: 2px 0 !important;
+        }
+        section[data-testid="stSidebar"] [data-testid="stMetricLabel"],
+        section[data-testid="stSidebar"] [data-testid="stMetricLabel"] *,
+        section[data-testid="stSidebar"] [data-testid="stMetricValue"],
+        section[data-testid="stSidebar"] [data-testid="stMetricValue"] *,
+        section[data-testid="stSidebar"] [data-testid="stMetricDelta"],
+        section[data-testid="stSidebar"] [data-testid="stMetricDelta"] * {
+            color: #e5eefc !important;
+            -webkit-text-fill-color: #e5eefc !important;
+            opacity: 1 !important;
+        }
+        /* 좁은 블록에서는 글자 크기를 줄이되 줄바꿈은 막음 */
+        section[data-testid="stSidebar"] [data-testid="stMetricLabel"] {
+            font-size: 0.7rem !important;
+            font-weight: 600 !important;
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+        }
+        section[data-testid="stSidebar"] [data-testid="stMetricValue"] {
+            font-size: 0.95rem !important;
+            font-weight: 700 !important;
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+        }
+
+        /* ── 사이드바 좁은 컬럼 안의 텍스트도 줄바꿈 방지 + 자동 축소 ── */
+        section[data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="column"] *,
+        section[data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"] * {
+            word-break: keep-all !important;
+        }
+        /* 사이드바 안의 일반 markdown bold/strong (예: "**매핑 후 분포 (예상)**") */
+        section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] strong,
+        section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] b {
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+            font-weight: 700 !important;
+        }
+        /* 사이드바 안의 dataframe / data_editor 헤더·내용 — 흰 배경 위 진한 글씨 */
+        section[data-testid="stSidebar"] [data-testid="stDataFrame"] thead th,
+        section[data-testid="stSidebar"] [data-testid="stDataFrame"] tbody td,
+        section[data-testid="stSidebar"] [data-testid="stDataEditor"] thead th,
+        section[data-testid="stSidebar"] [data-testid="stDataEditor"] tbody td {
+            color: #1f2937 !important;
+            -webkit-text-fill-color: #1f2937 !important;
+        }
+        /* 사이드바 dataframe 셀 내용이 좁을 때 줄바꿈 막고 글자 작게 */
+        section[data-testid="stSidebar"] [data-testid="stDataFrame"] td,
+        section[data-testid="stSidebar"] [data-testid="stDataEditor"] td {
+            font-size: 0.78rem !important;
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+        }
+        section[data-testid="stSidebar"] [data-testid="stDataFrame"] th,
+        section[data-testid="stSidebar"] [data-testid="stDataEditor"] th {
+            font-size: 0.78rem !important;
+            font-weight: 700 !important;
+        }
+        /* fallback: stMain 셀렉터가 없는 Streamlit 버전 대비
+           — main의 block-container만 타겟 (사이드바는 section selector라 매치 안 됨) */
+        .main .block-container div[data-testid="stRadio"] [role="radiogroup"] > label {
+            background: rgba(243,244,246,0.6) !important;
+            border: 1px solid rgba(148,163,184,0.35) !important;
+            border-radius: 8px !important;
+            padding: 6px 12px !important;
+            margin: 2px !important;
+            color: #1f2937 !important;
+        }
+        .main .block-container div[data-testid="stRadio"] [role="radiogroup"] > label p,
+        .main .block-container div[data-testid="stRadio"] [role="radiogroup"] > label div {
+            color: #1f2937 !important;
+            -webkit-text-fill-color: #1f2937 !important;
+            font-weight: 600 !important;
+            opacity: 1 !important;
+        }
+        .main .block-container div[data-testid="stRadio"] [role="radiogroup"] > label:has(input:checked) {
+            background: #2563eb !important;
+            border-color: #2563eb !important;
+        }
+        .main .block-container div[data-testid="stRadio"] [role="radiogroup"] > label:has(input:checked) p,
+        .main .block-container div[data-testid="stRadio"] [role="radiogroup"] > label:has(input:checked) div {
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+            font-weight: 700 !important;
+        }
+
+        /* ── 메인 영역 컨트라스트 일괄 보정 (하늘색 위 하늘색 글씨 방지) ── */
+        /* 1) Alert 박스(info/success/warning/error)의 본문 글자 진하게 고정 */
+        section[data-testid="stMain"] .stAlert,
+        section[data-testid="stMain"] [data-testid="stAlert"],
+        .main .block-container .stAlert {
+            color: #0f172a !important;
+        }
+        section[data-testid="stMain"] .stAlert p,
+        section[data-testid="stMain"] .stAlert div,
+        section[data-testid="stMain"] .stAlert span,
+        section[data-testid="stMain"] [data-testid="stAlert"] p,
+        section[data-testid="stMain"] [data-testid="stAlert"] div,
+        .main .block-container .stAlert p,
+        .main .block-container .stAlert div {
+            color: #0f172a !important;
+            -webkit-text-fill-color: #0f172a !important;
+        }
+        /* 2) caption / 작은 보조 텍스트 — 너무 흐리지 않게 */
+        section[data-testid="stMain"] [data-testid="stCaptionContainer"],
+        section[data-testid="stMain"] .stCaption,
+        .main .block-container [data-testid="stCaptionContainer"],
+        .main .block-container .stCaption {
+            color: #475569 !important;
+        }
+        /* 3) Metric 카드의 라벨·수치 — 진한 글자 강제 */
+        section[data-testid="stMain"] [data-testid="stMetricLabel"],
+        section[data-testid="stMain"] [data-testid="stMetricLabel"] p,
+        section[data-testid="stMain"] [data-testid="stMetricLabel"] div,
+        .main .block-container [data-testid="stMetricLabel"],
+        .main .block-container [data-testid="stMetricLabel"] p {
+            color: #475569 !important;
+            -webkit-text-fill-color: #475569 !important;
+            font-weight: 600 !important;
+        }
+        section[data-testid="stMain"] [data-testid="stMetricValue"],
+        section[data-testid="stMain"] [data-testid="stMetricValue"] p,
+        section[data-testid="stMain"] [data-testid="stMetricValue"] div,
+        .main .block-container [data-testid="stMetricValue"],
+        .main .block-container [data-testid="stMetricValue"] p {
+            color: #0f172a !important;
+            -webkit-text-fill-color: #0f172a !important;
+            font-weight: 700 !important;
+        }
+        /* 4) DataFrame 헤더 — 흐린 파란 위에 흐린 파란 글씨 방지 */
+        section[data-testid="stMain"] [data-testid="stDataFrame"] thead th,
+        .main .block-container [data-testid="stDataFrame"] thead th {
+            color: #0f172a !important;
+            -webkit-text-fill-color: #0f172a !important;
+            font-weight: 700 !important;
+        }
+        /* 5) Tab 라벨 — 비활성/활성 모두 잘 보이게 */
+        section[data-testid="stMain"] [data-baseweb="tab"],
+        section[data-testid="stMain"] [data-baseweb="tab"] p,
+        .main .block-container [data-baseweb="tab"] {
+            color: #475569 !important;
+        }
+        section[data-testid="stMain"] [data-baseweb="tab"][aria-selected="true"],
+        section[data-testid="stMain"] [data-baseweb="tab"][aria-selected="true"] p,
+        .main .block-container [data-baseweb="tab"][aria-selected="true"] {
+            color: #2563eb !important;
+            font-weight: 700 !important;
+        }
+        /* 6) Selectbox 본문 글자 — 흰 배경에 진한 글씨 */
+        section[data-testid="stMain"] .stSelectbox [data-baseweb="select"] > div,
+        .main .block-container .stSelectbox [data-baseweb="select"] > div {
+            color: #0f172a !important;
+        }
+        /* 7) Markdown 안의 모든 일반 텍스트 (Streamlit이 가끔 light grey로 렌더) */
+        section[data-testid="stMain"] [data-testid="stMarkdownContainer"] p,
+        section[data-testid="stMain"] [data-testid="stMarkdownContainer"] li,
+        section[data-testid="stMain"] [data-testid="stMarkdownContainer"] span {
+            color: inherit;
+        }
+        /* 메인 영역 기본 글자색 */
+        section[data-testid="stMain"], .main .block-container {
+            color: #0f172a;
         }
         </style>
         """,
@@ -662,51 +932,101 @@ def _file_version_token(relative_paths: list[str]) -> str:
 
 
 def _raw_data_token() -> str:
+    # 모드 인지: 모드에 해당하는 디렉토리 변경시 토큰 변경 → 캐시 자동 invalidation
+    mode = st.session_state.get("data_mode", "simulator") if hasattr(st, "session_state") else "simulator"
+    base = {
+        "simulator": "data/raw_simulator",
+        "user": "data/raw_user",
+    }.get(mode, "data/raw")
     return _file_version_token([
-        "data/raw/customer_summary.csv",
-        "data/raw/cohort_retention.csv",
+        f"{base}/customer_summary.csv",
+        f"{base}/cohort_retention.csv",
     ])
 
 
 def _result_data_token() -> str:
+    # 모드 인지: 모드별 results 디렉토리 변경 시 토큰 변경 → 캐시 자동 invalidation
+    mode = st.session_state.get("data_mode", "simulator") if hasattr(st, "session_state") else "simulator"
+    base = {
+        "simulator": "results_simulator",
+        "user":      "results_user",
+    }.get(mode, "results")
+    # fallback: 모드별 디렉토리 없으면 기본 results
+    from pathlib import Path as _P
+    if not _P(base).exists():
+        base = "results"
     return _file_version_token([
-        "results/churn_top10_feature_importance.json",
-        "results/optimization_selected_customers.csv",
-        "results/personalized_recommendations.csv",
-        "results/realtime_scores_snapshot.csv",
-        "results/realtime_scores_summary.json",
-        "results/realtime_action_queue_snapshot.csv",
-        "results/realtime_action_queue_summary.json",
-        "results/survival_predictions.csv",
-        "results/uplift_segmentation.csv",
-        "results/ab_test_results.json",
-        "results/dose_response_summary.json",
-        "results/customer_segment_summary.json",
-        "results/persuadables_analysis.json",
-        "results/optimization_summary.json",
-        "results/personalized_recommendation_summary.json",
-        "results/clv_validation_metrics.json",
-        "results/feature_engineering_summary.json",
-        "results/churn_metrics.json",
+        f"{base}/churn_top10_feature_importance.json",
+        f"{base}/optimization_selected_customers.csv",
+        f"{base}/personalized_recommendations.csv",
+        f"{base}/realtime_scores_snapshot.csv",
+        f"{base}/realtime_scores_summary.json",
+        f"{base}/realtime_action_queue_snapshot.csv",
+        f"{base}/realtime_action_queue_summary.json",
+        f"{base}/survival_predictions.csv",
+        f"{base}/uplift_segmentation.csv",
+        f"{base}/ab_test_results.json",
+        f"{base}/dose_response_summary.json",
+        f"{base}/customer_segment_summary.json",
+        f"{base}/persuadables_analysis.json",
+        f"{base}/optimization_summary.json",
+        f"{base}/personalized_recommendation_summary.json",
+        f"{base}/clv_validation_metrics.json",
+        f"{base}/feature_engineering_summary.json",
+        f"{base}/churn_metrics.json",
     ])
 
 
 @st.cache_data(show_spinner=False)
-def _load_app_bundle_cached(_token: str):
-    return load_dashboard_bundle(include_optional=False)
+def _load_app_bundle_cached(_token: str, data_dir: str = "data/raw"):
+    return load_dashboard_bundle(data_dir=data_dir, include_optional=False)
+
+
+def _resolve_data_dir_for_mode(mode: str) -> str:
+    """모드별 data 디렉토리. 부재 시 기본 data/raw로 fallback."""
+    from pathlib import Path as _P
+    mapping = {
+        "simulator": "data/raw_simulator",
+        "user":      "data/raw_user",
+    }
+    target = mapping.get(mode, "data/raw")
+    if not (_P(target) / "customer_summary.csv").exists():
+        return "data/raw"
+    return target
+
+
+def _resolve_result_dir_for_mode(mode: str) -> str:
+    """모드별 results 디렉토리. 부재 시 기본 results로 fallback."""
+    from pathlib import Path as _P
+    mapping = {
+        "simulator": "results_simulator",
+        "user":      "results_user",
+    }
+    target = mapping.get(mode, "results")
+    if not _P(target).exists() or not any(_P(target).iterdir()):
+        return "results"
+    return target
 
 
 @st.cache_data(show_spinner=False)
-def _load_insight_bundle_cached(_raw_token: str, _result_token: str):
-    return load_dashboard_insight_bundle()
+def _load_insight_bundle_cached(_raw_token: str, _result_token: str, data_dir: str = "data/raw", result_dir: str = "results"):
+    return load_dashboard_insight_bundle(data_dir=data_dir, result_dir=result_dir)
 
 
 def load_app_data():
-    return _load_app_bundle_cached(_raw_data_token())
+    mode = st.session_state.get("data_mode", "simulator")
+    data_dir = _resolve_data_dir_for_mode(mode)
+    return _load_app_bundle_cached(_raw_data_token(), data_dir=data_dir)
 
 
 def load_insight_data():
-    return _load_insight_bundle_cached(_raw_data_token(), _result_data_token())
+    mode = st.session_state.get("data_mode", "simulator")
+    data_dir = _resolve_data_dir_for_mode(mode)
+    result_dir = _resolve_result_dir_for_mode(mode)
+    return _load_insight_bundle_cached(
+        _raw_data_token(), _result_data_token(),
+        data_dir=data_dir, result_dir=result_dir,
+    )
 
 
 def clear_dashboard_caches() -> None:
@@ -724,12 +1044,72 @@ def load_saved_results_artifacts_api(
     max_customers: int | None,
     rebuild: bool = False,
 ):
-    return fetch_saved_results_artifacts(
-        budget=budget,
-        threshold=threshold,
-        max_customers=max_customers,
-        rebuild=rebuild,
-    )
+    """
+    모드 인지 — 사용자 모드면 results_user/에서 직접 파일 읽기 (API 우회).
+    시뮬레이터 모드면 기존 API 호출 (results/는 시뮬레이터 결과로 채워져 있음).
+    """
+    mode = st.session_state.get("data_mode", "simulator")
+    if mode == "user":
+        # API는 results/만 보므로, 사용자 모드에선 results_user/를 직접 로드
+        return _load_saved_results_from_dir("results_user")
+    # 시뮬레이터 모드는 기존 API 호출 그대로 (rebuild 등 동적 옵션 활용 가능)
+    try:
+        return fetch_saved_results_artifacts(
+            budget=budget,
+            threshold=threshold,
+            max_customers=max_customers,
+            rebuild=rebuild,
+        )
+    except Exception:
+        # API 호출 실패 시 results_simulator/ 또는 results/에서 직접 로드 fallback
+        for d in ("results_simulator", "results"):
+            try:
+                return _load_saved_results_from_dir(d)
+            except Exception:
+                continue
+        return {}
+
+
+def _load_saved_results_from_dir(result_dir: str) -> Dict[str, Any]:
+    """results/, results_simulator/, results_user/ 같은 디렉토리에서 saved-results 페이로드 구성."""
+    from pathlib import Path as _P
+    base = _P(result_dir)
+    payload: Dict[str, Any] = {"parameters": {}}
+
+    def _load_csv(name: str):
+        p = base / name
+        if p.exists():
+            try:
+                return pd.read_csv(p).to_dict(orient="records")
+            except Exception:
+                return []
+        return []
+
+    def _load_json(name: str):
+        p = base / name
+        if p.exists():
+            try:
+                import json as _j
+                with open(p, "r", encoding="utf-8") as f:
+                    return _j.load(f)
+            except Exception:
+                return {}
+        return {}
+
+    payload["uplift_segmentation"] = _load_csv("uplift_segmentation.csv")
+    payload["uplift_summary"] = _load_json("uplift_summary.json")
+    if not payload["uplift_summary"] and payload["uplift_segmentation"]:
+        # uplift_summary.json이 없으면 segmentation에서 요약 만들기
+        seg_df = pd.DataFrame(payload["uplift_segmentation"])
+        if not seg_df.empty and "uplift_segment" in seg_df.columns:
+            payload["uplift_summary"] = {
+                "rows": int(len(seg_df)),
+                "segment_counts": seg_df["uplift_segment"].value_counts().to_dict(),
+            }
+    payload["optimization_summary"] = _load_json("optimization_summary.json")
+    payload["optimization_segment_budget"] = _load_csv("optimization_segment_budget.csv")
+    payload["optimization_selected_customers"] = _load_csv("optimization_selected_customers.csv")
+    return payload
 
 
 def _normalize_artifact_value(value: Any) -> Any:
@@ -1110,48 +1490,120 @@ def render_sidebar_chatbot_launcher(
     view_title: str,
     llm_enabled: bool,
     api_key: Optional[str],
+    payload: Optional[Dict] = None,
+    model_name: str = "gpt-4.1-mini",
 ):
+    """사이드바에 챗봇 UI를 inline으로 렌더링 (별도 dialog 창 없음)."""
     st.divider()
-    st.subheader("AI 챗봇")
-
-    chatbot_image_path = resolve_chatbot_image()
-    if chatbot_image_path:
-        st.image(chatbot_image_path, use_container_width=True)
-        st.caption("현재 화면의 표·그래프를 바탕으로 대화를 이어갈 수 있습니다.")
-    else:
-        st.markdown(
-            f"""
-            <div class="sidebar-chatbot-card">
-                <div class="sidebar-chatbot-emoji">🤖</div>
-                <div class="sidebar-chatbot-title">AI 분석 챗봇</div>
-                <div class="sidebar-chatbot-desc">
-                    현재 보고 있는 표·그래프를 함께 보면서
-                    질문을 이어갈 수 있습니다.
-                </div>
-                <div class="chatbot-view-chip">{view_title}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+    st.subheader("🤖 AI 챗봇")
 
     ready, status_message = get_llm_status(api_key)
+    is_open = st.session_state.get("llm_chat_open", False) and \
+              st.session_state.get("llm_chat_view_key") == view_key
 
+    # 토글 버튼: 닫혀있으면 "열기", 열려있으면 "닫기"
+    btn_label = "❌ 챗봇 닫기" if is_open else "💬 챗봇 열기"
     if st.button(
-        "🤖 AI 챗봇 열기",
-        key=f"open_chatbot_{view_key}",
+        btn_label,
+        key=f"toggle_chatbot_{view_key}",
         use_container_width=True,
         disabled=(not llm_enabled) or (not ready),
     ):
-        st.session_state["llm_chat_open"] = True
+        st.session_state["llm_chat_open"] = not is_open
         st.session_state["llm_chat_view_key"] = view_key
         st.rerun()
 
     if not llm_enabled:
-        st.caption("LLM 기능이 꺼져 있어 챗봇을 열 수 없습니다.")
+        st.caption("⚠️ LLM 기능이 꺼져 있어 챗봇을 열 수 없습니다.")
     elif not ready:
-        pass
-    else:
-        st.caption("현재 화면 문맥을 유지한 채 질문할 수 있습니다.")
+        st.caption(f"⚠️ {status_message}")
+    elif not is_open:
+        st.caption(f"📍 현재 화면: **{view_title}**")
+        st.caption("화면의 표·그래프를 보면서 질문할 수 있습니다.")
+
+    # ── 챗봇이 열려있을 때 사이드바에 inline 렌더 ──
+    if is_open and ready and llm_enabled and payload is not None:
+        _render_sidebar_chatbot_inline(
+            view_key=view_key,
+            view_title=view_title,
+            payload=payload,
+            api_key=api_key,
+            model_name=model_name,
+        )
+
+
+def _render_sidebar_chatbot_inline(
+    view_key: str,
+    view_title: str,
+    payload: Dict,
+    api_key: Optional[str],
+    model_name: str,
+):
+    """사이드바 안에 챗봇 대화 UI를 inline으로 표시."""
+    payload_json = build_payload_json(payload)
+    history_key = get_chat_history_key(view_key)
+    input_key = get_chat_input_key(view_key)
+
+    if history_key not in st.session_state:
+        st.session_state[history_key] = []
+
+    st.caption(f"📍 컨텍스트: **{view_title}**")
+
+    # 대화 지우기 버튼
+    if st.button("🗑 대화 지우기", key=f"clear_sidebar_chat_{view_key}", use_container_width=True):
+        st.session_state[history_key] = []
+        st.rerun()
+
+    history = st.session_state[history_key]
+
+    # 대화 내역 (스크롤 가능 컨테이너 — height 제한)
+    chat_container = st.container(height=400)
+    with chat_container:
+        if not history:
+            with st.chat_message("assistant", avatar="🤖"):
+                st.markdown(
+                    "안녕하세요. 현재 보고 있는 화면 기준으로 답해드릴게요.\n\n"
+                    "- 왜 이 지표가 높/낮은지\n"
+                    "- 어떤 고객/세그먼트가 핵심인지\n"
+                    "- 예산·threshold에서 뭘 바꾸면 좋을지"
+                )
+        for item in history:
+            role = item.get("role", "assistant")
+            avatar = "🧑" if role == "user" else "🤖"
+            with st.chat_message(role, avatar=avatar):
+                st.markdown(item.get("content", ""))
+
+    # 입력창
+    prompt = st.chat_input(
+        "현재 화면에 대해 질문하세요...",
+        key=f"sidebar_chat_input_{view_key}",
+    )
+
+    if prompt:
+        history.append({"role": "user", "content": prompt})
+        st.session_state[history_key] = history
+
+        contextual_question = build_contextual_chat_question(
+            view_title=view_title,
+            history=history[:-1],
+            latest_question=prompt,
+        )
+
+        with st.spinner("AI 답변 생성 중..."):
+            try:
+                answer = get_session_cached_answer(
+                    view_title=view_title,
+                    payload_json=payload_json,
+                    question=contextual_question,
+                    api_key=api_key or "",
+                    model_name=model_name,
+                )
+            except Exception as exc:
+                answer = f"AI 답변 생성 중 오류가 발생했습니다: {exc}"
+
+        history.append({"role": "assistant", "content": answer})
+        st.session_state[history_key] = history
+        st.rerun()
 
 
 @st.dialog("AI 분석 챗봇")
@@ -1347,6 +1799,99 @@ def inject_draggable_chat_dialog():
 
 inject_custom_css()
 
+
+def inject_scroll_preserver():
+    """Streamlit rerun 후에도 페이지/사이드바 스크롤 위치를 유지.
+
+    위젯 값 변경(슬라이더, 라디오, 체크박스 등) 시 Streamlit이 페이지를 다시 렌더하면서
+    스크롤이 맨 위로 가는 기본 동작을 sessionStorage로 보존하여 수정.
+    """
+    components.html(
+        """
+        <script>
+        (function() {
+          const doc = window.parent.document;
+          const STORAGE_KEY_MAIN = 'st_scroll_main';
+          const STORAGE_KEY_SIDEBAR = 'st_scroll_sidebar';
+
+          function findMainScroller() {
+            // Streamlit 메인 영역의 스크롤 가능한 컨테이너
+            return doc.querySelector('section.main') ||
+                   doc.querySelector('[data-testid="stMain"]') ||
+                   doc.querySelector('[data-testid="stAppViewContainer"]');
+          }
+          function findSidebarScroller() {
+            return doc.querySelector('section[data-testid="stSidebar"] > div') ||
+                   doc.querySelector('section[data-testid="stSidebar"]');
+          }
+
+          // 0. 즉시 복원 시도 (이전 rerun에서 저장한 스크롤 위치)
+          function restoreScroll() {
+            try {
+              const main = findMainScroller();
+              const side = findSidebarScroller();
+              const savedMain = parseFloat(sessionStorage.getItem(STORAGE_KEY_MAIN) || '0');
+              const savedSide = parseFloat(sessionStorage.getItem(STORAGE_KEY_SIDEBAR) || '0');
+              if (main && savedMain > 0) main.scrollTop = savedMain;
+              if (side && savedSide > 0) side.scrollTop = savedSide;
+              // window 자체의 스크롤도 복원 (어떤 streamlit 버전은 window 사용)
+              const savedWin = parseFloat(sessionStorage.getItem('st_scroll_win') || '0');
+              if (savedWin > 0) window.parent.scrollTo({ top: savedWin, behavior: 'instant' });
+            } catch (e) { /* ignore */ }
+          }
+
+          // 1. 스크롤 이벤트마다 위치 저장
+          function attachScrollListeners() {
+            const main = findMainScroller();
+            const side = findSidebarScroller();
+            if (main && !main.dataset._scrollAttached) {
+              main.dataset._scrollAttached = '1';
+              main.addEventListener('scroll', function() {
+                sessionStorage.setItem(STORAGE_KEY_MAIN, main.scrollTop);
+              }, { passive: true });
+            }
+            if (side && !side.dataset._scrollAttached) {
+              side.dataset._scrollAttached = '1';
+              side.addEventListener('scroll', function() {
+                sessionStorage.setItem(STORAGE_KEY_SIDEBAR, side.scrollTop);
+              }, { passive: true });
+            }
+            // window 스크롤도 저장
+            if (!window.parent._stScrollAttached) {
+              window.parent._stScrollAttached = true;
+              window.parent.addEventListener('scroll', function() {
+                sessionStorage.setItem('st_scroll_win', window.parent.scrollY);
+              }, { passive: true });
+            }
+          }
+
+          // 2. 초기 + 주기적 시도 (Streamlit이 DOM을 재구성하므로 여러 번 시도)
+          attachScrollListeners();
+          restoreScroll();
+
+          // DOM 변경 감지 — Streamlit rerun 후 새 노드가 생기면 다시 attach + restore
+          const observer = new MutationObserver(function() {
+            attachScrollListeners();
+            // rerun 직후 한 번만 복원 시도 (너무 자주 호출 안 되게)
+            if (!window.parent._stRestoreScheduled) {
+              window.parent._stRestoreScheduled = true;
+              setTimeout(function() {
+                restoreScroll();
+                window.parent._stRestoreScheduled = false;
+              }, 50);
+            }
+          });
+          observer.observe(doc.body, { childList: true, subtree: true });
+        })();
+        </script>
+        """,
+        height=0,
+        width=0,
+    )
+
+
+inject_scroll_preserver()
+
 CONTROL_DEFAULTS = {
     "control_threshold": 0.50,
     "control_budget": 5_000_000,
@@ -1371,24 +1916,57 @@ render_hero(
 if bundle.used_mock:
     render_status_pill("실제 data/raw 산출물을 찾지 못해 mock data로 실행 중입니다.", "warn")
 elif bundle.source_dir:
-    render_status_pill(f"실제 시뮬레이터 산출물 사용 중: {bundle.source_dir}", "success")
+    _current_mode = st.session_state.get("data_mode", "simulator")
+    if _current_mode == "user":
+        render_status_pill(f"실제 자사 고객 CSV 데이터 사용 중: {bundle.source_dir}", "success")
+    else:
+        render_status_pill(f"실제 시뮬레이터 산출물 사용 중: {bundle.source_dir}", "success")
 
 with st.sidebar:
     st.header("제어 패널")
 
-    # ── Data Upload Section ──
-    st.subheader("📂 데이터 업로드")
-    st.caption("자사 CSV 데이터를 업로드하면 자동으로 전처리 → 모델 학습 → 대시보드 반영까지 수행합니다.")
+    # ── Mode Selection (최상단) ──
+    st.subheader("🎯 분석 모드")
+    if "data_mode" not in st.session_state:
+        st.session_state["data_mode"] = "simulator"
 
-    uploaded_file = st.file_uploader(
-        "CSV 파일을 업로드하세요",
-        type=["csv", "tsv"],
-        key="csv_upload",
-        help="고객 데이터, 거래 데이터, 이벤트 데이터 등 분석 가능한 CSV를 업로드하세요. 파일 크기 제한은 없습니다.",
+    mode_choice = st.radio(
+        "어떤 데이터로 분석할까요?",
+        options=[("simulator", "🧪 시뮬레이터 데모"), ("user", "📂 자사 데이터")],
+        format_func=lambda x: x[1] if isinstance(x, tuple) else x,
+        index=0 if st.session_state["data_mode"] == "simulator" else 1,
+        key="data_mode_radio",
     )
+    selected_mode = mode_choice[0] if isinstance(mode_choice, tuple) else mode_choice
+
+    if selected_mode != st.session_state["data_mode"]:
+        st.session_state["data_mode"] = selected_mode
+        clear_dashboard_caches()
+        st.rerun()
+
+    # 현재 모드 안내
+    if selected_mode == "simulator":
+        st.caption("🟢 시뮬레이터 데이터 사용 중 (`data/raw_simulator/`)")
+    else:
+        st.caption("🔵 자사 데이터 사용 중 (`data/raw_user/`)")
+
+    # ── Data Upload Section (사용자 모드일 때만) ──
+    if selected_mode != "user":
+        st.info("ℹ️ 데이터 업로드는 **'📂 자사 데이터' 모드**에서만 가능합니다.")
+        # 시뮬레이터 모드에선 업로드 UI 자체를 숨김 (변수 초기화만)
+        uploaded_file = None
+    else:
+        st.subheader("📂 데이터 업로드")
+        st.caption("자사 CSV 데이터를 업로드하면 자동으로 전처리 → 모델 학습 → 대시보드 반영까지 수행합니다.")
+
+        uploaded_file = st.file_uploader(
+            "CSV 파일을 업로드하세요",
+            type=["csv", "tsv"],
+            key="csv_upload",
+            help="고객 데이터, 거래 데이터, 이벤트 데이터 등 분석 가능한 CSV를 업로드하세요. 파일 크기 제한은 없습니다.",
+        )
 
     if uploaded_file is not None:
-        import tempfile
         import sys
         from pathlib import Path as _UploadPath
 
@@ -1396,18 +1974,71 @@ with st.sidebar:
         if str(_project_root_for_upload) not in sys.path:
             sys.path.insert(0, str(_project_root_for_upload))
 
-        # Save uploaded file temporarily
+        # 업로드 파일 저장
         upload_dir = _project_root_for_upload / "data" / "uploads"
         upload_dir.mkdir(parents=True, exist_ok=True)
         upload_path = upload_dir / uploaded_file.name
-
         with open(upload_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
 
-        # Step 1: Validate
-        from src.ingestion.validator import validate_csv as _validate_csv
-        with st.spinner("데이터 검증 중..."):
-            validation_result = _validate_csv(upload_path)
+        # 새 파일이면 이전 매핑 상태 초기화
+        if st.session_state.get("upload_path_cached") != str(upload_path):
+            st.session_state["upload_path_cached"] = str(upload_path)
+            st.session_state.pop("mapping_preview", None)
+
+        # ── Step A: 매핑 미리보기 생성 (한 번만, 진행률 + 단계 메시지로 큰 파일도 살아있다는 신호) ──
+        if "mapping_preview" not in st.session_state:
+            from src.ingestion.pipeline import prepare_mapping_preview as _prepare_preview
+            import threading, time as _time
+
+            # 파일 크기 → 예상 소요 시간 (MB당 약 0.4초 + 기본 2초)
+            try:
+                _file_size_mb = max(upload_path.stat().st_size / (1024 * 1024), 0.1)
+            except Exception:
+                _file_size_mb = 1.0
+            _estimated_seconds = max(_file_size_mb * 0.4 + 2.0, 3.0)
+
+            # 백그라운드 스레드에서 prepare_mapping_preview 실행
+            _result_box: dict = {"value": None, "error": None}
+
+            def _worker():
+                try:
+                    _result_box["value"] = _prepare_preview(upload_path)
+                except Exception as _e:
+                    _result_box["error"] = _e
+
+            _t = threading.Thread(target=_worker, daemon=True)
+            _t.start()
+
+            _progress_bar = st.progress(0, text="🚀 시작 중...")
+            _elapsed = 0.0
+            while _t.is_alive():
+                _time.sleep(0.25)
+                _elapsed += 0.25
+                # 예상 시간의 90%까지 점진적으로 진행 (스레드 끝나면 100% 채움)
+                _pct = min(int((_elapsed / _estimated_seconds) * 90), 92)
+                if _pct < 25:
+                    _msg = f"📥 CSV 파일 읽는 중 ({_file_size_mb:.1f} MB)"
+                elif _pct < 50:
+                    _msg = "🔍 컬럼 자동 감지 중 (역할 매칭)"
+                elif _pct < 75:
+                    _msg = "📊 이벤트 타입 분포 분석 중 (최대 200,000행 샘플링)"
+                else:
+                    _msg = "🧮 매핑 결과 정리 중..."
+                _progress_bar.progress(_pct, text=f"{_msg} · {_elapsed:.1f}s 경과")
+
+            _t.join()
+
+            if _result_box["error"] is not None:
+                _progress_bar.progress(100, text="❌ 오류 발생")
+                st.error(f"매핑 미리보기 실패: {_result_box['error']}")
+                st.stop()
+            else:
+                _progress_bar.progress(100, text=f"✅ 매핑 미리보기 완료 ({_elapsed:.1f}s)")
+                st.session_state["mapping_preview"] = _result_box["value"]
+
+        preview = st.session_state["mapping_preview"]
+        validation_result = preview.validation
 
         if not validation_result.is_valid:
             for err in validation_result.errors:
@@ -1416,39 +2047,331 @@ with st.sidebar:
                 for warn in validation_result.warnings:
                     st.warning(f"⚠️ {warn}")
         else:
-            st.success(f"✅ 검증 통과 (관련성: {validation_result.relevance_score:.0%}, {validation_result.row_count:,}행 × {validation_result.column_count}열)")
+            st.success(
+                f"✅ 검증 통과 (관련성: {validation_result.relevance_score:.0%}, "
+                f"{validation_result.row_count:,}행 × {validation_result.column_count}열)"
+            )
             if validation_result.warnings:
                 for warn in validation_result.warnings:
                     st.caption(f"⚠️ {warn}")
 
-            # Show detected schema
-            with st.expander("감지된 컬럼 매핑", expanded=False):
-                for role, col in validation_result.detected_schema.items():
-                    st.text(f"  {role} → {col}")
+            from src.ingestion.preprocessor import (
+                INTERNAL_EVENT_TYPES as _STD,
+                ROLE_DESCRIPTIONS as _ROLE_DESC,
+                EVENT_TYPE_DESCRIPTIONS as _EV_DESC,
+            )
 
-            # Training controls
-            upload_budget = st.number_input("학습 예산", value=5_000_000, step=100000, key="upload_budget")
-            upload_threshold = st.slider("학습 이탈 Threshold", 0.10, 0.90, 0.50, 0.01, key="upload_threshold")
+            # ── Step B: 컬럼 매핑 검토 + 수정 UI ──
+            st.markdown("### 📋 컬럼 매핑")
+            st.caption(
+                "왼쪽은 **자사의 CSV 컬럼**, 오른쪽은 **시스템 스키마 컬럼** 입니다. "
+                "오른쪽 셀을 더블클릭하면 매핑 컬럼을 변경할 수 있습니다."
+            )
 
-            if st.button("🚀 전처리 + 모델 학습 시작", key="start_training", use_container_width=True):
-                from src.ingestion.pipeline import run_ingestion_pipeline as _run_pipeline
+            # 9개 역할 의미 안내 (event_type 매핑과 동일 패턴 — expander로 토글)
+            with st.expander("💡 시스템 스키마의 9개 역할이 각각 무엇을 의미하나요?", expanded=False):
+                _schema_help_html = "<div style='font-size: 0.82rem; line-height: 1.5;'>"
+                for _role_key, _role_desc in _ROLE_DESC.items():
+                    _schema_help_html += f"<div><b><code>{_role_key}</code></b> — {_role_desc}</div>"
+                _schema_help_html += "<div><b><code>(매핑 안 함)</code></b> — 이 컬럼은 분석에 사용하지 않습니다.</div>"
+                _schema_help_html += "</div>"
+                st.markdown(_schema_help_html, unsafe_allow_html=True)
 
-                progress_bar = st.progress(0, text="데이터 전처리 중...")
-                try:
-                    progress_bar.progress(10, text="CSV 데이터 전처리 중...")
-                    pipeline_result = _run_pipeline(
-                        file_path=upload_path,
-                        data_dir=_project_root_for_upload / "data" / "raw",
-                        model_dir=_project_root_for_upload / "models",
-                        result_dir=_project_root_for_upload / "results",
-                        feature_store_dir=_project_root_for_upload / "data" / "feature_store",
-                        budget=int(upload_budget),
-                        threshold=float(upload_threshold),
+            # 사용자 CSV의 모든 컬럼 + 자동 매핑 결과
+            all_user_columns = list(preview.validation.column_report and
+                [c["original_name"] for c in preview.validation.column_report]
+                or list(preview.column_mapping.values()))
+            col_to_role = {col: role for role, col in preview.column_mapping.items()}
+
+            role_options = ["(매핑 안 함)"] + list(_ROLE_DESC.keys())
+
+            cm_rows = []
+            for col in all_user_columns:
+                detected_role = col_to_role.get(col, "(매핑 안 함)")
+                cm_rows.append({
+                    "자사 CSV 컬럼": col,
+                    "시스템 스키마": detected_role,
+                })
+            cm_df = pd.DataFrame(cm_rows)
+
+            edited_cm = st.data_editor(
+                cm_df,
+                use_container_width=True,
+                hide_index=True,
+                disabled=["자사 CSV 컬럼"],
+                column_config={
+                    "자사 CSV 컬럼": st.column_config.TextColumn(
+                        "자사 CSV 컬럼",
+                        help="당신의 CSV 파일에 있는 실제 컬럼명",
+                    ),
+                    "시스템 스키마": st.column_config.SelectboxColumn(
+                        "시스템 스키마 ▼",
+                        options=role_options,
+                        required=True,
+                    ),
+                },
+                key="column_mapping_editor",
+            )
+
+            # 사용자 수정 결과를 column_mapping_override (역할 → 컬럼) 로 변환
+            user_column_mapping_override: dict[str, str] = {}
+            for _, _r in edited_cm.iterrows():
+                _col = str(_r["자사 CSV 컬럼"])
+                _role = str(_r["시스템 스키마"])
+                if _role and _role != "(매핑 안 함)":
+                    user_column_mapping_override[_role] = _col
+
+            st.caption("※ 한 역할(예: customer_id)에 여러 컬럼을 지정하면 마지막 항목만 사용됩니다.")
+
+            # ── Step C: event_type 값 매핑 검토 + 수정 UI ──
+            user_event_mapping: dict | None = None
+            allow_synthetic_fallback = False  # Phase 4.1: 합성 진행 여부
+
+            if preview.has_event_data:
+                st.markdown("### 🔁 event_type 값 매핑")
+                col_a, col_b = st.columns([3, 1])
+                with col_a:
+                    st.caption(
+                        f"감지된 event_type 고유값 **{len(preview.event_value_mapping)}개**, "
+                        f"자동 매핑 커버리지 **{preview.coverage_rate:.0%}**."
                     )
+                with col_b:
+                    if preview.coverage_rate >= 0.9:
+                        st.markdown("🟢 **매핑 양호**")
+                    elif preview.coverage_rate >= 0.7:
+                        st.markdown("🟡 **검토 권장**")
+                    else:
+                        st.markdown("🔴 **수정 필요**")
+
+                # 표준 6종 의미 안내 (접을 수 있게)
+                with st.expander("💡 내부 표준 값 6종이 각각 무엇을 의미하나요?", expanded=False):
+                    _ev_help_html = "<div style='font-size: 0.82rem; line-height: 1.5;'>"
+                    for _std, _desc in _EV_DESC.items():
+                        _ev_help_html += f"<div><b><code>{_std}</code></b> — {_desc}</div>"
+                    _ev_help_html += "</div>"
+                    st.markdown(_ev_help_html, unsafe_allow_html=True)
+
+                if preview.unmapped_values:
+                    st.warning(
+                        f"⚠️ 자동 매핑 실패한 {len(preview.unmapped_values)}개 값: "
+                        f"`{', '.join(preview.unmapped_values)}` → 'other'로 분류되었습니다. "
+                        "필요시 직접 수정해 주세요."
+                    )
+
+                std_options = list(_STD) + ["other", "ignore"]
+
+                editor_rows = []
+                for raw, std in sorted(
+                    preview.event_value_mapping.items(),
+                    key=lambda x: -preview.event_value_counts.get(x[0], 0),
+                ):
+                    editor_rows.append({
+                        "원본 값": raw,
+                        "빈도": preview.event_value_counts.get(raw, 0),
+                        "내부 표준 값": std,
+                    })
+                editor_df = pd.DataFrame(editor_rows)
+
+                edited = st.data_editor(
+                    editor_df,
+                    use_container_width=True,
+                    hide_index=True,
+                    disabled=["원본 값", "빈도"],
+                    column_config={
+                        "원본 값": st.column_config.TextColumn(
+                            "원본 값",
+                            help="당신의 CSV에 있는 event_type 값입니다.",
+                        ),
+                        "빈도": st.column_config.NumberColumn(
+                            "빈도",
+                            format="%d",
+                            help="해당 값이 데이터에 등장한 횟수 (200,000행 샘플 기준).",
+                        ),
+                        "내부 표준 값": st.column_config.SelectboxColumn(
+                            "내부 표준 값",
+                            options=std_options,
+                            required=True,
+                            help=(
+                                "이 원본 값을 어떤 표준 이벤트로 분류할지 선택하세요. "
+                                "visit=접속, page_view=조회, search=검색, "
+                                "add_to_cart=장바구니, purchase=구매·결제, "
+                                "support_contact=문의·환불, other=기타, "
+                                "ignore=분석에서 제외."
+                            ),
+                        ),
+                    },
+                    key="event_mapping_editor",
+                )
+
+                user_event_mapping = dict(zip(edited["원본 값"].astype(str), edited["내부 표준 값"].astype(str)))
+
+                # 매핑 후 표준값 분포 미리보기
+                std_dist: dict[str, int] = {}
+                for raw, std in user_event_mapping.items():
+                    std_dist[std] = std_dist.get(std, 0) + preview.event_value_counts.get(raw, 0)
+
+                if std_dist:
+                    st.markdown("**매핑 후 분포 (예상)**")
+                    dist_cols = st.columns(min(len(std_dist), 4))
+                    sorted_dist = sorted(std_dist.items(), key=lambda x: -x[1])
+                    for idx, (k, v) in enumerate(sorted_dist):
+                        col = dist_cols[idx % len(dist_cols)]
+                        with col:
+                            st.metric(label=k, value=f"{v:,}")
+            else:
+                # ── Phase 4.1: event 없는 데이터 처리 ──
+                st.error("⛔ event_type 또는 timestamp 컬럼이 감지되지 않았습니다.")
+                st.markdown(
+                    """
+                    이 경우 시스템은 **합성 이벤트 데이터**로 분석을 진행할 수 있지만,
+                    아래 항목은 **신뢰할 수 없습니다**:
+                    - 이벤트 시퀀스/세션 분석
+                    - 시간대별 행동 패턴
+                    - 이벤트 다양성 기반 피처
+
+                    가능하면 **event_type + timestamp 컬럼이 있는 CSV**로 다시 올려주세요.
+                    """
+                )
+                allow_synthetic_fallback = st.checkbox(
+                    "그래도 합성 이벤트로 진행 (제한된 분석만 신뢰 가능)",
+                    value=False,
+                    key="allow_synthetic",
+                    help="체크하면 시스템이 가짜 이벤트를 생성해서 학습합니다. 결과 해석에 주의하세요.",
+                )
+
+            # ── Step D: 학습 파라미터 + 단일 확정 버튼 ──
+            st.markdown("### ⚙️ 학습 설정")
+            col1, col2 = st.columns(2)
+            with col1:
+                upload_budget = st.number_input("학습 예산", value=5_000_000, step=100000, key="upload_budget")
+            with col2:
+                upload_threshold = st.slider("학습 이탈 Threshold", 0.10, 0.90, 0.50, 0.01, key="upload_threshold")
+
+            # ── 이탈 정의 (사용자가 직접 설정) ──
+            st.markdown("### 📛 이탈 고객 정의")
+            st.caption(
+                "마지막 활동(이벤트/주문) 이후 며칠 동안 활동이 없으면 \"이탈\"로 분류할지 정합니다. "
+                "업종에 따라 적절한 값이 다릅니다."
+            )
+            churn_inactivity_days = st.slider(
+                "이탈 기준: N일 이상 비활성",
+                min_value=7, max_value=180,
+                value=30, step=1,
+                key="churn_inactivity_days",
+                help=(
+                    "예: 30일 → 이커머스 일반\n"
+                    "    60~90일 → 구독 서비스 (월간/분기 결제)\n"
+                    "    7~14일 → 일일 사용 앱 (게임/소셜)"
+                ),
+            )
+            st.caption(f"현재 설정: **마지막 활동 {churn_inactivity_days}일 후 이탈**로 간주")
+
+            # Phase 4.1: event 없는 CSV 업로드 시, 사용자가 합성 진행을 명시적으로 동의해야만 버튼 활성화
+            can_proceed = preview.has_event_data or allow_synthetic_fallback
+            btn_label = "✅ 매핑 확정 후 학습 시작" if preview.has_event_data else "⚠️ 합성 이벤트로 진행 (제한 분석)"
+
+            if not can_proceed:
+                st.button(btn_label, disabled=True, use_container_width=True, help="event_type/timestamp 컬럼이 없어 진행 불가. 위에서 합성 진행에 동의하면 활성화됩니다.")
+            elif st.button(btn_label, key="confirm_and_train", use_container_width=True, type="primary"):
+                from src.ingestion.pipeline import run_ingestion_pipeline as _run_pipeline
+                import threading
+                import time as _time
+
+                progress_bar = st.progress(0, text="시작 중...")
+                status_text = st.empty()
+                try:
+                    # 사용자 모드 — 모든 출력을 _user 접미 디렉토리에 저장 (시뮬레이터 보호)
+                    # 파이프라인을 별도 스레드에서 실행하고, 메인 스레드는 progress 애니메이션
+                    _result_holder: dict = {}
+
+                    def _run_pipeline_thread():
+                        try:
+                            _result_holder["result"] = _run_pipeline(
+                                file_path=upload_path,
+                                data_dir=_project_root_for_upload / "data" / "raw_user",
+                                model_dir=_project_root_for_upload / "models_user",
+                                result_dir=_project_root_for_upload / "results_user",
+                                feature_store_dir=_project_root_for_upload / "data" / "feature_store_user",
+                                budget=int(upload_budget),
+                                threshold=float(upload_threshold),
+                                column_mapping_override=user_column_mapping_override or None,
+                                event_value_mapping=user_event_mapping,
+                                allow_synthetic_fallback=allow_synthetic_fallback,
+                                churn_inactivity_days=int(churn_inactivity_days),
+                            )
+                        except Exception as _exc:
+                            _result_holder["error"] = _exc
+
+                    _thread = threading.Thread(target=_run_pipeline_thread, daemon=True)
+                    _thread.start()
+
+                    # 진행률 애니메이션 — 시간 기반 가짜 진척률 (실제 단계 추적 어려움)
+                    # 0~95% 까지 점근적으로 증가, 단계별 메시지 순환
+                    _stage_msgs = [
+                        f"📥 CSV 읽는 중 ({validation_result.row_count:,}행)…",
+                        "🔍 데이터 검증 중…",
+                        "⚙️ 컬럼 매핑 적용 중…",
+                        "🧮 RFM·이탈 라벨 계산 중…",
+                        "🧠 피처 엔지니어링 중…",
+                        "🏋️ 이탈 예측 모델 학습 중 (XGBoost)…",
+                        "🎯 Uplift 모델 학습 중…",
+                        "💰 CLV 모델 학습 중…",
+                        "⏳ Survival(이탈 시점) 분석 중…",
+                        "📊 세그먼테이션 / A·B 테스트 분석 중…",
+                        "📈 예산 최적화 / 추천 생성 중…",
+                        "🔬 설명가능성·코호트 분석 중…",
+                    ]
+                    _start = _time.time()
+                    _msg_idx = 0
+                    while _thread.is_alive():
+                        _elapsed = _time.time() - _start
+                        # 0~95%까지 60초 동안 점근 (60초쯤 ~70%)
+                        _progress = min(int(95 * (1 - 1 / (1 + _elapsed / 25))), 95)
+                        _msg_idx = min(int(_elapsed / 8), len(_stage_msgs) - 1)
+                        progress_bar.progress(
+                            max(_progress, 3),
+                            text=f"{_stage_msgs[_msg_idx]}  ({int(_elapsed)}초 경과)",
+                        )
+                        status_text.caption(
+                            f"⏱️ 전체 단계: 검증 → 전처리 → 피처 → ML 학습 (13단계). 큰 파일은 5~10분 소요."
+                        )
+                        _time.sleep(0.4)
+
+                    _thread.join()
+                    if "error" in _result_holder:
+                        raise _result_holder["error"]
+                    pipeline_result = _result_holder["result"]
 
                     if pipeline_result.success:
                         progress_bar.progress(100, text="완료!")
                         st.success("🎉 전처리 및 모델 학습이 완료되었습니다! 대시보드가 자동으로 새로고침됩니다.")
+
+                        if pipeline_result.preprocessing:
+                            meta = pipeline_result.preprocessing.metadata or {}
+                            ev_source = meta.get("events_source")
+                            ev_mapping = meta.get("event_type_mapping") or {}
+                            id_type = meta.get("customer_id_type", "numeric")
+
+                            # Phase 4.2: 데이터 출처를 명확하게 큰 배지로 표시
+                            badge_cols = st.columns(3)
+                            with badge_cols[0]:
+                                if ev_source == "user_upload":
+                                    st.success("🟢 **실제 데이터**\n\nevents 테이블이 사용자 업로드 기반")
+                                elif ev_source == "synthetic":
+                                    st.warning("🟡 **합성 데이터**\n\nevents 테이블이 가짜로 생성됨")
+                            with badge_cols[1]:
+                                if ev_mapping:
+                                    src = ev_mapping.get("mapping_source", "auto")
+                                    cov = ev_mapping.get("coverage_rate", 0)
+                                    label = "수동 매핑" if src == "manual" else "자동 매핑"
+                                    st.info(f"🔁 **{label}**\n\n커버리지 {cov:.0%}")
+                                else:
+                                    st.info("🔁 **매핑 없음**\n\nevent_type 컬럼 부재")
+                            with badge_cols[2]:
+                                if id_type == "string_factorized":
+                                    st.info(f"🔑 **문자열 ID 변환**\n\n{meta.get('customer_id_unique_count', 0):,}명")
+                                else:
+                                    st.info("🔑 **수치 ID**\n\n원본 그대로 사용")
 
                         if pipeline_result.training:
                             completed = pipeline_result.training.stages_completed
@@ -1459,6 +2382,8 @@ with st.sidebar:
                                     for stage, err in failed.items():
                                         st.text(f"  {stage}: {err[:100]}")
 
+                        # 다음 업로드를 위해 매핑 상태 정리
+                        st.session_state.pop("mapping_preview", None)
                         clear_dashboard_caches()
                         st.rerun()
                     else:
@@ -1473,8 +2398,7 @@ with st.sidebar:
                     progress_bar.progress(100, text="오류 발생")
                     st.error(f"파이프라인 실행 중 오류: {exc}")
 
-    st.divider()
-
+    # session_state defaults (view 선택은 메인 영역에서 처리, 컨트롤만 사이드바에 남김)
     st.session_state.setdefault("dashboard_view", DASHBOARD_VIEW_OPTIONS[0])
     st.session_state.setdefault("dashboard_group", VIEW_TO_GROUP.get(st.session_state["dashboard_view"], DASHBOARD_VIEW_GROUPS[0][0]))
     st.session_state.setdefault("control_threshold", 0.50)
@@ -1483,28 +2407,42 @@ with st.sidebar:
     st.session_state.setdefault("control_target_cap", 1500)
     st.session_state.setdefault("control_recommendation_per_customer", 3)
 
-    default_view = st.session_state.get("dashboard_view", DASHBOARD_VIEW_OPTIONS[0])
-    if default_view not in DASHBOARD_VIEW_OPTIONS:
-        default_view = DASHBOARD_VIEW_OPTIONS[0]
-        st.session_state["dashboard_view"] = default_view
-    default_group = VIEW_TO_GROUP.get(default_view, DASHBOARD_VIEW_GROUPS[0][0])
-    if st.session_state.get("dashboard_group") not in [g for g, _ in DASHBOARD_VIEW_GROUPS]:
-        st.session_state["dashboard_group"] = default_group
+# ── 메인 영역: 화면 선택 (대분류 + 소분류 모두 가로 라디오 — 모든 옵션 한눈에) ──
+group_labels = [group for group, _ in DASHBOARD_VIEW_GROUPS]
 
-    group_labels = [group for group, _ in DASHBOARD_VIEW_GROUPS]
-    selected_group = st.selectbox("대분류", options=group_labels, key="dashboard_group")
+_group_icons = {
+    "핵심 분석":    "📊",
+    "실시간·예측":  "⚡",
+    "운영 인사이트": "🎯",
+}
+_group_label_with_icon = lambda g: f"{_group_icons.get(g, '')} {g}"
 
-    group_options = list(GROUP_TO_VIEW_OPTIONS.get(selected_group, DASHBOARD_VIEW_OPTIONS))
-    if st.session_state.get("dashboard_view") not in group_options:
-        st.session_state["dashboard_view"] = group_options[0]
+# 대분류 라디오 (가로)
+selected_group = st.radio(
+    "🗂 분석 분야",
+    options=group_labels,
+    format_func=_group_label_with_icon,
+    horizontal=True,
+    key="dashboard_group",
+)
 
-    view = st.radio(
-        "세부 화면",
-        options=group_options,
-        format_func=_view_title_from_option,
-        key="dashboard_view",
-        label_visibility="visible",
-    )
+group_options = list(GROUP_TO_VIEW_OPTIONS.get(selected_group, DASHBOARD_VIEW_OPTIONS))
+if st.session_state.get("dashboard_view") not in group_options:
+    st.session_state["dashboard_view"] = group_options[0]
+
+# 소분류도 가로 라디오 — 모든 세부 화면이 한눈에 보이도록
+view = st.radio(
+    f"📌 세부 화면 ({_group_label_with_icon(selected_group)})",
+    options=group_options,
+    format_func=_view_title_from_option,
+    horizontal=True,
+    key="dashboard_view",
+)
+
+# ── 사이드바에 view-specific 컨트롤 (항상 보임, expander 아님) ──
+with st.sidebar:
+    st.divider()
+    st.markdown("#### ⚙️ 분석 컨트롤")
 
     threshold = float(st.session_state["control_threshold"])
     budget = int(st.session_state["control_budget"])
@@ -1561,6 +2499,8 @@ with st.sidebar:
         )
         st.caption(f"현재 조건의 최종 타겟 고객 수: {int(len(preview_selected_customers)):,}명")
 
+# ── 사이드바: 실행/새로고침/LLM 설정 (expander 밖, 항상 보이게) ──
+with st.sidebar:
     st.divider()
     st.subheader("실행 / 새로고침")
     if notice := st.session_state.pop("dashboard_refresh_notice", None):
@@ -1590,7 +2530,6 @@ with st.sidebar:
 
     st.caption("실시간 화면에서는 새로고침 시 스트림을 조금씩 더 재생해 수치가 변하도록 했습니다. 나머지 화면은 캐시를 비우고 다시 계산합니다.")
 
-    st.divider()
     st.subheader("LLM 설정")
     st.caption("권장: API 키는 코드에 쓰지 말고 환경변수 OPENAI_API_KEY 또는 Streamlit secrets로 관리하세요.")
 
@@ -2385,7 +3324,14 @@ elif view == "8. Uplift/최적화 결과 (실시간)":
 
     with uplift_tab:
         if not uplift_summary and uplift_segmentation_df.empty:
-            st.warning("저장된 uplift 결과를 찾지 못했습니다.")
+            _mode_now = st.session_state.get("data_mode", "simulator")
+            if _mode_now == "user":
+                st.warning(
+                    "📂 자사 데이터 모드에 학습된 uplift 결과가 없습니다.\n\n"
+                    "사이드바에서 CSV를 업로드하고 **'✅ 매핑 확정 후 학습 시작'**을 눌러주세요."
+                )
+            else:
+                st.warning("저장된 uplift 결과를 찾지 못했습니다.")
         else:
             m1, m2 = st.columns(2)
             m1.metric("Uplift rows", int(uplift_summary.get("rows", len(uplift_segmentation_df))))
@@ -3275,15 +4221,18 @@ if llm_enabled:
         model_name=current_model_name,
     )
 
+    # 사이드바에 챗봇 inline 채팅창 렌더 — 별도 dialog 창 대신 사이드바 안에 직접 표시
     if (
         st.session_state.get("llm_chat_open", False)
         and st.session_state.get("llm_chat_view_key") == current_view_key
     ):
-        open_chatbot_dialog(
-            view_key=current_view_key,
-            view_title=llm_view_title,
-            payload=llm_payload,
-            api_key=llm_api_key_value,
-            model_name=current_model_name,
-        )
-        inject_draggable_chat_dialog()
+        with st.sidebar:
+            st.divider()
+            st.markdown("##### 💬 채팅창")
+            _render_sidebar_chatbot_inline(
+                view_key=current_view_key,
+                view_title=llm_view_title,
+                payload=llm_payload,
+                api_key=llm_api_key_value,
+                model_name=current_model_name,
+            )

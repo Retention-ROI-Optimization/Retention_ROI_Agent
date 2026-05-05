@@ -1,0 +1,17 @@
+[server]
+# 큰 CSV 파일 업로드 허용 (기본 200MB → 1GB)
+maxUploadSize = 1024
+# WebSocket 메시지 크기 한도 (기본 200MB → 500MB) — 매핑 미리보기 등 대형 응답
+maxMessageSize = 512
+# 헬스체크/연결 안정성
+enableXsrfProtection = false
+enableCORS = false
+# 파일 변경 자동 reload는 끔 (큰 데이터 작업 중 reload로 인한 끊김 방지)
+fileWatcherType = "none"
+
+[browser]
+gatherUsageStats = false
+
+[runner]
+# 긴 작업도 끊김 없이
+fastReruns = false

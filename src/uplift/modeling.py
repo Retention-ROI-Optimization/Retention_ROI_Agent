@@ -48,7 +48,16 @@ def _build_uplift_dataset(customer_summary: pd.DataFrame, assignments: pd.DataFr
     if "assigned_at" not in df.columns:
         assignments = assignments.copy()
         assignments["assigned_at"] = _prepare_dates(assignments, "assigned_at")
-        df = df.merge(assignments[["customer_id", "assigned_at", "treatment_flag", "treatment_group", "coupon_cost"]], on="customer_id", how="left")
+        # customer_summary에 이미 있는 컬럼을 drop한 후 merge → 충돌 방지
+        # (없으면 errors='ignore'로 무시)
+        df = df.drop(
+            columns=["treatment_flag", "treatment_group", "coupon_cost"],
+            errors="ignore",
+        )
+        df = df.merge(
+            assignments[["customer_id", "assigned_at", "treatment_flag", "treatment_group", "coupon_cost"]],
+            on="customer_id", how="left",
+        )
     else:
         df["assigned_at"] = _prepare_dates(df, "assigned_at")
 

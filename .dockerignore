@@ -1,0 +1,74 @@
+# ─────────────────────────────────────────────
+# Docker 이미지 빌드 시 제외할 파일/폴더
+# (런타임에 docker-compose volume mount(.:/app)로 코드만 동기화되므로,
+#  빌드 시점에 거대한 데이터/모델 파일까지 이미지에 넣을 필요 없음)
+# ─────────────────────────────────────────────
+
+# ── 거대한 데이터 파일 (수백 MB ~ GB) ──
+data/uploads/
+data/raw/
+data/raw_backup_*/
+data/raw_simulator/
+data/raw_user/
+data/feature_store/
+
+# ── 학습 산출물 ──
+models/
+results/
+mlruns/
+
+# ── Python 캐시 ──
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ── 가상환경 ──
+.venv/
+venv/
+env/
+
+# ── IDE/OS ──
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+
+# ── Git ──
+.git/
+.gitignore
+
+# ── 문서/에셋 (런타임에 불필요) ──
+docs/
+assets/
+*.md
+
+# ── 로그 ──
+*.log
+logs/
+
+# ── 테스트 ──
+tests/
+.coverage
+htmlcov/
+
+# ── Docker 자체 ──
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# ── Streamlit ──
+# config.toml은 컨테이너에 들어가야 하므로 제외 안 함
+# 캐시만 제외
+.streamlit/secrets.toml
+
+# ── 임시 ──
+tmp/
+temp/
+*.tmp

@@ -326,9 +326,24 @@ def validate_csv(
     if "customer_id" in schema_mapping:
         id_col = schema_mapping["customer_id"]
         if df[id_col].duplicated().any():
-            dup_count = int(df[id_col].duplicated().sum())
-            warnings.append(f"고객 ID 컬럼({id_col})에 중복 값 {dup_count:,}개가 있습니다. 트랜잭션 레벨 데이터일 수 있습니다.")
+            n_unique = int(df[id_col].nunique())
+            n_total = int(len(df))
+            uniqueness = n_unique / max(n_total, 1)
             duplicate_ids = True
+            # 트랜잭션/로그 데이터에서는 ID 중복이 정상 → 경고가 아닌 정보성 안내
+            if uniqueness < 0.5:
+                warnings.append(
+                    f"트랜잭션 레벨 데이터로 인식했습니다 "
+                    f"(고객 {n_unique:,}명 × 총 {n_total:,}건의 이벤트). "
+                    f"고객 단위로 자동 집계됩니다."
+                )
+            else:
+                # 일부 중복은 실제 문제일 수 있음
+                dup_count = n_total - n_unique
+                warnings.append(
+                    f"고객 ID 컬럼({id_col})에 중복 행 {dup_count:,}개가 있습니다. "
+                    f"고객 요약 데이터라면 중복을 제거하고 올려주세요."
+                )
 
     if "customer_id" not in schema_mapping:
         warnings.append("고객 ID로 사용할 수 있는 컬럼을 찾지 못했습니다. 첫 번째 고유 컬럼을 ID로 사용합니다.")
