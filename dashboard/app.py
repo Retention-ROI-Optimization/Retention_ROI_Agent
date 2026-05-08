@@ -1894,7 +1894,7 @@ with st.sidebar:
             st.session_state["upload_path_cached"] = str(upload_path)
             st.session_state.pop("mapping_preview", None)
 
-        # ── Step A: 매핑 미리보기 생성 (한 번만, 진행률 + 단계 메시지로 큰 파일도 살아있다는 신호) ──
+        # ── Step A: 매핑 미리보기 생성 ──
         if "mapping_preview" not in st.session_state:
             from src.ingestion.pipeline import prepare_mapping_preview as _prepare_preview
             import threading, time as _time
@@ -1923,7 +1923,6 @@ with st.sidebar:
             while _t.is_alive():
                 _time.sleep(0.25)
                 _elapsed += 0.25
-                # 예상 시간의 90%까지 점진적으로 진행 (스레드 끝나면 100% 채움)
                 _pct = min(int((_elapsed / _estimated_seconds) * 90), 92)
                 if _pct < 25:
                     _msg = f"📥 CSV 파일 읽는 중 ({_file_size_mb:.1f} MB)"
@@ -1972,7 +1971,7 @@ with st.sidebar:
             # ── Step B: 컬럼 매핑 검토 + 수정 UI ──
             st.markdown("### 📋 컬럼 매핑")
             st.caption(
-                "왼쪽은 **자사의 CSV 컬럼**, 오른쪽은 **시스템 스키마 컬럼** 입니다. "
+                "왼쪽은 **시스템 스키마 칼럼**, 오른쪽은 **자사 CSV 컬럼** 입니다. "
                 "오른쪽 셀을 더블클릭하면 매핑 컬럼을 변경할 수 있습니다."
             )
 
@@ -1989,51 +1988,49 @@ with st.sidebar:
             all_user_columns = list(preview.validation.column_report and
                 [c["original_name"] for c in preview.validation.column_report]
                 or list(preview.column_mapping.values()))
-            col_to_role = {col: role for role, col in preview.column_mapping.items()}
-
-            role_options = ["(매핑 안 함)"] + list(_ROLE_DESC.keys())
-
+            auto_role_to_col = dict[preview, preview](preview.column_mapping)
+            user_col_options = ["(매핑 안 함)"] + list(all_user_columns)
+        
             cm_rows = []
-            for col in all_user_columns:
-                detected_role = col_to_role.get(col, "(매핑 안 함)")
+            for role in _ROLE_DESC.keys():
+                detected_col = auto_role_to_col.get(role)
+                # 자동 매핑 안 됐으면 "(매핑 안 함)"으로
                 cm_rows.append({
-                    "자사 CSV 컬럼": col,
-                    "시스템 스키마": detected_role,
+                    "시스템 스키마": role,
+                    "자사 CSV 컬럼": detected_col if detected_col in all_user_columns else "(매핑 안 함)",
                 })
-            cm_df = pd.DataFrame(cm_rows)
+            cm_df = pd.DataFrame(cm_rows)        
 
             edited_cm = st.data_editor(
                 cm_df,
                 use_container_width=True,
                 hide_index=True,
-                disabled=["자사 CSV 컬럼"],
+                disabled=["시스템 스키마"],  # 시스템 스키마는 고정 (사용자가 수정 못 함)
                 column_config={
-                    "자사 CSV 컬럼": st.column_config.TextColumn(
-                        "자사 CSV 컬럼",
-                        help="당신의 CSV 파일에 있는 실제 컬럼명",
+                    "시스템 스키마": st.column_config.TextColumn(
+                        "시스템 스키마 (고정)",
+                        help="시스템에서 사용하는 표준 역할명 — 변경 불가",
                     ),
-                    "시스템 스키마": st.column_config.SelectboxColumn(
-                        "시스템 스키마 ▼",
-                        options=role_options,
+                    "자사 CSV 컬럼": st.column_config.SelectboxColumn(
+                        "자사 CSV 컬럼 ▼",
+                        options=user_col_options,
                         required=True,
+                        help="자동 감지된 결과 — 잘못 매핑되었으면 ▼ 클릭해서 변경",
                     ),
                 },
                 key="column_mapping_editor",
             )
 
-            # 사용자 수정 결과를 column_mapping_override (역할 → 컬럼) 로 변환
             user_column_mapping_override: dict[str, str] = {}
             for _, _r in edited_cm.iterrows():
-                _col = str(_r["자사 CSV 컬럼"])
                 _role = str(_r["시스템 스키마"])
-                if _role and _role != "(매핑 안 함)":
+                _col = str(_r["자사 CSV 컬럼"])
+                if _col and _col != "(매핑 안 함)":
                     user_column_mapping_override[_role] = _col
-
-            st.caption("※ 한 역할(예: customer_id)에 여러 컬럼을 지정하면 마지막 항목만 사용됩니다.")
-
+            
             # ── Step C: event_type 값 매핑 검토 + 수정 UI ──
             user_event_mapping: dict | None = None
-            allow_synthetic_fallback = False  # Phase 4.1: 합성 진행 여부
+            allow_synthetic_fallback = False  
 
             if preview.has_event_data:
                 st.markdown("### 🔁 event_type 값 매핑")
@@ -2050,8 +2047,7 @@ with st.sidebar:
                         st.markdown("🟡 **검토 권장**")
                     else:
                         st.markdown("🔴 **수정 필요**")
-
-                # 표준 6종 의미 안내 (접을 수 있게)
+                        
                 with st.expander("💡 내부 표준 값 6종이 각각 무엇을 의미하나요?", expanded=False):
                     _ev_help_html = "<div style='font-size: 0.82rem; line-height: 1.5;'>"
                     for _std, _desc in _EV_DESC.items():
@@ -2113,7 +2109,6 @@ with st.sidebar:
 
                 user_event_mapping = dict(zip(edited["원본 값"].astype(str), edited["내부 표준 값"].astype(str)))
 
-                # 매핑 후 표준값 분포 미리보기
                 std_dist: dict[str, int] = {}
                 for raw, std in user_event_mapping.items():
                     std_dist[std] = std_dist.get(std, 0) + preview.event_value_counts.get(raw, 0)
@@ -2127,7 +2122,6 @@ with st.sidebar:
                         with col:
                             st.metric(label=k, value=f"{v:,}")
             else:
-                # ── Phase 4.1: event 없는 데이터 처리 ──
                 st.error("⛔ event_type 또는 timestamp 컬럼이 감지되지 않았습니다.")
                 st.markdown(
                     """
@@ -2147,7 +2141,6 @@ with st.sidebar:
                     help="체크하면 시스템이 가짜 이벤트를 생성해서 학습합니다. 결과 해석에 주의하세요.",
                 )
 
-            # ── Step D: 학습 파라미터 + 단일 확정 버튼 ──
             st.markdown("### ⚙️ 학습 설정")
             col1, col2 = st.columns(2)
             with col1:
@@ -2155,7 +2148,6 @@ with st.sidebar:
             with col2:
                 upload_threshold = st.slider("학습 이탈 Threshold", 0.10, 0.90, 0.50, 0.01, key="upload_threshold")
 
-            # ── 이탈 정의 (사용자가 직접 설정) ──
             st.markdown("### 📛 이탈 고객 정의")
             st.caption(
                 "마지막 활동(이벤트/주문) 이후 며칠 동안 활동이 없으면 \"이탈\"로 분류할지 정합니다. "
@@ -2174,7 +2166,6 @@ with st.sidebar:
             )
             st.caption(f"현재 설정: **마지막 활동 {churn_inactivity_days}일 후 이탈**로 간주")
 
-            # Phase 4.1: event 없는 CSV 업로드 시, 사용자가 합성 진행을 명시적으로 동의해야만 버튼 활성화
             can_proceed = preview.has_event_data or allow_synthetic_fallback
             btn_label = "✅ 매핑 확정 후 학습 시작" if preview.has_event_data else "⚠️ 합성 이벤트로 진행 (제한 분석)"
 
@@ -2188,8 +2179,6 @@ with st.sidebar:
                 progress_bar = st.progress(0, text="시작 중...")
                 status_text = st.empty()
                 try:
-                    # 사용자 모드 — 모든 출력을 _user 접미 디렉토리에 저장 (시뮬레이터 보호)
-                    # 파이프라인을 별도 스레드에서 실행하고, 메인 스레드는 progress 애니메이션
                     _result_holder: dict = {}
 
                     def _run_pipeline_thread():
@@ -2213,8 +2202,7 @@ with st.sidebar:
                     _thread = threading.Thread(target=_run_pipeline_thread, daemon=True)
                     _thread.start()
 
-                    # 진행률 애니메이션 — 시간 기반 가짜 진척률 (실제 단계 추적 어려움)
-                    # 0~95% 까지 점근적으로 증가, 단계별 메시지 순환
+
                     _stage_msgs = [
                         f"📥 CSV 읽는 중 ({validation_result.row_count:,}행)…",
                         "🔍 데이터 검증 중…",
@@ -2233,7 +2221,6 @@ with st.sidebar:
                     _msg_idx = 0
                     while _thread.is_alive():
                         _elapsed = _time.time() - _start
-                        # 0~95%까지 60초 동안 점근 (60초쯤 ~70%)
                         _progress = min(int(95 * (1 - 1 / (1 + _elapsed / 25))), 95)
                         _msg_idx = min(int(_elapsed / 8), len(_stage_msgs) - 1)
                         progress_bar.progress(
@@ -2260,7 +2247,6 @@ with st.sidebar:
                             ev_mapping = meta.get("event_type_mapping") or {}
                             id_type = meta.get("customer_id_type", "numeric")
 
-                            # Phase 4.2: 데이터 출처를 명확하게 큰 배지로 표시
                             badge_cols = st.columns(3)
                             with badge_cols[0]:
                                 if ev_source == "user_upload":
@@ -2290,7 +2276,6 @@ with st.sidebar:
                                     for stage, err in failed.items():
                                         st.text(f"  {stage}: {err[:100]}")
 
-                        # 다음 업로드를 위해 매핑 상태 정리
                         st.session_state.pop("mapping_preview", None)
                         clear_dashboard_caches()
                         st.rerun()
@@ -2306,7 +2291,6 @@ with st.sidebar:
                     progress_bar.progress(100, text="오류 발생")
                     st.error(f"파이프라인 실행 중 오류: {exc}")
 
-    # session_state defaults (view 선택은 메인 영역에서 처리, 컨트롤만 사이드바에 남김)
     st.session_state.setdefault("dashboard_view", DASHBOARD_VIEW_OPTIONS[0])
     st.session_state.setdefault("dashboard_group", VIEW_TO_GROUP.get(st.session_state["dashboard_view"], DASHBOARD_VIEW_GROUPS[0][0]))
     st.session_state.setdefault("control_threshold", 0.50)
@@ -2315,7 +2299,6 @@ with st.sidebar:
     st.session_state.setdefault("control_target_cap", 1500)
     st.session_state.setdefault("control_recommendation_per_customer", 3)
 
-# ── 메인 영역: 화면 선택 (대분류 + 소분류 모두 가로 라디오 — 모든 옵션 한눈에) ──
 group_labels = [group for group, _ in DASHBOARD_VIEW_GROUPS]
 
 _group_icons = {
@@ -2338,7 +2321,6 @@ group_options = list(GROUP_TO_VIEW_OPTIONS.get(selected_group, DASHBOARD_VIEW_OP
 if st.session_state.get("dashboard_view") not in group_options:
     st.session_state["dashboard_view"] = group_options[0]
 
-# 소분류도 가로 라디오 — 모든 세부 화면이 한눈에 보이도록
 view = st.radio(
     f"📌 세부 화면 ({_group_label_with_icon(selected_group)})",
     options=group_options,
@@ -2347,7 +2329,6 @@ view = st.radio(
     key="dashboard_view",
 )
 
-# ── 사이드바에 view-specific 컨트롤 (항상 보임, expander 아님) ──
 with st.sidebar:
     st.divider()
     st.markdown("#### ⚙️ 분석 컨트롤")
@@ -2407,7 +2388,6 @@ with st.sidebar:
         )
         st.caption(f"현재 조건의 최종 타겟 고객 수: {int(len(preview_selected_customers)):,}명")
 
-# ── 사이드바: 실행/새로고침/LLM 설정 (expander 밖, 항상 보이게) ──
 with st.sidebar:
     st.divider()
     st.subheader("실행 / 새로고침")
