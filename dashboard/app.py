@@ -179,6 +179,100 @@ def _user_mode_unavailable(feature_name: str, reason: str = "") -> bool:
 # [/PATCH]
 # ============================================================
 
+
+def _ensure_retention_target_schema(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    외부 CSV/user 산출물에서 리텐션 대상 고객 목록 렌더링에 필요한 컬럼이
+    누락되어도 화면이 깨지지 않도록 공통 스키마를 보정한다.
+
+    특히 6번 화면은 priority_score, selection_score,
+    expected_incremental_profit, customer_id 기준으로 정렬하므로,
+    이 컬럼들이 없으면 사용 가능한 대체 점수로 생성한다.
+    """
+    if df is None:
+        return pd.DataFrame()
+
+    if not isinstance(df, pd.DataFrame):
+        try:
+            df = pd.DataFrame(df)
+        except Exception:
+            return pd.DataFrame()
+
+    # empty DataFrame도 아래에서 필요한 컬럼을 만들어야 한다.
+    # 여기서 바로 return하면 sort_values(["selection_score", ...])가 다시 KeyError를 낸다.
+    fixed = df.copy()
+
+    def _series_from(col: str, default: float = 0.0) -> pd.Series:
+        if col in fixed.columns:
+            return pd.to_numeric(fixed[col], errors="coerce").fillna(default)
+        return pd.Series(default, index=fixed.index, dtype="float64")
+
+    # customer_id가 없는 외부 산출물도 정렬/표시 가능하게 보정
+    if "customer_id" not in fixed.columns:
+        fixed["customer_id"] = range(1, len(fixed) + 1)
+
+    # 화면·hover·요약에서 자주 쓰는 수치 컬럼 기본값 보장
+    for numeric_col in [
+        "churn_probability",
+        "uplift_score",
+        "clv",
+        "coupon_cost",
+        "expected_roi",
+    ]:
+        if numeric_col not in fixed.columns:
+            fixed[numeric_col] = 0.0
+        else:
+            fixed[numeric_col] = _series_from(numeric_col)
+
+    # expected_incremental_profit 보정
+    if "expected_incremental_profit" not in fixed.columns:
+        if "expected_profit" in fixed.columns:
+            fixed["expected_incremental_profit"] = _series_from("expected_profit")
+        elif "incremental_profit" in fixed.columns:
+            fixed["expected_incremental_profit"] = _series_from("incremental_profit")
+        elif "expected_roi" in fixed.columns and "coupon_cost" in fixed.columns:
+            fixed["expected_incremental_profit"] = _series_from("expected_roi") * _series_from("coupon_cost")
+        elif "uplift_score" in fixed.columns and "clv" in fixed.columns:
+            fixed["expected_incremental_profit"] = _series_from("uplift_score") * _series_from("clv")
+        else:
+            fixed["expected_incremental_profit"] = 0.0
+    else:
+        fixed["expected_incremental_profit"] = _series_from("expected_incremental_profit")
+
+    # priority_score 보정: 가장 추천 우선순위에 가까운 컬럼부터 사용
+    if "priority_score" not in fixed.columns:
+        if "selection_score" in fixed.columns:
+            fixed["priority_score"] = _series_from("selection_score")
+        elif "value_score" in fixed.columns:
+            fixed["priority_score"] = _series_from("value_score")
+        elif "expected_incremental_profit" in fixed.columns:
+            fixed["priority_score"] = _series_from("expected_incremental_profit")
+        elif "uplift_score" in fixed.columns and "clv" in fixed.columns:
+            fixed["priority_score"] = _series_from("uplift_score") * _series_from("clv")
+        elif "expected_roi" in fixed.columns:
+            fixed["priority_score"] = _series_from("expected_roi")
+        elif "uplift_score" in fixed.columns:
+            fixed["priority_score"] = _series_from("uplift_score")
+        elif "churn_probability" in fixed.columns:
+            fixed["priority_score"] = _series_from("churn_probability")
+        elif "churn_prob" in fixed.columns:
+            fixed["priority_score"] = _series_from("churn_prob")
+        elif "risk_score" in fixed.columns:
+            fixed["priority_score"] = _series_from("risk_score")
+        else:
+            fixed["priority_score"] = 0.0
+    else:
+        fixed["priority_score"] = _series_from("priority_score")
+
+    # selection_score 보정
+    if "selection_score" not in fixed.columns:
+        fixed["selection_score"] = _series_from("priority_score")
+    else:
+        fixed["selection_score"] = _series_from("selection_score")
+
+    return fixed
+
+
 def _circled_num(n: str) -> str:
     try:
         i = int(n)
@@ -2555,6 +2649,9 @@ selected_customers, optimize_summary, segment_allocation = get_budget_result(
     threshold=threshold,
     max_customers=target_cap,
 )
+# 외부 CSV/user 결과에서는 일부 정렬·표시 컬럼이 없을 수 있으므로
+# 모든 downstream 화면이 같은 스키마를 보도록 즉시 보정한다.
+selected_customers = _ensure_retention_target_schema(selected_customers)
 
 if view == "12. 의사결정 엔진 비교":
     baseline_selected_customers, baseline_optimize_summary, baseline_segment_allocation = get_baseline_budget_result(
@@ -2947,7 +3044,6 @@ elif view == "3. Uplift + CLV 상위 고객":
         hover_data=[
             "customer_id",
             "persona",
-            "churn_probability",
             "expected_incremental_profit",
             "value_score",
         ],
@@ -2960,23 +3056,24 @@ elif view == "3. Uplift + CLV 상위 고객":
         "버블 크기는 expected_incremental_profit 대신 value_score(CLV × uplift_score)를 사용합니다. 차트는 성능을 위해 상위 500명만, 아래 테이블은 전체 정렬 결과를 보여줍니다."
     )
 
-    display_df = top_customers[
-        [
-            "customer_id",
-            "persona",
-            "churn_probability",
-            "uplift_score",
-            "clv",
-            "value_score",
-            "expected_incremental_profit",
-            "uplift_segment",
-        ]
-    ].copy()
-    display_df["churn_probability"] = display_df["churn_probability"].map(lambda x: f"{x:.3f}")
-    display_df["uplift_score"] = display_df["uplift_score"].map(lambda x: f"{x:.3f}")
-    display_df["clv"] = display_df["clv"].map(money)
-    display_df["value_score"] = display_df["value_score"].map(money)
-    display_df["expected_incremental_profit"] = display_df["expected_incremental_profit"].map(money)
+    display_columns = [
+        "customer_id",
+        "persona",
+        "uplift_score",
+        "clv",
+        "value_score",
+        "expected_incremental_profit",
+        "uplift_segment",
+    ]
+    display_df = top_customers[[col for col in display_columns if col in top_customers.columns]].copy()
+    if "uplift_score" in display_df.columns:
+        display_df["uplift_score"] = display_df["uplift_score"].map(lambda x: f"{x:.3f}")
+    if "clv" in display_df.columns:
+        display_df["clv"] = display_df["clv"].map(money)
+    if "value_score" in display_df.columns:
+        display_df["value_score"] = display_df["value_score"].map(money)
+    if "expected_incremental_profit" in display_df.columns:
+        display_df["expected_incremental_profit"] = display_df["expected_incremental_profit"].map(money)
     _render_dataframe_with_count(display_df, label="상위 고객 테이블")
 
     llm_payload = {
@@ -2984,14 +3081,13 @@ elif view == "3. Uplift + CLV 상위 고객":
         "segment_distribution": series_distribution(plot_df, "uplift_segment"),
         "numeric_summary": numeric_summary(
             plot_df,
-            ["uplift_score", "clv", "churn_probability", "expected_incremental_profit"],
+            ["uplift_score", "clv", "expected_incremental_profit"],
         ),
         "top_customers": dataframe_snapshot(
             plot_df,
             columns=[
                 "customer_id",
                 "persona",
-                "churn_probability",
                 "uplift_score",
                 "clv",
                 "expected_incremental_profit",
@@ -3114,25 +3210,29 @@ elif view == "5. 예상 최적화 ROI":
         st.plotly_chart(roi_fig, use_container_width=True)
 
         top_roi = selected_customers.sort_values(["expected_roi", "expected_incremental_profit", "customer_id"], ascending=[False, False, True]).copy()
-        display_df = top_roi[
-            [
-                "customer_id",
-                "persona",
-                "uplift_segment",
-                "intervention_intensity",
-                "recommended_action",
-                "uplift_score",
-                "clv",
-                "coupon_cost",
-                "expected_incremental_profit",
-                "expected_roi",
-            ]
-        ].copy()
-        display_df["uplift_score"] = display_df["uplift_score"].map(lambda x: f"{x:.3f}")
-        display_df["clv"] = display_df["clv"].map(money)
-        display_df["coupon_cost"] = display_df["coupon_cost"].map(money)
-        display_df["expected_incremental_profit"] = display_df["expected_incremental_profit"].map(money)
-        display_df["expected_roi"] = display_df["expected_roi"].map(lambda x: f"{x:.2%}")
+        roi_display_columns = [
+            "customer_id",
+            "persona",
+            "uplift_segment",
+            "intervention_intensity",
+            "recommended_action",
+            "uplift_score",
+            "clv",
+            "coupon_cost",
+            "expected_incremental_profit",
+            "expected_roi",
+        ]
+        display_df = top_roi[[col for col in roi_display_columns if col in top_roi.columns]].copy()
+        if "uplift_score" in display_df.columns:
+            display_df["uplift_score"] = display_df["uplift_score"].map(lambda x: f"{x:.3f}")
+        if "clv" in display_df.columns:
+            display_df["clv"] = display_df["clv"].map(money)
+        if "coupon_cost" in display_df.columns:
+            display_df["coupon_cost"] = display_df["coupon_cost"].map(money)
+        if "expected_incremental_profit" in display_df.columns:
+            display_df["expected_incremental_profit"] = display_df["expected_incremental_profit"].map(money)
+        if "expected_roi" in display_df.columns:
+            display_df["expected_roi"] = display_df["expected_roi"].map(lambda x: f"{x:.2%}")
         _render_dataframe_with_count(display_df, label="최적화로 선정된 전체 고객 테이블", height=min(900, 180 + 32 * len(display_df)))
 
     llm_payload = {
@@ -3148,6 +3248,8 @@ elif view == "6. 리텐션 대상 고객 목록":
         st.stop()
     st.subheader("리텐션 대상 고객 목록")
     st.caption("현재 budget / threshold / 최대 타겟 고객 수 조건에서 실제로 마케팅 대상으로 선정된 전체 고객을 보여줍니다.")
+
+    selected_customers = _ensure_retention_target_schema(selected_customers)
 
     optimized_targets = selected_customers.sort_values(
         ["priority_score", "selection_score", "expected_incremental_profit", "customer_id"],
