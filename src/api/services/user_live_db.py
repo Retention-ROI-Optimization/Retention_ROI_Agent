@@ -1,33 +1,52 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from typing import Iterator
 
 from sqlalchemy import create_engine, text
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Connection, Engine
 
 
 _engine: Engine | None = None
 
 
 def get_user_live_engine(db_url: str) -> Engine:
+    """
+    user mode 실시간 PostgreSQL 연결 엔진.
+    FastAPI 프로세스 안에서 재사용한다.
+    """
     global _engine
     if _engine is None:
-        _engine = create_engine(db_url, pool_pre_ping=True, future=True)
+        _engine = create_engine(
+            db_url,
+            pool_pre_ping=True,
+            future=True,
+        )
     return _engine
 
 
 @contextmanager
-def user_live_session(db_url: str):
+def user_live_session(db_url: str) -> Iterator[Connection]:
+    """
+    트랜잭션 단위 DB 세션.
+    with 블록이 정상 종료되면 commit, 예외가 나면 rollback된다.
+    """
     engine = get_user_live_engine(db_url)
     with engine.begin() as conn:
         yield conn
 
 
 def init_user_live_tables(db_url: str) -> None:
+    """
+    user mode 실시간 운영용 테이블 생성.
+    2단계에서는 customer_events와 customer_feature_state가 핵심이다.
+    customer_scores/recommendation/action_queue는 이후 단계에서 사용한다.
+    """
     with user_live_session(db_url) as conn:
         conn.execute(text("""
         CREATE TABLE IF NOT EXISTS customer_events (
             event_id BIGSERIAL PRIMARY KEY,
+            source_event_id TEXT,
             customer_id BIGINT NOT NULL,
             event_type TEXT NOT NULL,
             event_time TIMESTAMPTZ NOT NULL,
@@ -47,12 +66,15 @@ def init_user_live_tables(db_url: str) -> None:
             last_event_time TIMESTAMPTZ,
             visit_7d INT DEFAULT 0,
             browse_7d INT DEFAULT 0,
+            search_7d INT DEFAULT 0,
+            add_to_cart_7d INT DEFAULT 0,
+            cart_remove_7d INT DEFAULT 0,
             purchase_30d INT DEFAULT 0,
             revenue_30d NUMERIC DEFAULT 0,
             support_30d INT DEFAULT 0,
+            refund_30d INT DEFAULT 0,
             coupon_open_30d INT DEFAULT 0,
             coupon_redeem_30d INT DEFAULT 0,
-            cart_remove_7d INT DEFAULT 0,
             inactivity_days FLOAT DEFAULT 0,
             updated_at TIMESTAMPTZ DEFAULT now()
         )
@@ -105,9 +127,46 @@ def init_user_live_tables(db_url: str) -> None:
         )
         """))
 
+        # 1단계에서 이미 테이블을 만들었더라도 컬럼 보강 가능하게 처리
+        conn.execute(text("""
+        ALTER TABLE customer_events
+        ADD COLUMN IF NOT EXISTS source_event_id TEXT
+        """))
+
+        conn.execute(text("""
+        ALTER TABLE customer_feature_state
+        ADD COLUMN IF NOT EXISTS search_7d INT DEFAULT 0
+        """))
+
+        conn.execute(text("""
+        ALTER TABLE customer_feature_state
+        ADD COLUMN IF NOT EXISTS add_to_cart_7d INT DEFAULT 0
+        """))
+
+        conn.execute(text("""
+        ALTER TABLE customer_feature_state
+        ADD COLUMN IF NOT EXISTS refund_30d INT DEFAULT 0
+        """))
+
         conn.execute(text("""
         CREATE INDEX IF NOT EXISTS idx_customer_events_customer_time
         ON customer_events (customer_id, event_time DESC)
+        """))
+
+        conn.execute(text("""
+        CREATE INDEX IF NOT EXISTS idx_customer_events_type_time
+        ON customer_events (event_type, event_time DESC)
+        """))
+
+        conn.execute(text("""
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_customer_events_source_event_id
+        ON customer_events (source_event_id)
+        WHERE source_event_id IS NOT NULL
+        """))
+
+        conn.execute(text("""
+        CREATE INDEX IF NOT EXISTS idx_customer_feature_state_updated
+        ON customer_feature_state (updated_at DESC)
         """))
 
         conn.execute(text("""
