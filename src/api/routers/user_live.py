@@ -21,6 +21,10 @@ from src.api.services.user_live_seed import (
     get_user_live_seed_status,
     seed_user_live_from_artifacts,
 )
+from src.api.services.user_live_scoring import (
+    get_user_live_scores,
+    score_changed_customers,
+)
 
 router = APIRouter(prefix="/user-live", tags=["user-live"])
 
@@ -285,14 +289,14 @@ def _insert_event_and_update_feature_state(
 @router.post("/events")
 def ingest_user_event(
     event: UserEventIn,
+    score_after_event: bool = True,
     settings: ApiSettings = Depends(get_settings),
 ):
     """
     고객 행동 이벤트 1건 적재.
 
-    2단계 완료 기준:
-    - customer_events에 row가 쌓인다.
-    - customer_feature_state의 해당 customer_id row가 갱신된다.
+    4단계부터는 이벤트 적재 후 해당 customer_id만 즉시 재추론한다.
+    score_after_event=false로 호출하면 feature_state만 갱신하고 scoring은 건너뛸 수 있다.
     """
     init_user_live_tables(settings.user_db_url)
 
@@ -301,21 +305,40 @@ def ingest_user_event(
         event=event,
     )
 
+    scoring_result: dict[str, Any] | None = None
+
+    if score_after_event and result.get("inserted", True):
+        try:
+            scoring_result = score_changed_customers(
+                db_url=settings.user_db_url,
+                model_dir=Path.cwd() / "models_user",
+                customer_ids=[event.customer_id],
+            )
+        except Exception as exc:
+            scoring_result = {
+                "success": False,
+                "error": str(exc),
+                "customer_id": event.customer_id,
+            }
+
     return {
         "success": True,
         "mode": "user-live",
         "result": result,
+        "scoring": scoring_result,
     }
 
 
 @router.post("/events/batch")
 def ingest_user_events_batch(
     payload: UserEventBatchIn,
+    score_after_event: bool = True,
     settings: ApiSettings = Depends(get_settings),
 ):
     """
     고객 행동 이벤트 여러 건 적재.
-    로컬 테스트, CSV 일부 샘플 적재, 외부 시스템 micro-batch 연동에 사용한다.
+
+    4단계부터는 batch 안에서 실제 insert된 고객 ID만 모아서 한 번에 재추론한다.
     """
     init_user_live_tables(settings.user_db_url)
 
@@ -327,11 +350,13 @@ def ingest_user_events_batch(
             "inserted": 0,
             "duplicates": 0,
             "results": [],
+            "scoring": None,
         }
 
     results: list[dict[str, Any]] = []
     inserted_count = 0
     duplicate_count = 0
+    changed_customer_ids: set[int] = set()
 
     for event in payload.events:
         result = _insert_event_and_update_feature_state(
@@ -339,10 +364,29 @@ def ingest_user_events_batch(
             event=event,
         )
         results.append(result)
+
         if result.get("inserted"):
             inserted_count += 1
+            changed_customer_ids.add(int(event.customer_id))
+
         if result.get("duplicate"):
             duplicate_count += 1
+
+    scoring_result: dict[str, Any] | None = None
+
+    if score_after_event and changed_customer_ids:
+        try:
+            scoring_result = score_changed_customers(
+                db_url=settings.user_db_url,
+                model_dir=Path.cwd() / "models_user",
+                customer_ids=sorted(changed_customer_ids),
+            )
+        except Exception as exc:
+            scoring_result = {
+                "success": False,
+                "error": str(exc),
+                "customer_ids": sorted(changed_customer_ids),
+            }
 
     return {
         "success": True,
@@ -350,9 +394,10 @@ def ingest_user_events_batch(
         "received": len(payload.events),
         "inserted": inserted_count,
         "duplicates": duplicate_count,
+        "changed_customer_ids": sorted(changed_customer_ids),
         "results": results,
+        "scoring": scoring_result,
     }
-
 
 @router.get("/feature-state")
 def get_feature_state(
@@ -556,4 +601,45 @@ def seed_status(
     """
     return get_user_live_seed_status(
         db_url=settings.user_db_url,
+    )
+@router.post("/score-customers")
+def score_customers(
+    customer_ids: list[int],
+    settings: ApiSettings = Depends(get_settings),
+):
+    """
+    특정 고객 ID 목록만 수동 재추론한다.
+
+    테스트 예:
+    curl -X POST http://localhost:8000/api/v1/user-live/score-customers \
+      -H "Content-Type: application/json" \
+      -d '[1001, 1002]'
+    """
+    if not customer_ids:
+        raise HTTPException(
+            status_code=400,
+            detail="customer_ids must not be empty",
+        )
+
+    return score_changed_customers(
+        db_url=settings.user_db_url,
+        model_dir=Path.cwd() / "models_user",
+        customer_ids=customer_ids,
+    )
+
+
+@router.get("/scores")
+def live_scores(
+    limit: int = 100,
+    customer_id: int | None = None,
+    settings: ApiSettings = Depends(get_settings),
+):
+    """
+    PostgreSQL customer_scores 최신 점수 조회.
+    4단계 테스트용 API다.
+    """
+    return get_user_live_scores(
+        db_url=settings.user_db_url,
+        limit=limit,
+        customer_id=customer_id,
     )
