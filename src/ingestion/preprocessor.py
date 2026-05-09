@@ -114,10 +114,10 @@ EVENT_VALUE_SYNONYMS: Dict[str, Set[str]] = {
         "page_view", "pageview", "view", "viewed", "product_view", "viewed_product",
         "item_view", "page", "screen_view", "impression", "view_item",
         "view_item_list", "select_item", "scroll", "feature_use", "feature_view",
-        "click", "tap", "select", "browse", "explore",
+        "click", "tap", "select", "browse", "explore", "review_write", "review",
         "stream_start", "stream_complete", "stream_end", "watch", "watched",
         "video_play", "video_complete", "video_pause", "play", "pause", "resume",
-        "push_received", "notification_received",
+        "push_received", "notification_received", "coupon_use", "coupon", "point_use", "points_use",
         "조회", "상품조회", "페이지뷰", "둘러보기",
     },
     "search": {
@@ -134,9 +134,9 @@ EVENT_VALUE_SYNONYMS: Dict[str, Set[str]] = {
         "support", "support_contact", "support_chat", "contact", "inquiry", "help",
         "feedback", "cs", "customer_service", "ticket", "ticket_open", "ticket_close",
         "complaint", "report_issue", "nps", "nps_submit", "survey",
-        "refund_request", "refund", "return_request", "cancel_request",
+        "refund_request", "refund", "return", "returned", "return_request", "cancel_request",
         "cancel", "cancellation", "uninstall", "uninstall_signal", "unsubscribe",
-        "문의", "상담", "고객센터", "신고", "환불", "취소", "해지",
+        "문의", "상담", "고객센터", "신고", "환불", "반품", "취소", "해지",
     },
 }
 
@@ -196,6 +196,334 @@ def _safe_divide(a, b, default: float = 0.0):
     mask = b != 0
     out[mask] = a[mask] / b[mask]
     return out
+
+
+def _slugify_column(name: Any, max_len: int = 64) -> str:
+    """Return a safe, stable feature-name fragment for arbitrary CSV columns."""
+    text = re.sub(r"[^0-9a-zA-Z가-힣]+", "_", str(name).strip().lower())
+    text = re.sub(r"_+", "_", text).strip("_") or "col"
+    return text[:max_len]
+
+
+def _first_existing_column(df: pd.DataFrame, candidates: List[str]) -> Optional[str]:
+    normalized_lookup = {_slugify_column(c): c for c in df.columns}
+    for cand in candidates:
+        key = _slugify_column(cand)
+        if key in normalized_lookup:
+            return normalized_lookup[key]
+    return None
+
+
+def _mode_or_unknown(series: pd.Series) -> Any:
+    s = series.dropna()
+    if s.empty:
+        return "unknown"
+    mode = s.astype(str).mode(dropna=True)
+    return mode.iloc[0] if not mode.empty else str(s.iloc[0])
+
+
+def _looks_datetime(series: pd.Series) -> bool:
+    if pd.api.types.is_datetime64_any_dtype(series):
+        return True
+    if pd.api.types.is_numeric_dtype(series):
+        return False
+    sample = series.dropna().astype(str).head(80)
+    if sample.empty:
+        return False
+    # Avoid slow dateutil fallback and noisy warnings for arbitrary category
+    # strings such as gender/persona/payment_method.
+    date_like = sample.str.contains(
+        r"\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}[-/]\d{2,4}",
+        regex=True,
+        na=False,
+    ).mean()
+    if date_like < 0.60:
+        return False
+    parsed = pd.to_datetime(sample, errors="coerce")
+    return bool(parsed.notna().mean() >= 0.70)
+
+
+def _build_external_customer_features(df: pd.DataFrame, schema: Dict[str, str]) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+    """Aggregate all non-core uploaded columns to customer-level ext_* features.
+
+    The implementation builds one feature block per uploaded column and concatenates
+    once. This avoids repeated wide DataFrame merges, which become very slow for
+    external CSVs with almost one row per customer and many categorical columns.
+    """
+    if "customer_id" not in df.columns or df.empty:
+        return pd.DataFrame(columns=["customer_id"]), {"used_columns": [], "feature_columns": []}
+
+    protected = {"customer_id"}
+    protected.update(c for c in schema.values() if c in df.columns)
+    keep_even_if_mapped = {
+        schema.get("persona"), schema.get("region"), schema.get("category"),
+        schema.get("quantity"), schema.get("amount"), schema.get("churn_flag"),
+    }
+    keep_even_if_mapped = {c for c in keep_even_if_mapped if c}
+
+    customer_ids = pd.Index(sorted(df["customer_id"].dropna().unique()), name="customer_id")
+    feature_frames: List[pd.DataFrame] = []
+    feature_columns: List[str] = []
+    used_columns: List[Dict[str, Any]] = []
+    group_ids = df["customer_id"]
+
+    for col in [c for c in df.columns if c != "customer_id"]:
+        if col in protected and col not in keep_even_if_mapped and col != "customer_id_original":
+            continue
+        slug = _slugify_column(col)
+
+        if col == "customer_id_original":
+            s = df.groupby(group_ids)[col].first().reindex(customer_ids).rename("customer_id_original")
+            feature_frames.append(s.to_frame())
+            feature_columns.append("customer_id_original")
+            used_columns.append({"column": col, "kind": "id_lookup", "features": ["customer_id_original"]})
+            continue
+
+        series = df[col]
+        if _looks_datetime(series):
+            ts = _detect_date_column(df, col)
+            tmp = pd.DataFrame({"customer_id": group_ids, "_ts": ts})
+            agg = tmp.groupby("customer_id")["_ts"].agg(["min", "max"]).reindex(customer_ids)
+            agg = agg.rename(columns={"min": f"ext_date__{slug}_first", "max": f"ext_date__{slug}_last"})
+            max_ts = ts.max() if ts.notna().any() else pd.NaT
+            if pd.notna(max_ts):
+                agg[f"ext_num__{slug}_days_since_last"] = (max_ts - agg[f"ext_date__{slug}_last"]).dt.total_seconds().div(86400).fillna(999)
+            feature_frames.append(agg)
+            feats = list(agg.columns)
+            feature_columns.extend(feats)
+            used_columns.append({"column": col, "kind": "datetime", "features": feats})
+            continue
+
+        numeric = pd.to_numeric(series, errors="coerce")
+        if float(numeric.notna().mean()) >= 0.85:
+            tmp = pd.DataFrame({"customer_id": group_ids, "_v": numeric})
+            agg = tmp.groupby("customer_id")["_v"].agg(["mean", "sum", "min", "max"]).reindex(customer_ids)
+            rename_map = {
+                "mean": f"ext_num__{slug}_mean",
+                "sum": f"ext_num__{slug}_sum",
+                "min": f"ext_num__{slug}_min",
+                "max": f"ext_num__{slug}_max",
+            }
+            agg = agg.rename(columns=rename_map)
+            feature_frames.append(agg)
+            feats = list(rename_map.values())
+            feature_columns.extend(feats)
+            used_columns.append({"column": col, "kind": "numeric", "features": feats})
+            continue
+
+        tmp = pd.DataFrame({"customer_id": group_ids, "_v": series.astype("object")})
+        nunique = int(series.nunique(dropna=True))
+        mode_like = tmp.groupby("customer_id")["_v"].first().reindex(customer_ids).rename(f"ext_cat__{slug}_mode")
+        diversity = tmp.groupby("customer_id")["_v"].nunique(dropna=True).reindex(customer_ids).rename(f"ext_num__{slug}_nunique")
+        block = pd.concat([mode_like, diversity], axis=1)
+        feature_frames.append(block)
+        feats = [f"ext_cat__{slug}_mode", f"ext_num__{slug}_nunique"]
+        feature_columns.extend(feats)
+        used_columns.append({"column": col, "kind": "categorical", "unique_values": nunique, "features": feats})
+
+    if feature_frames:
+        out = pd.concat(feature_frames, axis=1).reset_index()
+    else:
+        out = pd.DataFrame({"customer_id": customer_ids})
+    return out, {"used_columns": used_columns, "feature_columns": feature_columns}
+
+
+def _attach_external_features(customer_summary: pd.DataFrame, external_features: pd.DataFrame) -> pd.DataFrame:
+    if external_features.empty or "customer_id" not in external_features.columns:
+        return customer_summary
+    dedup = external_features.drop_duplicates(subset=["customer_id"]).copy()
+    overlap = [c for c in dedup.columns if c != "customer_id" and c in customer_summary.columns]
+    rename_map = {c: f"ext_uploaded__{c}" for c in overlap if c != "customer_id_original"}
+    if rename_map:
+        dedup = dedup.rename(columns=rename_map)
+    return customer_summary.merge(dedup, on="customer_id", how="left")
+
+
+def _coalesce_known_external_columns(customer_summary: pd.DataFrame, df: pd.DataFrame, schema: Dict[str, str]) -> pd.DataFrame:
+    """Map common external retail columns to existing dashboard/core features."""
+    out = customer_summary.copy()
+
+    def _customer_numeric(col: Optional[str], agg: str = "mean") -> Optional[pd.Series]:
+        if not col or col not in df.columns:
+            return None
+        values = pd.to_numeric(df[col], errors="coerce")
+        tmp = pd.DataFrame({"customer_id": df["customer_id"], "_v": values})
+        if agg == "sum":
+            return tmp.groupby("customer_id")["_v"].sum()
+        if agg == "max":
+            return tmp.groupby("customer_id")["_v"].max()
+        if agg == "first":
+            return tmp.groupby("customer_id")["_v"].first()
+        return tmp.groupby("customer_id")["_v"].mean()
+
+    def _customer_mode(col: Optional[str]) -> Optional[pd.Series]:
+        if not col or col not in df.columns:
+            return None
+        return df.groupby("customer_id")[col].agg(_mode_or_unknown)
+
+    amount_col = schema.get("amount")
+    if amount_col and amount_col in df.columns:
+        amount_sum = _customer_numeric(amount_col, "sum")
+        if amount_sum is not None:
+            out["monetary"] = out["customer_id"].map(amount_sum).fillna(out.get("monetary", 0.0))
+
+    total_order_col = _first_existing_column(df, ["total_order_count", "order_count", "orders_count", "purchase_count"])
+    if total_order_col:
+        freq = _customer_numeric(total_order_col, "max")
+        if freq is not None:
+            out["frequency"] = np.maximum(pd.to_numeric(out.get("frequency", 0), errors="coerce").fillna(0), out["customer_id"].map(freq).fillna(0)).astype(int)
+
+    days_reg_col = _first_existing_column(df, ["days_since_registration", "customer_age_days", "days_from_signup"])
+    if days_reg_col:
+        days = _customer_numeric(days_reg_col, "max")
+        if days is not None:
+            ts_col = schema.get("timestamp")
+            max_ts = _detect_date_column(df, ts_col).max() if ts_col and ts_col in df.columns else pd.NaT
+            base_date = pd.Timestamp(max_ts).normalize() if pd.notna(max_ts) else pd.Timestamp("2025-01-01")
+            reg_days = out["customer_id"].map(days).fillna(0).clip(lower=0)
+            out["signup_date"] = base_date - pd.to_timedelta(reg_days, unit="D")
+            out["customer_age_days_uploaded"] = reg_days
+
+    access_col = _first_existing_column(df, ["access_channel", "channel", "device", "platform"])
+    if access_col:
+        channel = _customer_mode(access_col)
+        if channel is not None:
+            mapped = out["customer_id"].map(channel).fillna("unknown").astype(str)
+            if "acquisition_channel" not in out.columns or out["acquisition_channel"].eq("organic").all():
+                out["acquisition_channel"] = mapped
+            if "device_type" not in out.columns or out["device_type"].eq("mobile").all():
+                out["device_type"] = np.where(mapped.str.contains("mobile|app|ios|android", case=False, regex=True), "mobile", np.where(mapped.str.contains("web|pc|desktop", case=False, regex=True), "web", mapped))
+
+    for src_names, dst in [
+        (["gender"], "gender"),
+        (["age_group", "age_band", "age_range"], "age_group"),
+        (["payment_method"], "payment_method"),
+        (["delivery_type", "shipping_type"], "delivery_type"),
+    ]:
+        src = _first_existing_column(df, src_names)
+        mode = _customer_mode(src)
+        if mode is not None:
+            out[dst] = out["customer_id"].map(mode).fillna("unknown")
+
+    session_col = _first_existing_column(df, ["session_duration_sec", "session_duration", "duration_sec"])
+    if session_col:
+        session = _customer_numeric(session_col, "mean")
+        if session is not None:
+            out["avg_session_duration_sec_uploaded"] = out["customer_id"].map(session).fillna(0)
+
+    page_col = _first_existing_column(df, ["page_views", "pageviews", "views"])
+    if page_col:
+        pages = _customer_numeric(page_col, "mean")
+        if pages is not None:
+            out["pageviews_per_session_uploaded"] = out["customer_id"].map(pages).fillna(0)
+
+    discount_col = _first_existing_column(df, ["discount_amount", "discount", "coupon_discount"])
+    point_col = _first_existing_column(df, ["point_used", "points_used", "mileage_used"])
+    if discount_col:
+        disc_sum = _customer_numeric(discount_col, "sum")
+        amount_sum = _customer_numeric(amount_col, "sum") if amount_col else None
+        if disc_sum is not None:
+            out["discount_amount_total"] = out["customer_id"].map(disc_sum).fillna(0)
+            denom = out["customer_id"].map(amount_sum).fillna(0) if amount_sum is not None else pd.Series(0, index=out.index)
+            dep = _safe_divide(out["discount_amount_total"], np.maximum(denom, 1.0), default=0.0)
+            out["discount_dependency_score"] = np.clip(dep, 0, 1)
+            out["price_sensitivity"] = np.clip(0.35 + 0.8 * out["discount_dependency_score"], 0, 1)
+            out["coupon_affinity"] = np.clip(0.30 + 0.7 * out["discount_dependency_score"], 0, 1)
+    if point_col:
+        points = _customer_numeric(point_col, "sum")
+        if points is not None:
+            out["point_used_total"] = out["customer_id"].map(points).fillna(0)
+
+    refund_col = _first_existing_column(df, ["refund_reason", "return_reason", "cancel_reason"])
+    if refund_col:
+        refund_mode = _customer_mode(refund_col)
+        if refund_mode is not None:
+            reason = out["customer_id"].map(refund_mode).fillna("none").astype(str)
+            out["refund_reason"] = reason
+            has_issue = ~reason.str.lower().isin(["", "none", "nan", "no", "없음"])
+            if "support_contact_propensity" in out.columns:
+                base_support = pd.to_numeric(out["support_contact_propensity"], errors="coerce").fillna(0.1)
+            else:
+                base_support = pd.Series(0.1, index=out.index)
+            out["support_contact_propensity"] = np.where(has_issue, np.maximum(base_support, 0.65), base_support)
+
+    return out
+
+
+def _deduplicate_customer_summary(customer_summary: pd.DataFrame) -> pd.DataFrame:
+    """Guarantee one row per customer to avoid many-to-many downstream joins.
+
+    External CSVs often have almost one row per customer with only a handful of
+    accidental duplicate IDs. A full custom groupby aggregation over every object
+    column is needlessly slow, so only duplicated IDs are reconciled and the rest
+    of the table is kept as-is.
+    """
+    if customer_summary.empty or "customer_id" not in customer_summary.columns or customer_summary["customer_id"].is_unique:
+        return customer_summary
+
+    unique_part = customer_summary.loc[~customer_summary["customer_id"].duplicated(keep=False)].copy()
+    dup_part = customer_summary.loc[customer_summary["customer_id"].duplicated(keep=False)].copy()
+    agg: Dict[str, Any] = {}
+    for col in dup_part.columns:
+        if col == "customer_id":
+            continue
+        if pd.api.types.is_numeric_dtype(dup_part[col]):
+            if any(key in col for key in ["probability", "score", "rate", "roi", "affinity", "sensitivity", "propensity"]):
+                agg[col] = "mean"
+            elif any(key in col for key in ["monetary", "amount", "clv", "cost", "profit", "frequency", "count", "total"]):
+                agg[col] = "max"
+            else:
+                agg[col] = "last"
+        else:
+            agg[col] = "last"
+    reconciled = dup_part.groupby("customer_id", as_index=False, sort=False).agg(agg)
+    out = pd.concat([unique_part, reconciled], ignore_index=True, sort=False)
+    return out.sort_values("customer_id").reset_index(drop=True)
+
+
+def _estimate_churn_probability(customer_summary: pd.DataFrame, observed_label: Optional[pd.Series] = None, *, seed: int = 42) -> pd.Series:
+    """Create a continuous, feature-based churn probability instead of echoing 0/1 labels."""
+    cs = customer_summary.copy()
+    n = len(cs)
+    if n == 0:
+        return pd.Series(dtype=float)
+
+    def _rank01(values: pd.Series, ascending: bool = True) -> pd.Series:
+        v = pd.to_numeric(values, errors="coerce").replace([np.inf, -np.inf], np.nan)
+        if v.notna().nunique() <= 1:
+            return pd.Series(0.5, index=values.index)
+        return v.rank(pct=True, ascending=ascending).fillna(0.5)
+
+    recency_risk = _rank01(cs.get("recency_days", pd.Series(0, index=cs.index)), ascending=True)
+    inactivity_risk = _rank01(cs.get("inactivity_days", cs.get("recency_days", pd.Series(0, index=cs.index))), ascending=True)
+    low_frequency_risk = 1.0 - _rank01(cs.get("frequency", pd.Series(0, index=cs.index)), ascending=True)
+    low_monetary_risk = 1.0 - _rank01(cs.get("monetary", pd.Series(0, index=cs.index)), ascending=True)
+    support_risk = pd.to_numeric(cs.get("support_contact_propensity", pd.Series(0.1, index=cs.index)), errors="coerce").fillna(0.1).clip(0, 1)
+    discount_risk = pd.to_numeric(cs.get("discount_dependency_score", pd.Series(0.0, index=cs.index)), errors="coerce").fillna(0).clip(0, 1)
+    session = pd.to_numeric(cs.get("avg_session_duration_sec_uploaded", pd.Series(np.nan, index=cs.index)), errors="coerce")
+    pageviews = pd.to_numeric(cs.get("pageviews_per_session_uploaded", pd.Series(np.nan, index=cs.index)), errors="coerce")
+    engagement_risk = pd.Series(0.5, index=cs.index)
+    if session.notna().nunique() > 1:
+        engagement_risk = 0.5 * engagement_risk + 0.5 * (1.0 - _rank01(session, ascending=True))
+    if pageviews.notna().nunique() > 1:
+        engagement_risk = 0.5 * engagement_risk + 0.5 * (1.0 - _rank01(pageviews, ascending=True))
+
+    behavior_score = (0.28 * recency_risk + 0.20 * inactivity_risk + 0.16 * low_frequency_risk + 0.12 * low_monetary_risk + 0.12 * support_risk + 0.06 * discount_risk + 0.06 * engagement_risk).clip(0.01, 0.99)
+    rng = np.random.default_rng(seed)
+    tiny_jitter = pd.Series(rng.normal(0.0, 0.015, size=n), index=cs.index)
+
+    if observed_label is not None:
+        label = pd.to_numeric(observed_label.reindex(cs.index), errors="coerce")
+        if label.notna().any():
+            label = label.fillna(label.mean()).clip(0, 1)
+            rate = float(np.clip(label.mean(), 0.03, 0.97))
+            logit_prior = np.log(rate / (1.0 - rate))
+            logit = logit_prior + 1.65 * (label - rate) + 1.35 * (behavior_score - 0.5) + tiny_jitter
+            prob = 1.0 / (1.0 + np.exp(-logit))
+            return pd.Series(prob, index=cs.index).clip(0.02, 0.98)
+
+    prob = 0.08 + 0.84 * behavior_score + tiny_jitter
+    return pd.Series(prob, index=cs.index).clip(0.02, 0.98)
 
 
 def _detect_date_column(df: pd.DataFrame, col: str) -> pd.Series:
@@ -375,6 +703,7 @@ def _extract_real_events(
         }
 
     events_df = pd.DataFrame({
+        "source_row_id": sub.index.astype(int).values,
         "customer_id": sub["customer_id"].astype(int).values,
         "timestamp": sub["_ts"].values,
         "event_type": normalized.values,
@@ -404,7 +733,7 @@ def _extract_real_events(
 
     # 컬럼 순서 정리 (다운스트림 호환: customer_id, timestamp, event_type, session_id, item_category, quantity)
     events_df = events_df[[
-        "event_id", "customer_id", "timestamp", "event_type",
+        "event_id", "source_row_id", "customer_id", "timestamp", "event_type",
         "event_type_original", "session_id", "item_category", "quantity",
     ]]
 
@@ -428,24 +757,44 @@ def _build_orders_from_real_events(
             "quantity", "gross_amount", "discount_amount", "net_amount", "coupon_used",
         ])
 
-    src = df[[c for c in ["customer_id", ts_col, amount_col] if c and c in df.columns]].copy()
+    discount_col = _first_existing_column(df, ["discount_amount", "discount", "coupon_discount"])
+    coupon_col = _first_existing_column(df, ["coupon_used", "coupon_use", "coupon_redeemed"])
+    src_cols = [c for c in ["customer_id", ts_col, amount_col, discount_col, coupon_col] if c and c in df.columns]
+    src = df[src_cols].copy()
+    src["source_row_id"] = df.index.astype(int)
     src["customer_id"] = pd.to_numeric(src["customer_id"], errors="coerce")
     src = src.dropna(subset=["customer_id"])
     src["customer_id"] = src["customer_id"].astype(int)
     src["_ts"] = _detect_date_column(src, ts_col) if ts_col else pd.NaT
     src["_amount"] = _safe_numeric(src[amount_col], 0.0)
+    src["_discount"] = _safe_numeric(src[discount_col], 0.0) if discount_col else 0.0
+    if coupon_col:
+        src["_coupon_used"] = (_safe_numeric(src[coupon_col], 0.0) > 0).astype(int)
+    elif discount_col:
+        src["_coupon_used"] = (_safe_numeric(src[discount_col], 0.0) > 0).astype(int)
+    else:
+        src["_coupon_used"] = rng.binomial(1, 0.3, size=len(src))
 
     purchases = real_events[purchase_mask].copy()
-    purchases = purchases.merge(
-        src[["customer_id", "_ts", "_amount"]],
-        left_on=["customer_id", "timestamp"],
-        right_on=["customer_id", "_ts"],
-        how="left",
-    )
+    if "source_row_id" in purchases.columns:
+        purchases = purchases.merge(
+            src[["source_row_id", "customer_id", "_ts", "_amount", "_discount", "_coupon_used"]],
+            on=["source_row_id", "customer_id"],
+            how="left",
+        )
+    else:
+        purchases = purchases.merge(
+            src[["customer_id", "_ts", "_amount", "_discount", "_coupon_used"]],
+            left_on=["customer_id", "timestamp"],
+            right_on=["customer_id", "_ts"],
+            how="left",
+        )
     purchases["_amount"] = purchases["_amount"].fillna(0.0)
+    purchases["_discount"] = pd.to_numeric(purchases.get("_discount", 0.0), errors="coerce").fillna(0.0)
+    purchases["_coupon_used"] = pd.to_numeric(purchases.get("_coupon_used", 0), errors="coerce").fillna(0).astype(int)
 
-    coupon_used = rng.binomial(1, 0.3, size=len(purchases))
-    discount = purchases["_amount"].values * 0.1 * coupon_used
+    coupon_used = purchases["_coupon_used"].astype(int).values
+    discount = np.minimum(purchases["_discount"].values, purchases["_amount"].values)
 
     orders = pd.DataFrame({
         "order_id": ["ORD-" + str(i) for i in range(len(purchases))],
@@ -638,37 +987,78 @@ def _generate_campaign_exposures(treatment_assignments: pd.DataFrame, rng: np.ra
     })
 
 
-def _build_cohort_retention(customer_summary: pd.DataFrame) -> pd.DataFrame:
-    """Build cohort retention table from customer summary."""
-    if "acquisition_month" not in customer_summary.columns:
-        return pd.DataFrame(columns=["cohort_month", "period", "cohort_size", "retained_customers", "retention_rate", "observed", "activity_definition", "retention_mode", "min_events_per_period"])
+def _build_cohort_retention(
+    customer_summary: pd.DataFrame,
+    events_df: Optional[pd.DataFrame] = None,
+    orders_df: Optional[pd.DataFrame] = None,
+) -> pd.DataFrame:
+    """Build cohort retention table, using uploaded event/order activity when available."""
+    columns = [
+        "cohort_month", "period", "cohort_size", "retained_customers", "retention_rate",
+        "observed", "activity_definition", "retention_mode", "min_events_per_period",
+    ]
+    if "acquisition_month" not in customer_summary.columns or customer_summary.empty:
+        return pd.DataFrame(columns=columns)
 
+    pieces = []
+    if events_df is not None and not events_df.empty and {"customer_id", "timestamp", "event_type"}.issubset(events_df.columns):
+        e = events_df[["customer_id", "timestamp", "event_type"]].copy()
+        e["activity_time"] = pd.to_datetime(e["timestamp"], errors="coerce")
+        e["activity_type"] = e["event_type"].astype(str)
+        pieces.append(e[["customer_id", "activity_time", "activity_type"]])
+    if orders_df is not None and not orders_df.empty and {"customer_id", "order_time"}.issubset(orders_df.columns):
+        o = orders_df[["customer_id", "order_time"]].copy()
+        o["activity_time"] = pd.to_datetime(o["order_time"], errors="coerce")
+        o["activity_type"] = "purchase"
+        pieces.append(o[["customer_id", "activity_time", "activity_type"]])
+    activity = pd.concat(pieces, ignore_index=True).dropna(subset=["activity_time"]) if pieces else pd.DataFrame(columns=["customer_id", "activity_time", "activity_type"])
+
+    cs = customer_summary[["customer_id", "acquisition_month", "signup_date"]].copy()
+    cs["signup_date"] = pd.to_datetime(cs["signup_date"], errors="coerce")
+    rows: List[Dict[str, Any]] = []
+    use_actual = not activity.empty and activity["customer_id"].nunique() >= max(10, int(0.05 * len(cs)))
     rng = np.random.default_rng(42)
-    cohorts = customer_summary["acquisition_month"].dropna().unique()
-    rows = []
-    for cohort in sorted(cohorts):
-        cohort_size = int((customer_summary["acquisition_month"] == cohort).sum())
+
+    for cohort in sorted(cs["acquisition_month"].dropna().astype(str).unique()):
+        cohort_customers = cs.loc[cs["acquisition_month"].astype(str) == cohort, ["customer_id", "signup_date"]]
+        cohort_ids = set(cohort_customers["customer_id"].tolist())
+        cohort_size = int(len(cohort_customers))
+        if cohort_size == 0:
+            continue
+        cohort_start = pd.to_datetime(cohort_customers["signup_date"], errors="coerce").min()
         for period in range(7):
-            if period == 0:
-                retention = 1.0
+            if use_actual and pd.notna(cohort_start):
+                period_start = cohort_start + pd.DateOffset(months=period)
+                period_end = cohort_start + pd.DateOffset(months=period + 1)
+                period_activity = activity[activity["activity_time"].between(period_start, period_end, inclusive="left")]
+                active_ids_all = set(period_activity["customer_id"].tolist()) & cohort_ids
+                active_ids_purchase = set(period_activity.loc[period_activity["activity_type"].eq("purchase"), "customer_id"].tolist()) & cohort_ids
+                active_ids_core = set(period_activity.loc[period_activity["activity_type"].isin(["visit", "page_view", "search", "add_to_cart", "purchase"]), "customer_id"].tolist()) & cohort_ids
+                counts = {
+                    "all_activity": len(active_ids_all) if period > 0 else cohort_size,
+                    "purchase_only": len(active_ids_purchase) if period > 0 else cohort_size,
+                    "core_engagement": len(active_ids_core) if period > 0 else cohort_size,
+                }
             else:
-                base_retention = max(0.85 - 0.08 * period + rng.normal(0, 0.02), 0.15)
-                retention = round(base_retention, 4)
-            retained = int(round(cohort_size * retention))
-            for activity_def in ["core_engagement", "all_activity", "purchase_only"]:
+                base_retention = 1.0 if period == 0 else max(0.85 - 0.08 * period + rng.normal(0, 0.02), 0.15)
+                counts = {k: int(round(cohort_size * base_retention)) for k in ["all_activity", "purchase_only", "core_engagement"]}
+
+            for activity_def, retained in counts.items():
+                retained = int(min(max(retained, 0), cohort_size))
+                retention = retained / max(cohort_size, 1)
                 for mode in ["rolling", "point"]:
                     rows.append({
                         "cohort_month": str(cohort),
                         "period": period,
                         "cohort_size": cohort_size,
                         "retained_customers": retained,
-                        "retention_rate": retention,
-                        "observed": True,
+                        "retention_rate": round(float(retention), 4),
+                        "observed": bool(use_actual),
                         "activity_definition": activity_def,
                         "retention_mode": mode,
                         "min_events_per_period": 1,
                     })
-    return pd.DataFrame(rows)
+    return pd.DataFrame(rows, columns=columns)
 
 
 def preprocess_uploaded_data(
@@ -690,26 +1080,21 @@ def preprocess_uploaded_data(
         "source": "user_upload",
         "original_rows": len(df),
         "original_columns": len(df.columns),
+        "original_column_names": list(df.columns),
         "detected_schema": schema,
     }
 
     # ── Step 1: Extract customer ID ──
     id_col = schema.get("customer_id", df.columns[0])
 
-    # 메모리 절약: schema에 매핑된 컬럼들 + customer_id만 유지하고 불필요 컬럼 제거
-    needed_cols = set()
-    needed_cols.add(id_col)
-    for role_col in schema.values():
-        if role_col and role_col in df.columns:
-            needed_cols.add(role_col)
-    keep_cols = [c for c in df.columns if c in needed_cols]
-    if len(keep_cols) < len(df.columns):
-        df = df[keep_cols].copy()
-    else:
-        df = df.copy()
+    # 외부 CSV의 모든 열을 보존한다. 예전 코드는 schema에 매핑된 9개 역할 열만
+    # 남겨 gender/age_group/session/page_views/discount 등 대부분의 자사 열을 버렸다.
+    # 이후 단계에서 비표준 열은 ext_* 피처로 고객 단위 집계된다.
+    df = df.copy()
 
     if id_col != "customer_id":
         df = df.rename(columns={id_col: "customer_id"})
+        schema = {role: ("customer_id" if col == id_col else col) for role, col in schema.items()}
 
     # null ID 행 제거
     df = df.dropna(subset=["customer_id"])
@@ -741,6 +1126,11 @@ def preprocess_uploaded_data(
     id_uniqueness = df["customer_id"].nunique() / max(len(df), 1)
     is_transaction_level = id_uniqueness < 0.5  # multiple rows per customer = transactional
     metadata["data_granularity"] = "transaction" if is_transaction_level else "customer_summary"
+    metadata["customer_id_unique_ratio"] = float(id_uniqueness)
+
+    # 모든 비표준 업로드 열을 고객 단위 피처로 선집계한다.
+    external_customer_features, external_feature_meta = _build_external_customer_features(df, schema)
+    metadata["external_feature_usage"] = external_feature_meta
 
     # ── Step 3: Parse timestamps ──
     ts_col = schema.get("timestamp")
@@ -787,19 +1177,31 @@ def preprocess_uploaded_data(
             else:
                 customer_summary["signup_date"] = pd.Timestamp("2025-01-01")
 
+    customer_summary = _attach_external_features(customer_summary, external_customer_features)
+    customer_summary = _coalesce_known_external_columns(customer_summary, df, schema)
+    customer_summary = _deduplicate_customer_summary(customer_summary)
+
     customer_summary["signup_date"] = pd.to_datetime(customer_summary["signup_date"], errors="coerce").fillna(pd.Timestamp("2025-01-01"))
     customer_summary["acquisition_month"] = customer_summary["signup_date"].dt.to_period("M").astype(str)
 
-    # ── Step 6: Infer churn probability ──
+    # ── Step 6: Infer churn label and continuous churn probability ──
     churn_labels = _infer_churn_label(df, schema, inactivity_threshold_days=churn_inactivity_days)
     metadata["churn_inactivity_threshold_days"] = int(churn_inactivity_days)
-    if is_transaction_level:
-        churn_by_customer = df.assign(_churn=churn_labels).groupby("customer_id")["_churn"].max()
-        customer_summary = customer_summary.merge(churn_by_customer.rename("churn_probability").reset_index(), on="customer_id", how="left")
-    else:
-        customer_summary["churn_probability"] = churn_labels.reindex(customer_summary.index).fillna(0.5)
+    has_explicit_churn_label = "churn_flag" in schema and schema.get("churn_flag") in df.columns
+    metadata["churn_label_source"] = "uploaded_churn_flag" if has_explicit_churn_label else "inactivity_rule"
 
-    customer_summary["churn_probability"] = _safe_numeric(customer_summary["churn_probability"], 0.5).clip(0.01, 0.99)
+    churn_by_customer = df.assign(_churn=churn_labels).groupby("customer_id")["_churn"].max()
+    observed = customer_summary["customer_id"].map(churn_by_customer).fillna(0.5)
+    customer_summary["churn_label_observed"] = _safe_numeric(observed, 0.5).clip(0.0, 1.0)
+    customer_summary["churn_probability"] = _estimate_churn_probability(
+        customer_summary,
+        observed_label=customer_summary["churn_label_observed"] if has_explicit_churn_label else None,
+        seed=seed,
+    )
+    metadata["churn_probability_strategy"] = (
+        "continuous_model_proxy_blended_with_uploaded_label" if has_explicit_churn_label
+        else "continuous_behavior_proxy_from_recency_frequency_value_engagement"
+    )
 
     # ── Step 7: Fill missing core features ──
     for col, default in [
@@ -906,6 +1308,9 @@ def preprocess_uploaded_data(
             else:
                 customer_summary[col] = default
 
+    # 보조 테이블 생성 전에 한 번 더 고객 단위 유일성을 보장한다.
+    customer_summary = _deduplicate_customer_summary(customer_summary)
+
     # ── Step 11: Generate auxiliary tables ──
     treatment_assignments = _generate_treatment_assignments(customer_summary, rng)
     customer_summary = customer_summary.merge(
@@ -947,17 +1352,26 @@ def preprocess_uploaded_data(
         orders_df = _generate_synthetic_orders(customer_summary, events_df, rng)
     campaign_exposures = _generate_campaign_exposures(treatment_assignments, rng)
     state_snapshots = _generate_state_snapshots(customer_summary, rng)
-    cohort_retention = _build_cohort_retention(customer_summary)
+    cohort_retention = _build_cohort_retention(customer_summary, events_df=events_df, orders_df=orders_df)
 
     _customers_cols = [
-        "customer_id", "persona", "signup_date", "acquisition_month",
-        "region", "device_type", "acquisition_channel",
+        "customer_id", "customer_id_original", "persona", "signup_date", "acquisition_month",
+        "region", "device_type", "acquisition_channel", "gender", "age_group",
+        "payment_method", "delivery_type", "refund_reason", "churn_label_observed",
         "price_sensitivity", "coupon_affinity", "support_contact_propensity",
         # 시뮬레이터 전용이지만 CLV 모델이 요구함
         "treatment_lift_base", "basket_size_preference",
         "avg_order_value_mean", "avg_order_value_std", "days_from_simulation_start",
     ]
-    _existing_customers_cols = [c for c in _customers_cols if c in customer_summary.columns]
+    external_cols = [
+        c for c in customer_summary.columns
+        if c.startswith(("ext_num__", "ext_cat__", "ext_date__"))
+        or c in {"avg_session_duration_sec_uploaded", "pageviews_per_session_uploaded", "discount_amount_total", "point_used_total", "customer_age_days_uploaded"}
+    ]
+    _existing_customers_cols = []
+    for c in _customers_cols + external_cols:
+        if c in customer_summary.columns and c not in _existing_customers_cols:
+            _existing_customers_cols.append(c)
     customers_df = customer_summary[_existing_customers_cols].copy()
 
     # Sort and reset

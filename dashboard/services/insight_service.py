@@ -126,6 +126,12 @@ def _safe_csv(path: Path) -> pd.DataFrame:
     if not path.exists():
         return pd.DataFrame()
     header = pd.read_csv(path, nrows=0).columns.tolist()
+    # Uploaded CSV columns are preserved in customer_summary/customers as
+    # ext_num__/ext_cat__/ext_date__ features. Read these two tables fully so
+    # diagnostics, explanations, and LLM payloads can reflect the actual input
+    # instead of the narrow simulator schema only.
+    if path.name in {"customer_summary.csv", "customers.csv"}:
+        return pd.read_csv(path, low_memory=False)
     usecols = [col for col in CSV_USECOLS.get(path.name, header) if col in header]
     return pd.read_csv(path, usecols=usecols or None, low_memory=False)
 

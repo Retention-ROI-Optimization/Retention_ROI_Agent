@@ -112,15 +112,99 @@ def feature_dictionary() -> Dict[str, str]:
     }
 
 
+def _read_csv_if_exists(path: Path, parse_dates: list[str] | None = None) -> pd.DataFrame:
+    if not path.exists():
+        return pd.DataFrame()
+    parse_dates = [c for c in (parse_dates or []) if c in pd.read_csv(path, nrows=0).columns]
+    return pd.read_csv(path, parse_dates=parse_dates, low_memory=False)
+
+
 def _load_csvs(data_dir: Path) -> Dict[str, pd.DataFrame]:
+    # customer_summary.csv is optional in the original simulator flow, but it is
+    # the richest table after external CSV upload. Keep the existing core tables
+    # and add the summary table as an enrichment source.
     return {
-        'customers': pd.read_csv(data_dir / 'customers.csv', parse_dates=['signup_date']),
-        'events': pd.read_csv(data_dir / 'events.csv', parse_dates=['timestamp']),
-        'orders': pd.read_csv(data_dir / 'orders.csv', parse_dates=['order_time']),
-        'snapshots': pd.read_csv(data_dir / 'state_snapshots.csv', parse_dates=['snapshot_date', 'last_visit_date', 'last_purchase_date']),
-        'exposures': pd.read_csv(data_dir / 'campaign_exposures.csv', parse_dates=['exposure_time']),
-        'treatment': pd.read_csv(data_dir / 'treatment_assignments.csv', parse_dates=['assigned_at']),
+        'customers': _read_csv_if_exists(data_dir / 'customers.csv', parse_dates=['signup_date']),
+        'customer_summary': _read_csv_if_exists(data_dir / 'customer_summary.csv', parse_dates=['signup_date', 'last_purchase_date', 'last_visit_date']),
+        'events': _read_csv_if_exists(data_dir / 'events.csv', parse_dates=['timestamp']),
+        'orders': _read_csv_if_exists(data_dir / 'orders.csv', parse_dates=['order_time']),
+        'snapshots': _read_csv_if_exists(data_dir / 'state_snapshots.csv', parse_dates=['snapshot_date', 'last_visit_date', 'last_purchase_date']),
+        'exposures': _read_csv_if_exists(data_dir / 'campaign_exposures.csv', parse_dates=['exposure_time']),
+        'treatment': _read_csv_if_exists(data_dir / 'treatment_assignments.csv', parse_dates=['assigned_at']),
     }
+
+
+def _merge_summary_enrichment(base: pd.DataFrame, customer_summary: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
+    if customer_summary.empty or 'customer_id' not in customer_summary.columns:
+        return base, []
+
+    summary = customer_summary.drop_duplicates('customer_id', keep='last').copy()
+    passthrough_prefixes = ('ext_num__', 'ext_cat__', 'ext_date__')
+    always_keep = {
+        'customer_id',
+        'churn_probability',
+        'churn_label_observed',
+        'uplift_score',
+        'clv',
+        'monetary',
+        'frequency',
+        'recency_days',
+        'engagement_score',
+        'loyalty_score',
+        'persona',
+        'segment',
+        'membership_tier',
+        'region',
+        'gender',
+        'age_group',
+        'payment_method',
+        'delivery_type',
+        'access_channel',
+        'refund_reason',
+        'session_duration_sec',
+        'page_views',
+        'discount_amount',
+        'point_used',
+        'days_since_registration',
+        'total_order_count',
+    }
+    keep_cols = [
+        c for c in summary.columns
+        if c == 'customer_id'
+        or c in always_keep
+        or c.startswith(passthrough_prefixes)
+    ]
+    if keep_cols == ['customer_id']:
+        return base, []
+
+    rename_map = {c: f'{c}_summary' for c in keep_cols if c != 'customer_id' and c in base.columns}
+    enrich = summary[keep_cols].rename(columns=rename_map)
+    merged = base.merge(enrich, on='customer_id', how='left')
+
+    # Prefer existing simulator columns, but fill their gaps from the uploaded
+    # summary when the external CSV supplies a better direct value.
+    for original, renamed in rename_map.items():
+        if original in merged.columns and renamed in merged.columns:
+            merged[original] = merged[original].combine_first(merged[renamed])
+            merged = merged.drop(columns=[renamed])
+
+    enriched_cols = [c for c in merged.columns if c not in base.columns]
+    return merged, enriched_cols
+
+
+def _external_feature_dictionary(columns: Iterable[str]) -> Dict[str, str]:
+    desc: Dict[str, str] = {}
+    for col in columns:
+        if col.startswith('ext_num__'):
+            raw = col.replace('ext_num__', '')
+            desc[col] = f'외부 CSV 원본 수치형 컬럼 `{raw}`의 고객 단위 집계 피처'
+        elif col.startswith('ext_cat__'):
+            raw = col.replace('ext_cat__', '')
+            desc[col] = f'외부 CSV 원본 범주형 컬럼 `{raw}`의 고객 대표값 피처'
+        elif col.startswith('ext_date__'):
+            raw = col.replace('ext_date__', '')
+            desc[col] = f'외부 CSV 원본 날짜형 컬럼 `{raw}`의 기준일 대비 경과일 피처'
+    return desc
 
 
 def _window_counts_by_customer(df: pd.DataFrame, customer_col: str, ts_col: str, end_date: pd.Timestamp, days: int, value_col: str | None = None, event_filter: Iterable[str] | None = None) -> pd.Series:
@@ -332,16 +416,29 @@ def build_feature_dataset(data_dir: str | Path, feature_store_dir: str | Path = 
     data_dir = Path(data_dir)
     raw = _load_csvs(data_dir)
     customers = raw['customers'].copy()
+    customer_summary = raw.get('customer_summary', pd.DataFrame()).copy()
     events = raw['events'].copy()
     orders = raw['orders'].copy()
     snapshots = raw['snapshots'].copy()
     exposures = raw['exposures'].copy()
     treatment = raw['treatment'].copy()
+    if customers.empty:
+        raise ValueError(f'No customers.csv found or the file is empty under {data_dir}')
+    if treatment.empty:
+        treatment = pd.DataFrame({'customer_id': customers['customer_id'], 'treatment_group': 'auto_control'})
     if as_of_date is None:
-        as_of_date = snapshots['snapshot_date'].max() - pd.Timedelta(days=horizon_days)
+        if not snapshots.empty and 'snapshot_date' in snapshots.columns and snapshots['snapshot_date'].notna().any():
+            as_of_date = snapshots['snapshot_date'].max() - pd.Timedelta(days=horizon_days)
+        elif not events.empty and 'timestamp' in events.columns and events['timestamp'].notna().any():
+            as_of_date = events['timestamp'].max() - pd.Timedelta(days=horizon_days)
+        elif not orders.empty and 'order_time' in orders.columns and orders['order_time'].notna().any():
+            as_of_date = orders['order_time'].max() - pd.Timedelta(days=horizon_days)
+        else:
+            as_of_date = pd.Timestamp.today().floor('D')
     as_of_date = pd.Timestamp(as_of_date).floor('D')
     customers = customers.loc[customers['signup_date'] <= as_of_date].copy()
-    base = customers.merge(treatment, on='customer_id', how='left')
+    base = customers.merge(treatment.drop_duplicates('customer_id', keep='last'), on='customer_id', how='left')
+    base, summary_enrichment_cols = _merge_summary_enrichment(base, customer_summary)
     base['customer_age_days'] = (as_of_date - base['signup_date']).dt.days.clip(lower=0)
     last_event = events.loc[events['timestamp'] <= as_of_date].groupby('customer_id')['timestamp'].max()
     last_purchase = orders.loc[orders['order_time'] <= as_of_date].groupby('customer_id')['order_time'].max()
@@ -394,20 +491,38 @@ def build_feature_dataset(data_dir: str | Path, feature_store_dir: str | Path = 
     base = base.merge(_compute_state_features(snapshots, as_of_date), on='customer_id', how='left')
     base['monetary_per_visit_90d'] = safe_divide(base['monetary_90d'], base['visits_90d'].replace(0, np.nan), default=0.0)
     base['support_contact_rate_30d'] = safe_divide(base['support_contact_30d'], base['sessions_30d'].replace(0, np.nan), default=0.0)
-    base['label'] = _compute_future_label(events, orders, snapshots, base['customer_id'], as_of_date, horizon_days)
+    computed_label = _compute_future_label(events, orders, snapshots, base['customer_id'], as_of_date, horizon_days)
+    label_source = 'future_activity_rule'
+    observed = pd.Series(dtype=float)
+    if 'churn_label_observed' in base.columns:
+        observed = pd.to_numeric(base['churn_label_observed'], errors='coerce')
+    if observed.notna().sum() > 0 and observed.dropna().nunique() >= 2:
+        base['label'] = observed.fillna(computed_label).astype(float).ge(0.5).astype(int)
+        label_source = 'uploaded_churn_label_observed'
+    else:
+        base['label'] = computed_label
     # Remove strict active filter to allow higher churn rate
     # active_cohort = base['active_days_30d'] > 0
     # base = base.loc[active_cohort].reset_index(drop=True)
     base, clipping_summary = _winsorize_and_impute(base)
     positive_rate = float(base['label'].mean())
     print(f'Churn rate: {positive_rate * 100:.2f}%')
+    generated_external_cols = [
+        c for c in base.columns
+        if c.startswith(('ext_num__', 'ext_cat__', 'ext_date__'))
+    ]
+    dictionary = feature_dictionary()
+    dictionary.update(_external_feature_dictionary(generated_external_cols))
     metadata = {
         'as_of_date': str(as_of_date.date()),
         'horizon_days': horizon_days,
         'row_count': int(len(base)),
         'positive_rate': positive_rate,
+        'label_source': label_source,
+        'summary_enrichment_columns': summary_enrichment_cols,
+        'external_feature_columns': generated_external_cols,
         'feature_count': int(len([c for c in base.columns if c not in {'customer_id', 'label'}])),
-        'feature_dictionary': feature_dictionary(),
+        'feature_dictionary': dictionary,
         'clipping_summary': clipping_summary,
         'cohort_filter': 'none',
         'missing_value_strategy': 'numeric=median, categorical=unknown, outlier=1st/99th percentile clipping',

@@ -32,6 +32,7 @@ from dashboard.services.cohort_service import (
     get_retention_mode_label,
 )
 from dashboard.services.data_loader import load_dashboard_bundle
+from dashboard.services.artifact_loader import load_dashboard_artifacts
 from dashboard.services.insight_service import (
     build_coupon_risk_overview,
     build_customer_explanations,
@@ -124,15 +125,29 @@ INSIGHT_HEAVY_VIEWS: set[str] = {
 # Uplift, A/B 테스트, 예산 최적화 등을 산출할 수 없기 때문.
 # ============================================================
 def _user_mode_unavailable(feature_name: str, reason: str = "") -> bool:
-    """현재 자사 데이터 모드면 '데이터 없음' 박스를 그리고 True 반환.
-    시뮬레이터 모드면 False 반환 (원래 화면 그대로 진행)."""
+    """사용자 CSV가 아직 처리되지 않았을 때만 user 전용 화면을 막는다.
+    업로드 산출물이 있으면 기존 화면을 그대로 사용하되, treatment/control이 없는
+    CSV는 전처리 단계의 자동 배정·휴리스틱 추정값으로 표시된다는 점만 안내한다."""
     import streamlit as _st
+    from pathlib import Path as _P
+
     _mode = _st.session_state.get("data_mode", "simulator")
     if _mode != "user":
         return False
+
+    _has_user_data = (_P("data/raw_user") / "customer_summary.csv").exists()
+    _has_user_results = _P("results_user").exists() and any(_P("results_user").iterdir())
+    if _has_user_data or _has_user_results:
+        _st.info(
+            "현재 화면은 업로드 CSV에서 생성된 user 산출물을 기준으로 표시합니다. "
+            "원본 CSV에 Treatment/Control이 없으면 전처리 단계의 자동 배정 및 "
+            "휴리스틱 Uplift/ROI 추정값이 사용됩니다."
+        )
+        return False
+
     _default_reason = (
-        "외부 자사 데이터에는 Treatment/Control(처치·대조군) 배정 정보가 "
-        "없어 이 항목은 산출할 수 없습니다."
+        "아직 업로드 CSV로 생성된 user 산출물이 없습니다. 먼저 사이드바에서 CSV를 업로드하고 "
+        "매핑 확정 후 학습을 실행하세요."
     )
     _reason = reason or _default_reason
     _st.markdown(
@@ -154,9 +169,6 @@ def _user_mode_unavailable(feature_name: str, reason: str = "") -> bool:
             </div>
             <div style="font-size: 13px; color: #9CA3AF; margin-top: 12px; line-height: 1.5;">
                 {_reason}
-            </div>
-            <div style="font-size: 12px; color: #9CA3AF; margin-top: 12px; font-style: italic;">
-                💡 사이드바에서 'Simulator 데모' 모드로 전환하면 확인할 수 있습니다.
             </div>
         </div>
         """,
@@ -1002,9 +1014,9 @@ def _result_data_token() -> str:
         "simulator": "results_simulator",
         "user":      "results_user",
     }.get(mode, "results")
-    # fallback: 모드별 디렉토리 없으면 기본 results
+    # user 모드에서는 results_user가 아직 비어 있어도 기본 results로 fallback하지 않는다.
     from pathlib import Path as _P
-    if not _P(base).exists():
+    if mode != "user" and not _P(base).exists():
         base = "results"
     return _file_version_token([
         f"{base}/churn_top10_feature_importance.json",
@@ -1047,13 +1059,19 @@ def _resolve_data_dir_for_mode(mode: str) -> str:
 
 
 def _resolve_result_dir_for_mode(mode: str) -> str:
-    """모드별 results 디렉토리. 부재 시 기본 results로 fallback."""
+    """모드별 results 디렉토리.
+
+    user 모드에서는 results_user가 비어 있어도 기본 results로 떨어지지 않는다.
+    그래야 업로드 CSV 화면이 시뮬레이터 결과를 섞어 보여주는 문제를 막을 수 있다.
+    """
     from pathlib import Path as _P
     mapping = {
         "simulator": "results_simulator",
         "user":      "results_user",
     }
     target = mapping.get(mode, "results")
+    if mode == "user":
+        return target
     if not _P(target).exists() or not any(_P(target).iterdir()):
         return "results"
     return target
@@ -1086,6 +1104,24 @@ def clear_dashboard_caches() -> None:
 
 
 def load_training_artifacts_api():
+    mode = st.session_state.get("data_mode", "simulator")
+    if mode == "user":
+        artifacts = load_dashboard_artifacts(
+            result_dir=_resolve_result_dir_for_mode("user"),
+            model_dir="models_user",
+            feature_store_dir="data/feature_store_user",
+        )
+        return {
+            "churn_metrics": artifacts.churn_metrics or {},
+            "threshold_analysis": artifacts.threshold_analysis or {},
+            "top_feature_importance": artifacts.top_feature_importance.to_dict(orient="records"),
+            "customer_features": artifacts.customer_features.head(500).to_dict(orient="records"),
+            "image_paths": artifacts.image_paths,
+            "model_paths": artifacts.model_paths,
+            "training_parameters": (artifacts.churn_metrics or {}).get("training_parameters", {}),
+            "feature_engineering_summary": artifacts.feature_summary or {},
+            "customer_features_metadata": artifacts.customer_features_metadata or {},
+        }
     return fetch_training_artifacts()
 
 
@@ -2533,45 +2569,76 @@ else:
 retention_targets = get_retention_targets(customers, threshold)
 
 if view == "9. 개인화 추천":
-    try:
-        recommendation_limit = max(int(len(selected_customers)), int(target_cap), 1)
-        recommendation_summary, personalized_recommendations = fetch_personalized_recommendations(
-            limit=recommendation_limit,
-            per_customer=recommendation_per_customer,
-            budget=budget,
-            threshold=threshold,
-            max_customers=max(recommendation_limit, int(target_cap)),
-            rebuild=True,
-        )
-    except Exception as exc:
-        recommendation_summary, personalized_recommendations = {}, pd.DataFrame()
-        recommendation_error = str(exc)
-    else:
+    if st.session_state.get("data_mode", "simulator") == "user":
+        _bundle = load_insight_data()
+        recommendation_summary = _bundle.personalized_recommendation_summary or {}
+        personalized_recommendations = _bundle.personalized_recommendations.copy()
         recommendation_error = None
+    else:
+        try:
+            recommendation_limit = max(int(len(selected_customers)), int(target_cap), 1)
+            recommendation_summary, personalized_recommendations = fetch_personalized_recommendations(
+                limit=recommendation_limit,
+                per_customer=recommendation_per_customer,
+                budget=budget,
+                threshold=threshold,
+                max_customers=max(recommendation_limit, int(target_cap)),
+                rebuild=True,
+            )
+        except Exception as exc:
+            recommendation_summary, personalized_recommendations = {}, pd.DataFrame()
+            recommendation_error = str(exc)
+        else:
+            recommendation_error = None
 else:
     recommendation_summary, personalized_recommendations = {}, pd.DataFrame()
     recommendation_error = None
 
 if view == "10. 실시간 위험 스코어링 / 운영 모니터":
-    try:
-        realtime_summary, realtime_scores = fetch_realtime_scores(limit=max(int(top_n), 500))
-    except Exception as exc:
-        realtime_summary, realtime_scores = {}, pd.DataFrame()
-        realtime_error = str(exc)
-    else:
+    if st.session_state.get("data_mode", "simulator") == "user":
+        _bundle = load_insight_data()
+        realtime_summary = _bundle.realtime_scores_summary or {}
+        realtime_scores = _bundle.realtime_scores.copy()
         realtime_error = None
+    else:
+        try:
+            realtime_summary, realtime_scores = fetch_realtime_scores(limit=max(int(top_n), 500))
+        except Exception as exc:
+            realtime_summary, realtime_scores = {}, pd.DataFrame()
+            realtime_error = str(exc)
+        else:
+            realtime_error = None
 else:
     realtime_summary, realtime_scores = {}, pd.DataFrame()
     realtime_error = None
 
 if view == "11. 이탈 시점 예측 (Survival Analysis)":
-    try:
-        survival_metrics, survival_predictions, survival_coefficients, survival_image_paths = fetch_survival_summary(limit=top_n)
-    except Exception as exc:
-        survival_metrics, survival_predictions, survival_coefficients, survival_image_paths = {}, pd.DataFrame(), pd.DataFrame(), {}
-        survival_error = str(exc)
-    else:
+    if st.session_state.get("data_mode", "simulator") == "user":
+        _mode_result_dir = Path(_resolve_result_dir_for_mode("user"))
+        _bundle = load_insight_data()
+        survival_metrics = {}
+        _metrics_path = _mode_result_dir / "survival_metrics.json"
+        if _metrics_path.exists():
+            try:
+                survival_metrics = json.loads(_metrics_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                survival_metrics = {}
+        survival_predictions = _bundle.survival_predictions.copy().head(int(top_n))
+        _coef_path = _mode_result_dir / "survival_top_coefficients.csv"
+        survival_coefficients = pd.read_csv(_coef_path) if _coef_path.exists() else pd.DataFrame()
+        survival_image_paths = {
+            "risk_stratification": str(_mode_result_dir / "survival_risk_stratification.png")
+            if (_mode_result_dir / "survival_risk_stratification.png").exists() else None
+        }
         survival_error = None
+    else:
+        try:
+            survival_metrics, survival_predictions, survival_coefficients, survival_image_paths = fetch_survival_summary(limit=top_n)
+        except Exception as exc:
+            survival_metrics, survival_predictions, survival_coefficients, survival_image_paths = {}, pd.DataFrame(), pd.DataFrame(), {}
+            survival_error = str(exc)
+        else:
+            survival_error = None
 else:
     survival_metrics, survival_predictions, survival_coefficients, survival_image_paths = {}, pd.DataFrame(), pd.DataFrame(), {}
     survival_error = None

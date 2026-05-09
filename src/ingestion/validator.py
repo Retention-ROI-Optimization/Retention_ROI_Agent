@@ -153,13 +153,21 @@ def _detect_column_role(column: str, sample_values: pd.Series) -> Tuple[str, flo
                     best_role = "potential_id"
                     best_score = 0.3
 
-        # Check if it looks like a timestamp
+        # Check if it looks like a timestamp. First require a date-like
+        # string pattern so arbitrary categorical values do not trigger slow
+        # dateutil parsing or warnings.
         if sample.dtype == 'object':
             try:
-                parsed = pd.to_datetime(sample.head(20), errors='coerce')
-                if parsed.notna().mean() > 0.7:
-                    best_role = "timestamp"
-                    best_score = max(best_score, 0.6)
+                date_like = sample.astype(str).head(20).str.contains(
+                    r"\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}[-/]\d{2,4}",
+                    regex=True,
+                    na=False,
+                ).mean()
+                if date_like > 0.7:
+                    parsed = pd.to_datetime(sample.head(20), errors='coerce')
+                    if parsed.notna().mean() > 0.7:
+                        best_role = "timestamp"
+                        best_score = max(best_score, 0.6)
             except Exception:
                 pass
 
