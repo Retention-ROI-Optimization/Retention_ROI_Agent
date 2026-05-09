@@ -25,6 +25,11 @@ from src.api.services.user_live_scoring import (
     get_user_live_scores,
     score_changed_customers,
 )
+from src.api.services.user_live_actions import (
+    get_live_action_queue,
+    get_live_recommendation_candidates,
+    update_live_actions_for_customers,
+)
 
 router = APIRouter(prefix="/user-live", tags=["user-live"])
 
@@ -290,13 +295,20 @@ def _insert_event_and_update_feature_state(
 def ingest_user_event(
     event: UserEventIn,
     score_after_event: bool = True,
+    update_actions: bool = True,
+    action_threshold: float = 0.50,
+    min_expected_roi: float = 0.0,
+    min_expected_profit: float = 0.0,
     settings: ApiSettings = Depends(get_settings),
 ):
     """
     고객 행동 이벤트 1건 적재.
 
-    4단계부터는 이벤트 적재 후 해당 customer_id만 즉시 재추론한다.
-    score_after_event=false로 호출하면 feature_state만 갱신하고 scoring은 건너뛸 수 있다.
+    5단계 흐름:
+    1. customer_events 적재
+    2. customer_feature_state 갱신
+    3. 해당 customer_id만 customer_scores 재추론
+    4. recommendation_candidates/action_queue 갱신
     """
     init_user_live_tables(settings.user_db_url)
 
@@ -306,6 +318,7 @@ def ingest_user_event(
     )
 
     scoring_result: dict[str, Any] | None = None
+    action_result: dict[str, Any] | None = None
 
     if score_after_event and result.get("inserted", True):
         try:
@@ -321,24 +334,51 @@ def ingest_user_event(
                 "customer_id": event.customer_id,
             }
 
+    if (
+        update_actions
+        and result.get("inserted", True)
+        and scoring_result is not None
+        and scoring_result.get("success")
+    ):
+        try:
+            action_result = update_live_actions_for_customers(
+                db_url=settings.user_db_url,
+                customer_ids=[event.customer_id],
+                threshold=action_threshold,
+                min_expected_roi=min_expected_roi,
+                min_expected_profit=min_expected_profit,
+            )
+        except Exception as exc:
+            action_result = {
+                "success": False,
+                "error": str(exc),
+                "customer_id": event.customer_id,
+            }
+
     return {
         "success": True,
         "mode": "user-live",
         "result": result,
         "scoring": scoring_result,
+        "actions": action_result,
     }
-
 
 @router.post("/events/batch")
 def ingest_user_events_batch(
     payload: UserEventBatchIn,
     score_after_event: bool = True,
+    update_actions: bool = True,
+    action_threshold: float = 0.50,
+    min_expected_roi: float = 0.0,
+    min_expected_profit: float = 0.0,
     settings: ApiSettings = Depends(get_settings),
 ):
     """
     고객 행동 이벤트 여러 건 적재.
 
-    4단계부터는 batch 안에서 실제 insert된 고객 ID만 모아서 한 번에 재추론한다.
+    5단계부터는 batch 안에서 실제 insert된 고객 ID만 모아서:
+    - 한 번에 재추론
+    - 한 번에 추천/action queue 갱신
     """
     init_user_live_tables(settings.user_db_url)
 
@@ -351,6 +391,7 @@ def ingest_user_events_batch(
             "duplicates": 0,
             "results": [],
             "scoring": None,
+            "actions": None,
         }
 
     results: list[dict[str, Any]] = []
@@ -373,6 +414,7 @@ def ingest_user_events_batch(
             duplicate_count += 1
 
     scoring_result: dict[str, Any] | None = None
+    action_result: dict[str, Any] | None = None
 
     if score_after_event and changed_customer_ids:
         try:
@@ -388,6 +430,27 @@ def ingest_user_events_batch(
                 "customer_ids": sorted(changed_customer_ids),
             }
 
+    if (
+        update_actions
+        and changed_customer_ids
+        and scoring_result is not None
+        and scoring_result.get("success")
+    ):
+        try:
+            action_result = update_live_actions_for_customers(
+                db_url=settings.user_db_url,
+                customer_ids=sorted(changed_customer_ids),
+                threshold=action_threshold,
+                min_expected_roi=min_expected_roi,
+                min_expected_profit=min_expected_profit,
+            )
+        except Exception as exc:
+            action_result = {
+                "success": False,
+                "error": str(exc),
+                "customer_ids": sorted(changed_customer_ids),
+            }
+
     return {
         "success": True,
         "mode": "user-live",
@@ -397,6 +460,7 @@ def ingest_user_events_batch(
         "changed_customer_ids": sorted(changed_customer_ids),
         "results": results,
         "scoring": scoring_result,
+        "actions": action_result,
     }
 
 @router.get("/feature-state")
@@ -602,18 +666,20 @@ def seed_status(
     return get_user_live_seed_status(
         db_url=settings.user_db_url,
     )
+
 @router.post("/score-customers")
 def score_customers(
     customer_ids: list[int],
+    update_actions: bool = True,
+    action_threshold: float = 0.50,
+    min_expected_roi: float = 0.0,
+    min_expected_profit: float = 0.0,
     settings: ApiSettings = Depends(get_settings),
 ):
     """
     특정 고객 ID 목록만 수동 재추론한다.
 
-    테스트 예:
-    curl -X POST http://localhost:8000/api/v1/user-live/score-customers \
-      -H "Content-Type: application/json" \
-      -d '[1001, 1002]'
+    5단계부터는 옵션에 따라 recommendation_candidates/action_queue도 같이 갱신한다.
     """
     if not customer_ids:
         raise HTTPException(
@@ -621,12 +687,28 @@ def score_customers(
             detail="customer_ids must not be empty",
         )
 
-    return score_changed_customers(
+    scoring_result = score_changed_customers(
         db_url=settings.user_db_url,
         model_dir=Path.cwd() / "models_user",
         customer_ids=customer_ids,
     )
 
+    action_result: dict[str, Any] | None = None
+
+    if update_actions and scoring_result.get("success"):
+        action_result = update_live_actions_for_customers(
+            db_url=settings.user_db_url,
+            customer_ids=customer_ids,
+            threshold=action_threshold,
+            min_expected_roi=min_expected_roi,
+            min_expected_profit=min_expected_profit,
+        )
+
+    return {
+        "success": True,
+        "scoring": scoring_result,
+        "actions": action_result,
+    }
 
 @router.get("/scores")
 def live_scores(
@@ -642,4 +724,67 @@ def live_scores(
         db_url=settings.user_db_url,
         limit=limit,
         customer_id=customer_id,
+    )
+@router.post("/refresh-actions")
+def refresh_actions(
+    customer_ids: list[int],
+    action_threshold: float = 0.50,
+    min_expected_roi: float = 0.0,
+    min_expected_profit: float = 0.0,
+    settings: ApiSettings = Depends(get_settings),
+):
+    """
+    customer_scores는 이미 갱신되어 있다고 보고,
+    특정 고객들의 recommendation_candidates/action_queue만 다시 갱신한다.
+    """
+    if not customer_ids:
+        raise HTTPException(
+            status_code=400,
+            detail="customer_ids must not be empty",
+        )
+
+    return update_live_actions_for_customers(
+        db_url=settings.user_db_url,
+        customer_ids=customer_ids,
+        threshold=action_threshold,
+        min_expected_roi=min_expected_roi,
+        min_expected_profit=min_expected_profit,
+    )
+
+
+@router.get("/recommendations")
+def live_recommendations(
+    limit: int = 100,
+    customer_id: int | None = None,
+    source_type: str | None = None,
+    settings: ApiSettings = Depends(get_settings),
+):
+    """
+    PostgreSQL recommendation_candidates 조회.
+    """
+    return get_live_recommendation_candidates(
+        db_url=settings.user_db_url,
+        limit=limit,
+        customer_id=customer_id,
+        source_type=source_type,
+    )
+
+
+@router.get("/actions")
+def live_actions(
+    limit: int = 100,
+    customer_id: int | None = None,
+    source_type: str | None = None,
+    status: str | None = None,
+    settings: ApiSettings = Depends(get_settings),
+):
+    """
+    PostgreSQL action_queue 조회.
+    """
+    return get_live_action_queue(
+        db_url=settings.user_db_url,
+        limit=limit,
+        customer_id=customer_id,
+        source_type=source_type,
+        status=status,
     )
