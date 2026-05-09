@@ -153,7 +153,16 @@ INSIGHT_HEAVY_VIEWS: set[str] = {
     "13. 데이터 진단 / 시뮬레이터 충실도",
 }
 
+def parse_unlimited_nonnegative_int(raw_value: str, default: int = 0) -> int:
+    cleaned = str(raw_value).replace(",", "").strip()
 
+    if cleaned == "":
+        return default
+
+    if not cleaned.isdigit():
+        raise ValueError("0 이상의 정수만 입력할 수 있습니다.")
+
+    return int(cleaned)
 
 # ============================================================
 # [PATCH] 자사 데이터(user) 모드에서 Treatment/Control 의존
@@ -2611,6 +2620,7 @@ with st.sidebar:
 
     st.session_state.setdefault("control_threshold", 0.50)
     st.session_state.setdefault("control_budget", 5_000_000)
+    st.session_state.setdefault("control_budget_text", str(st.session_state["control_budget"]))
     st.session_state.setdefault("control_top_n", 25)
     st.session_state.setdefault("control_target_cap", 1500)
     st.session_state.setdefault("control_recommendation_per_customer", 3)
@@ -2662,14 +2672,22 @@ with st.sidebar:
         help="이 값 이상인 고객을 이탈 위험군으로 간주합니다. 모든 화면에서 동일하게 유지됩니다.",
     )
 
-    budget = int(st.number_input(
+    budget_raw = st.text_input(
         "총 마케팅 예산",
-        min_value=0,
-        step=100_000,
-        key="control_budget",
-        help="모든 화면에서 동일하게 유지되는 분석 예산입니다.",
-    ))
+        key="control_budget_text",
+        help="상한 없이 입력 가능합니다. 쉼표 없이 숫자만 입력해도 됩니다.",
+    )
 
+    try:
+        budget = parse_unlimited_nonnegative_int(
+        budget_raw,
+        default=int(st.session_state.get("control_budget", 5_000_000)),
+    )
+        st.session_state["control_budget"] = budget
+    except ValueError:
+        st.warning("총 마케팅 예산은 0 이상의 정수로 입력해야 합니다.")
+        budget = int(st.session_state.get("control_budget", 5_000_000))
+    
     target_cap = st.slider(
         "최대 타겟 고객 수",
         min_value=100,
