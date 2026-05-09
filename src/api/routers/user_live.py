@@ -15,7 +15,12 @@ from src.api.services.user_live_db import (
     user_live_session,
 )
 from src.api.settings import ApiSettings
+from pathlib import Path
 
+from src.api.services.user_live_seed import (
+    get_user_live_seed_status,
+    seed_user_live_from_artifacts,
+)
 
 router = APIRouter(prefix="/user-live", tags=["user-live"])
 
@@ -504,3 +509,51 @@ def reset_user_live_tables(
         "success": True,
         "message": "user-live tables reset",
     }
+@router.post("/seed-from-user-artifacts")
+def seed_from_user_artifacts(
+    reset: bool = True,
+    settings: ApiSettings = Depends(get_settings),
+):
+    """
+    3단계 API.
+
+    이미 존재하는 user 산출물:
+    - data/raw_user/customer_summary.csv
+    - data/feature_store_user/customer_features.csv
+    - results_user/uplift_segmentation.csv
+    - results_user/optimization_selected_customers.csv
+    - results_user/personalized_recommendations.csv
+
+    위 파일들을 PostgreSQL live serving table에 초기 적재한다.
+
+    reset=True:
+        기존 live table을 비우고 현재 파일 기준으로 다시 seed한다.
+    """
+    result = seed_user_live_from_artifacts(
+        db_url=settings.user_db_url,
+        project_root=Path.cwd(),
+        reset=reset,
+        data_dir="data/raw_user",
+        feature_store_dir="data/feature_store_user",
+        result_dir="results_user",
+    )
+
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=400,
+            detail=result,
+        )
+
+    return result
+
+
+@router.get("/seed-status")
+def seed_status(
+    settings: ApiSettings = Depends(get_settings),
+):
+    """
+    PostgreSQL live serving table이 현재 얼마나 seed되어 있는지 확인한다.
+    """
+    return get_user_live_seed_status(
+        db_url=settings.user_db_url,
+    )
