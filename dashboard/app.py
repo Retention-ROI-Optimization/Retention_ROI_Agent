@@ -19,6 +19,11 @@ from dashboard.services.api_client import (
     fetch_saved_results_artifacts,
     fetch_survival_summary,
     fetch_training_artifacts,
+    fetch_user_live_actions,
+    fetch_user_live_health,
+    fetch_user_live_recommendations,
+    fetch_user_live_scores,
+    fetch_user_live_seed_status,
 )
 from dashboard.services.churn_service import get_churn_status
 from dashboard.services.cohort_service import (
@@ -221,6 +226,581 @@ def _user_mode_unavailable(feature_name: str, reason: str = "") -> bool:
         unsafe_allow_html=True,
     )
     return True
+
+# ============================================================
+# [PATCH] user mode PostgreSQL live serving helpers.
+# simulator 모드는 기존 CSV/results/Redis replay 구조를 그대로 사용하고,
+# user 모드에서만 /api/v1/user-live/* API를 우선 조회한다.
+# ============================================================
+def _is_user_live_mode() -> bool:
+    return st.session_state.get("data_mode", "simulator") == "user"
+
+
+
+def _is_missing_live_value(value: Any) -> bool:
+    if value is None:
+        return True
+    try:
+        if pd.isna(value):
+            return True
+    except Exception:
+        pass
+    if isinstance(value, str) and value.strip() == "":
+        return True
+    return False
+
+
+def _parse_live_payload(value: Any) -> dict[str, Any]:
+    """score_payload/source_payload처럼 JSON 문자열 또는 dict로 온 payload를 dict로 변환한다."""
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        value = value.strip()
+        if not value:
+            return {}
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            return {}
+    return {}
+
+
+def _nested_payload_candidates(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """seed payload와 live_scoring payload의 중첩 구조를 모두 검색 후보로 만든다."""
+    candidates: list[dict[str, Any]] = []
+    if payload:
+        candidates.append(payload)
+        for key in [
+            "feature_snapshot",
+            "customer_score",
+            "score_payload",
+            "feature_payload",
+            "source_payload",
+            "raw_payload",
+            "previous_scores",
+        ]:
+            nested = payload.get(key)
+            if isinstance(nested, dict):
+                candidates.append(nested)
+    return candidates
+
+
+def _lookup_payload_value(payload: dict[str, Any], aliases: list[str]) -> Any:
+    """payload 안에서 alias와 일치하는 값을 대소문자 무시하고 찾는다."""
+    if not payload:
+        return None
+
+    for candidate in _nested_payload_candidates(payload):
+        lower_to_key = {str(key).lower(): key for key in candidate.keys()}
+        for alias in aliases:
+            key = lower_to_key.get(alias.lower())
+            if key is not None:
+                value = candidate.get(key)
+                if not _is_missing_live_value(value):
+                    return value
+
+    for candidate in _nested_payload_candidates(payload):
+        for value in candidate.values():
+            if isinstance(value, dict):
+                nested = _lookup_payload_value(value, aliases)
+                if not _is_missing_live_value(nested):
+                    return nested
+
+    return None
+
+
+def _lookup_live_row_value(row: pd.Series, aliases: list[str]) -> Any:
+    """DataFrame row의 top-level 컬럼과 JSON payload에서 값을 찾는다."""
+    lower_to_key = {str(key).lower(): key for key in row.index}
+    for alias in aliases:
+        key = lower_to_key.get(alias.lower())
+        if key is not None:
+            value = row.get(key)
+            if not _is_missing_live_value(value):
+                return value
+
+    for payload_col in ["score_payload", "feature_payload", "source_payload"]:
+        if payload_col in row.index:
+            payload = _parse_live_payload(row.get(payload_col))
+            value = _lookup_payload_value(payload, aliases)
+            if not _is_missing_live_value(value):
+                return value
+
+    return None
+
+
+def _derive_uplift_segment_from_score(value: Any) -> str:
+    """payload에 세그먼트명이 없을 때 uplift_score로 안정적인 대체 세그먼트를 만든다."""
+    try:
+        score = float(value)
+    except Exception:
+        return "unknown_segment"
+
+    if math.isnan(score) or math.isinf(score):
+        return "unknown_segment"
+    if score >= 0.08:
+        return "very_high_uplift"
+    if score >= 0.05:
+        return "high_uplift"
+    if score >= 0.02:
+        return "medium_uplift"
+    if score >= 0.0:
+        return "low_uplift"
+    return "negative_uplift"
+
+
+def _is_placeholder_segment(value: Any) -> bool:
+    if _is_missing_live_value(value):
+        return True
+    normalized = str(value).strip().lower()
+    return normalized in {
+        "",
+        "live",
+        "live_user",
+        "unknown",
+        "unknown_segment",
+        "nan",
+        "none",
+        "null",
+    }
+
+
+def _restore_live_dimension_columns(fixed: pd.DataFrame) -> pd.DataFrame:
+    """score_payload/feature_payload/source_payload에서 persona·uplift segment 계열 컬럼을 복원한다."""
+    if fixed.empty:
+        return fixed
+
+    persona_aliases = [
+        "persona",
+        "customer_persona",
+        "customer_segment",
+        "lifecycle_segment",
+        "marketing_segment",
+        "segment_name",
+        "membership_tier",
+        "member_tier",
+        "membership_grade",
+        "tier",
+        "grade",
+    ]
+    uplift_aliases = [
+        "uplift_segment",
+        "uplift_group",
+        "uplift_bucket",
+        "treatment_segment",
+        "campaign_segment",
+        "response_segment",
+        "persuadable_segment",
+    ]
+    region_aliases = ["region", "area", "city", "province"]
+    age_aliases = ["age_group", "age_band", "age_segment"]
+    gender_aliases = ["gender", "sex"]
+
+    restored_persona: list[str] = []
+    restored_uplift: list[str] = []
+    persona_source: list[str] = []
+    uplift_source: list[str] = []
+
+    for _, row in fixed.iterrows():
+        persona_value = _lookup_live_row_value(row, persona_aliases)
+        p_source = "payload"
+
+        if _is_placeholder_segment(persona_value):
+            tier = _lookup_live_row_value(row, ["membership_tier", "member_tier", "membership_grade", "tier", "grade"])
+            age_group = _lookup_live_row_value(row, age_aliases)
+            region = _lookup_live_row_value(row, region_aliases)
+            gender = _lookup_live_row_value(row, gender_aliases)
+
+            parts = [
+                str(value).strip()
+                for value in [tier, age_group, region, gender]
+                if not _is_placeholder_segment(value)
+            ]
+            if parts:
+                persona_value = " / ".join(parts[:3])
+                p_source = "derived"
+            else:
+                persona_value = "unknown_persona"
+                p_source = "fallback"
+
+        uplift_value = _lookup_live_row_value(row, uplift_aliases)
+        u_source = "payload"
+
+        # action_queue row는 top-level에 uplift_segment가 없을 수 있으므로 source_payload.customer_score를 먼저 본다.
+        # 그래도 없으면 uplift_score 기준으로 bucket을 만들어 'live' 단일 막대가 생기지 않게 한다.
+        if _is_placeholder_segment(uplift_value):
+            uplift_score = _lookup_live_row_value(row, ["uplift_score", "uplift", "predicted_uplift", "treatment_effect"])
+            uplift_value = _derive_uplift_segment_from_score(uplift_score)
+            u_source = "derived_from_uplift_score" if uplift_value != "unknown_segment" else "fallback"
+
+        restored_persona.append(str(persona_value))
+        restored_uplift.append(str(uplift_value))
+        persona_source.append(p_source)
+        uplift_source.append(u_source)
+
+    fixed["persona"] = restored_persona
+    fixed["persona_source"] = persona_source
+    fixed["uplift_segment"] = restored_uplift
+    fixed["uplift_segment_source"] = uplift_source
+    return fixed
+
+
+@st.cache_data(show_spinner=False, ttl=15)
+def _fetch_user_live_scores_cached(cache_key: str) -> tuple[dict, pd.DataFrame]:
+    """전체 customer_scores는 크므로 동일 이벤트 상태에서는 15초 동안 재사용한다."""
+    return fetch_user_live_scores(limit=None)
+
+def _rename_live_score_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """customer_scores API 결과를 기존 대시보드 렌더링 컬럼과 맞춘다.
+
+    persona는 더 이상 live_user로 덮어쓰지 않는다. score_payload/feature_payload에
+    보존된 원본 persona·segment·membership_tier 계열 값을 우선 복원한다.
+    """
+    if df is None or df.empty:
+        return pd.DataFrame()
+
+    fixed = df.copy()
+    fixed = _restore_live_dimension_columns(fixed)
+
+    if "churn_probability" not in fixed.columns and "churn_score" in fixed.columns:
+        fixed["churn_probability"] = pd.to_numeric(fixed["churn_score"], errors="coerce").fillna(0.0)
+
+    defaults = {
+        "persona": "unknown_persona",
+        "uplift_segment": "live",
+        "risk_segment": "unknown",
+        "expected_roi": 0.0,
+        "expected_incremental_profit": 0.0,
+        "clv": 0.0,
+        "uplift_score": 0.0,
+        "coupon_cost": 0.0,
+    }
+    for col, default in defaults.items():
+        if col not in fixed.columns:
+            fixed[col] = default
+        elif col in {"persona", "uplift_segment", "risk_segment"}:
+            fixed[col] = fixed[col].fillna(default).astype(str).replace({"": default, "nan": default, "None": default})
+
+    for numeric_col in [
+        "churn_probability",
+        "churn_score",
+        "expected_roi",
+        "expected_incremental_profit",
+        "clv",
+        "uplift_score",
+        "coupon_cost",
+    ]:
+        if numeric_col in fixed.columns:
+            fixed[numeric_col] = pd.to_numeric(fixed[numeric_col], errors="coerce").fillna(0.0)
+
+    if "priority_score" not in fixed.columns:
+        fixed["priority_score"] = fixed["expected_incremental_profit"]
+    else:
+        fixed["priority_score"] = pd.to_numeric(fixed["priority_score"], errors="coerce").fillna(0.0)
+
+    if "selection_score" not in fixed.columns:
+        fixed["selection_score"] = fixed["priority_score"]
+
+    heavy_cols = [col for col in ["score_payload", "feature_payload", "source_payload"] if col in fixed.columns]
+    if heavy_cols:
+        fixed = fixed.drop(columns=heavy_cols)
+
+    return fixed
+
+
+def _normalize_live_actions_df(df: pd.DataFrame) -> pd.DataFrame:
+    """action_queue API 결과를 기존 타겟/추천 화면 컬럼과 맞춘다."""
+    if df is None or df.empty:
+        return pd.DataFrame()
+
+    fixed = df.copy()
+    # source_payload.customer_score 안의 persona/uplift_segment를 먼저 복원한다.
+    fixed = _restore_live_dimension_columns(fixed)
+
+    if "expected_incremental_profit" not in fixed.columns and "expected_profit" in fixed.columns:
+        fixed["expected_incremental_profit"] = fixed["expected_profit"]
+    if "coupon_cost" not in fixed.columns:
+        fixed["coupon_cost"] = 0.0
+    if "churn_probability" not in fixed.columns:
+        fixed["churn_probability"] = 0.0
+    if "priority_score" not in fixed.columns:
+        if "expected_incremental_profit" in fixed.columns:
+            fixed["priority_score"] = pd.to_numeric(fixed["expected_incremental_profit"], errors="coerce").fillna(0.0)
+        else:
+            fixed["priority_score"] = 0.0
+    if "selection_score" not in fixed.columns:
+        fixed["selection_score"] = fixed["priority_score"]
+
+    for numeric_col in [
+        "expected_roi",
+        "expected_incremental_profit",
+        "expected_profit",
+        "coupon_cost",
+        "priority_score",
+        "selection_score",
+        "churn_probability",
+    ]:
+        if numeric_col in fixed.columns:
+            fixed[numeric_col] = pd.to_numeric(fixed[numeric_col], errors="coerce").fillna(0.0)
+
+    heavy_cols = [col for col in ["score_payload", "feature_payload", "source_payload"] if col in fixed.columns]
+    normalized = _ensure_retention_target_schema(fixed)
+    if heavy_cols:
+        normalized = normalized.drop(columns=[col for col in heavy_cols if col in normalized.columns])
+    return normalized
+
+
+def _live_scores_to_realtime_df(scores_df: pd.DataFrame, actions_df: pd.DataFrame) -> pd.DataFrame:
+    """user live scores/actions를 기존 실시간 운영 모니터가 기대하는 컬럼으로 변환한다."""
+    scores = _rename_live_score_columns(scores_df)
+    if scores.empty:
+        return pd.DataFrame()
+
+    live = scores.copy()
+    live["realtime_churn_score"] = live.get("churn_score", live.get("churn_probability", 0.0))
+    live["base_churn_probability"] = live.get("churn_probability", live["realtime_churn_score"])
+    live["score_delta"] = live["realtime_churn_score"] - live["base_churn_probability"]
+    live["last_event_type"] = "user_live_event"
+    live["latest_trigger_reason"] = "PostgreSQL user-live score"
+    live["action_queue_status"] = "not_queued"
+    live["queued_recommended_action"] = None
+    live["queued_intervention_intensity"] = None
+    live["queued_coupon_cost"] = 0.0
+    live["queued_expected_profit"] = live.get("expected_incremental_profit", 0.0)
+    live["queued_expected_roi"] = live.get("expected_roi", 0.0)
+    live["reoptimization_count"] = 0
+
+    if actions_df is not None and not actions_df.empty and "customer_id" in actions_df.columns:
+        action_cols = [
+            "customer_id",
+            "action_status",
+            "recommended_action",
+            "intervention_intensity",
+            "coupon_cost",
+            "expected_profit",
+            "expected_roi",
+            "trigger_reason",
+        ]
+        action_lookup = actions_df[[col for col in action_cols if col in actions_df.columns]].copy()
+        action_lookup = action_lookup.drop_duplicates("customer_id", keep="first")
+        live = live.merge(action_lookup, on="customer_id", how="left", suffixes=("", "_action"))
+        if "action_status" in live.columns:
+            live["action_queue_status"] = live["action_status"].fillna("not_queued")
+        if "recommended_action" in live.columns:
+            live["queued_recommended_action"] = live["recommended_action"]
+        if "intervention_intensity" in live.columns:
+            live["queued_intervention_intensity"] = live["intervention_intensity"]
+        if "coupon_cost_action" in live.columns:
+            live["queued_coupon_cost"] = pd.to_numeric(live["coupon_cost_action"], errors="coerce").fillna(0.0)
+        elif "coupon_cost" in live.columns:
+            live["queued_coupon_cost"] = pd.to_numeric(live["coupon_cost"], errors="coerce").fillna(0.0)
+        if "expected_profit" in live.columns:
+            live["queued_expected_profit"] = pd.to_numeric(live["expected_profit"], errors="coerce").fillna(live["queued_expected_profit"])
+        if "expected_roi_action" in live.columns:
+            live["queued_expected_roi"] = pd.to_numeric(live["expected_roi_action"], errors="coerce").fillna(live["queued_expected_roi"])
+        if "trigger_reason" in live.columns:
+            live["latest_trigger_reason"] = live["trigger_reason"].fillna(live["latest_trigger_reason"])
+
+    return live
+
+
+def _merge_live_score_dimensions(actions_df: pd.DataFrame, scores_df: pd.DataFrame) -> pd.DataFrame:
+    """action_queue row에 score table의 persona/uplift/risk 차원을 보강한다."""
+    if actions_df is None or actions_df.empty or scores_df is None or scores_df.empty:
+        return actions_df if actions_df is not None else pd.DataFrame()
+    if "customer_id" not in actions_df.columns or "customer_id" not in scores_df.columns:
+        return actions_df
+
+    scores = _rename_live_score_columns(scores_df).copy()
+    dim_cols = [
+        col for col in [
+            "customer_id",
+            "persona",
+            "persona_source",
+            "uplift_segment",
+            "uplift_segment_source",
+            "risk_segment",
+            "churn_probability",
+            "churn_score",
+            "clv",
+            "uplift_score",
+        ]
+        if col in scores.columns
+    ]
+    if len(dim_cols) <= 1:
+        return actions_df
+
+    merged = actions_df.merge(
+        scores[dim_cols].drop_duplicates("customer_id", keep="first"),
+        on="customer_id",
+        how="left",
+        suffixes=("", "_score"),
+    )
+
+    for col in [
+        "persona",
+        "persona_source",
+        "uplift_segment",
+        "uplift_segment_source",
+        "risk_segment",
+        "churn_probability",
+        "churn_score",
+        "clv",
+        "uplift_score",
+    ]:
+        score_col = f"{col}_score"
+        if score_col not in merged.columns:
+            continue
+        if col not in merged.columns:
+            merged[col] = merged[score_col]
+        else:
+            missing_mask = merged[col].map(_is_placeholder_segment)
+            merged.loc[missing_mask, col] = merged.loc[missing_mask, score_col]
+        merged = merged.drop(columns=[score_col])
+
+    return merged
+
+
+def _build_live_optimize_payload(
+    actions_df: pd.DataFrame,
+    budget: int,
+    scores_df: pd.DataFrame | None = None,
+) -> tuple[pd.DataFrame, dict[str, Any], pd.DataFrame]:
+    """user live action_queue를 4번 화면의 selected_customers/summary/segment_allocation 형태로 변환한다."""
+    enriched_actions = _merge_live_score_dimensions(actions_df, scores_df if scores_df is not None else pd.DataFrame())
+    targets = _normalize_live_actions_df(enriched_actions)
+
+    spent = float(pd.to_numeric(targets.get("coupon_cost", pd.Series(dtype=float)), errors="coerce").fillna(0.0).sum()) if not targets.empty else 0.0
+    expected_profit = float(pd.to_numeric(targets.get("expected_incremental_profit", targets.get("expected_profit", pd.Series(dtype=float))), errors="coerce").fillna(0.0).sum()) if not targets.empty else 0.0
+    overall_roi = expected_profit / spent if spent > 0 else 0.0
+
+    # 예산 배분 그래프는 액션 카테고리(recommended_category)가 아니라 Uplift 세그먼트 기준으로 보여준다.
+    segment_col = "uplift_segment"
+    candidate_segment_counts = (
+        targets[segment_col].fillna("unknown_segment").replace({"live": "unknown_segment"}).value_counts().to_dict()
+        if not targets.empty and segment_col in targets.columns
+        else {}
+    )
+    optimize_summary = {
+        "budget": int(budget),
+        "spent": spent,
+        "remaining": max(float(budget) - spent, 0.0),
+        "num_targeted": int(len(targets)),
+        "expected_incremental_profit": expected_profit,
+        "overall_roi": overall_roi,
+        "candidate_segment_counts": candidate_segment_counts,
+        "source": "postgresql_user_live_action_queue",
+    }
+
+    if targets.empty or segment_col not in targets.columns:
+        segment_allocation = pd.DataFrame()
+    else:
+        segment_allocation = (
+            targets.groupby(segment_col, as_index=False)
+            .agg(
+                customer_count=("customer_id", "count"),
+                allocated_budget=("coupon_cost", "sum"),
+                expected_profit=("expected_incremental_profit", "sum"),
+            )
+            .rename(columns={segment_col: "uplift_segment"})
+        )
+        if "intervention_intensity" in targets.columns:
+            intensity = (
+                targets.groupby(segment_col)["intervention_intensity"]
+                .agg(lambda x: x.mode().iloc[0] if not x.mode().empty else "medium")
+                .reset_index(drop=True)
+            )
+            segment_allocation["intervention_intensity"] = intensity
+
+    return targets, optimize_summary, segment_allocation
+
+
+def _load_user_live_tables(*, top_n: int, target_cap: int) -> dict[str, Any]:
+    """user mode 전용 live API 조회 묶음. 실패 시 빈 DataFrame fallback.
+
+    성능 최적화:
+    - health/seed는 가벼우므로 매번 조회한다.
+    - 전체 scores 19,999행은 무거우므로 latest_event_time/seed 상태가 같으면 cache를 재사용한다.
+    - recommendations/actions는 화면 표시용이므로 safe_limit만 조회한다.
+    """
+    payload: dict[str, Any] = {
+        "enabled": _is_user_live_mode(),
+        "health": {},
+        "seed_status": {},
+        "score_summary": {},
+        "scores": pd.DataFrame(),
+        "recommendation_summary": {},
+        "recommendations": pd.DataFrame(),
+        "action_summary": {},
+        "actions": pd.DataFrame(),
+    }
+    if not payload["enabled"]:
+        return payload
+
+    safe_limit = max(int(top_n), int(target_cap), 100)
+    try:
+        payload["health"] = fetch_user_live_health()
+    except Exception as exc:
+        payload["health"] = {"status": "error", "error": str(exc)}
+    try:
+        payload["seed_status"] = fetch_user_live_seed_status()
+    except Exception as exc:
+        payload["seed_status"] = {"success": False, "error": str(exc)}
+
+    try:
+        seed_status = payload.get("seed_status", {}) or {}
+        seed_inner = seed_status.get("status", {}) if isinstance(seed_status, dict) else {}
+        score_cache_key = "|".join([
+            str((payload.get("health", {}) or {}).get("latest_event_time") or "no_event"),
+            str(seed_inner.get("score_count") or 0),
+            str(seed_inner.get("latest_score_seeded_at") or "no_seed"),
+        ])
+        summary, scores = _fetch_user_live_scores_cached(score_cache_key)
+        payload["score_summary"] = summary
+        payload["scores"] = _rename_live_score_columns(scores)
+    except Exception as exc:
+        payload["score_summary"] = {"error": str(exc)}
+
+    try:
+        summary, recommendations = fetch_user_live_recommendations(limit=safe_limit)
+        payload["recommendation_summary"] = summary
+        payload["recommendations"] = recommendations
+    except Exception as exc:
+        payload["recommendation_summary"] = {"error": str(exc)}
+    try:
+        summary, actions = fetch_user_live_actions(limit=safe_limit, status="queued")
+        payload["action_summary"] = summary
+        payload["actions"] = _normalize_live_actions_df(actions)
+    except Exception as exc:
+        payload["action_summary"] = {"error": str(exc)}
+    return payload
+
+
+def _render_user_live_status(live_payload: dict[str, Any]) -> None:
+    if not live_payload.get("enabled"):
+        return
+    health = live_payload.get("health", {}) or {}
+    if health.get("status") == "ok":
+        st.success(
+            f"자사 데이터 Live DB 연결됨 · 이벤트 {int(health.get('event_count') or 0):,}건 · "
+            f"실시간 고객 상태 {int(health.get('feature_state_count') or 0):,}명 · "
+            f"최신 이벤트 {health.get('latest_event_time') or '-'}"
+        )
+    else:
+        st.warning(f"자사 데이터 Live DB 상태 확인 실패: {health.get('error', 'unknown error')}")
+
+    seed_status = live_payload.get("seed_status", {}) or {}
+    status = seed_status.get("status", {}) if isinstance(seed_status, dict) else {}
+    if status:
+        st.caption(
+            "Live seed 상태 · "
+            f"scores={int(status.get('score_count') or 0):,}, "
+            f"recommendations={int(status.get('recommendation_count') or 0):,}, "
+            f"actions={int(status.get('action_queue_count') or 0):,}"
+        )
 # ============================================================
 # [/PATCH]
 # ============================================================
@@ -2801,15 +3381,35 @@ with st.sidebar:
     )
 
 
+live_payload = _load_user_live_tables(
+    top_n=int(top_n),
+    target_cap=int(target_cap),
+)
+
+if _is_user_live_mode():
+    _render_user_live_status(live_payload)
+
+if _is_user_live_mode() and not live_payload.get("scores", pd.DataFrame()).empty:
+    customers = _rename_live_score_columns(live_payload["scores"])
+
 churn_summary, risk_customers = get_churn_status(customers, threshold)
 cohort_curve = get_cohort_curve(cohort_df)
 top_customers = get_top_high_value_customers(customers, top_n=None)
-selected_customers, optimize_summary, segment_allocation = get_budget_result(
-    customers,
-    budget=budget,
-    threshold=threshold,
-    max_customers=target_cap,
-)
+
+if _is_user_live_mode() and not live_payload.get("actions", pd.DataFrame()).empty:
+    selected_customers, optimize_summary, segment_allocation = _build_live_optimize_payload(
+        live_payload["actions"],
+        budget=budget,
+        scores_df=live_payload.get("scores", pd.DataFrame()),
+    )
+else:
+    selected_customers, optimize_summary, segment_allocation = get_budget_result(
+        customers,
+        budget=budget,
+        threshold=threshold,
+        max_customers=target_cap,
+    )
+
 # 외부 CSV/user 결과에서는 일부 정렬·표시 컬럼이 없을 수 있으므로
 # 모든 downstream 화면이 같은 스키마를 보도록 즉시 보정한다.
 selected_customers = _ensure_retention_target_schema(selected_customers)
@@ -2827,11 +3427,10 @@ else:
 retention_targets = get_retention_targets(customers, threshold)
 
 if view == "5. 개인화 추천":
-    if st.session_state.get("data_mode", "simulator") == "user":
-        _bundle = load_insight_data()
-        recommendation_summary = _bundle.personalized_recommendation_summary or {}
-        personalized_recommendations = _bundle.personalized_recommendations.copy()
-        recommendation_error = None
+    if _is_user_live_mode():
+        recommendation_summary = live_payload.get("recommendation_summary", {}) or {}
+        personalized_recommendations = live_payload.get("recommendations", pd.DataFrame()).copy()
+        recommendation_error = recommendation_summary.get("error") if isinstance(recommendation_summary, dict) else None
     else:
         try:
             recommendation_limit = max(int(len(selected_customers)), int(target_cap), 1)
@@ -2853,11 +3452,28 @@ else:
     recommendation_error = None
 
 if view == "7. 실시간 운영 모니터":
-    if st.session_state.get("data_mode", "simulator") == "user":
-        _bundle = load_insight_data()
-        realtime_summary = _bundle.realtime_scores_summary or {}
-        realtime_scores = _bundle.realtime_scores.copy()
-        realtime_error = None
+    if _is_user_live_mode():
+        realtime_scores = _live_scores_to_realtime_df(
+            live_payload.get("scores", pd.DataFrame()),
+            live_payload.get("actions", pd.DataFrame()),
+        )
+        score_summary = live_payload.get("score_summary", {}) or {}
+        action_summary = live_payload.get("action_summary", {}) or {}
+        health_summary = live_payload.get("health", {}) or {}
+        realtime_summary = {
+            "tracked_customers": int(score_summary.get("scored_customers") or len(realtime_scores)),
+            "high_risk_customers": int(score_summary.get("high_risk_customers") or 0),
+            "critical_risk_customers": int((realtime_scores.get("realtime_churn_score", pd.Series(dtype=float)) >= 0.85).sum()) if not realtime_scores.empty else 0,
+            "triggered_reoptimizations": int(action_summary.get("live_actions") or 0),
+            "action_queue_size": int(action_summary.get("queued_actions") or 0),
+            "queued_actions_total": int(action_summary.get("queued_actions") or 0),
+            "processed_events": int(health_summary.get("processed_event_count", health_summary.get("event_count", 0)) or 0),
+            "closed_loop_budget_spent": float(pd.to_numeric(live_payload.get("actions", pd.DataFrame()).get("coupon_cost", pd.Series(dtype=float)), errors="coerce").fillna(0.0).sum()) if not live_payload.get("actions", pd.DataFrame()).empty else 0.0,
+            "daily_channel_allocated": int(action_summary.get("queued_actions") or 0),
+            "daily_channel_capacity": max(int(target_cap), 1),
+            "high_priority_queue_size": int(action_summary.get("queued_actions") or 0),
+        }
+        realtime_error = live_payload.get("score_summary", {}).get("error") if isinstance(live_payload.get("score_summary"), dict) else None
     else:
         try:
             realtime_summary, realtime_scores = fetch_realtime_scores(limit=max(int(top_n), 500))
@@ -2914,7 +3530,7 @@ coupon_risk_overview: dict[str, Any] = {}
 data_diagnostics: dict[str, Any] = {}
 customer_explanations = pd.DataFrame()
 
-if view in INSIGHT_HEAVY_VIEWS:
+if view in INSIGHT_HEAVY_VIEWS and not (view == "7. 실시간 운영 모니터" and _is_user_live_mode()):
     insight_bundle = load_insight_data()
     if recommendation_context_df.empty:
         recommendation_context_df = insight_bundle.personalized_recommendations.copy()
@@ -3683,6 +4299,122 @@ elif view == "5. 개인화 추천":
     }
 
 elif view == "7. 실시간 운영 모니터":
+    # user mode에서는 PostgreSQL live DB 화면만 렌더링하고,
+    # 기존 Redis Streams 기반 simulator 실시간 블록으로 내려가지 않는다.
+    # 그렇지 않으면 user mode에서도 realtime/scores API를 호출해 Redis 안내/오류가 같이 표시된다.
+    if _is_user_live_mode():
+        st.subheader("실시간 운영 모니터")
+        st.caption("자사 데이터 모드: PostgreSQL live DB 기준 운영 모니터입니다.")
+
+        health = live_payload.get("health", {}) or {}
+        score_summary = live_payload.get("score_summary", {}) or {}
+        action_summary = live_payload.get("action_summary", {}) or {}
+        rec_summary = live_payload.get("recommendation_summary", {}) or {}
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("이벤트 수", f"{int(health.get('event_count') or 0):,}")
+        c2.metric("실시간 고객 상태", f"{int(health.get('feature_state_count') or 0):,}")
+        c3.metric("점수 고객 수", f"{int(score_summary.get('scored_customers') or 0):,}")
+        c4.metric("Queued 액션", f"{int(action_summary.get('queued_actions') or 0):,}")
+
+        c5, c6, c7, c8 = st.columns(4)
+        c5.metric("평균 이탈 점수", pct(float(score_summary.get("avg_churn_score") or 0.0)))
+        c6.metric("고위험 고객", f"{int(score_summary.get('high_risk_customers') or 0):,}")
+        c7.metric("Live 추천", f"{int(rec_summary.get('live_recommendations') or 0):,}")
+        c8.metric("최신 점수 갱신", str(score_summary.get("latest_scored_at") or "-"))
+
+        scores_df = live_payload.get("scores", pd.DataFrame()).copy()
+        actions_df = live_payload.get("actions", pd.DataFrame()).copy()
+
+        if not scores_df.empty:
+            chart_df = scores_df.head(int(top_n)).copy()
+            if "customer_id" in chart_df.columns:
+                chart_df["customer_id"] = chart_df["customer_id"].astype(str)
+
+            y_col = "churn_score" if "churn_score" in chart_df.columns else "churn_probability"
+
+            fig = px.bar(
+                chart_df,
+                x="customer_id" if "customer_id" in chart_df.columns else chart_df.index,
+                y=y_col,
+                hover_data=[
+                    col for col in [
+                        "clv",
+                        "uplift_score",
+                        "expected_roi",
+                        "risk_segment",
+                        "scored_at",
+                    ]
+                    if col in chart_df.columns
+                ],
+                title="Live 이탈 점수 Top 고객",
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("표시할 live score 데이터가 없습니다.")
+
+        if not actions_df.empty:
+            display_cols = [
+                col for col in [
+                    "customer_id",
+                    "recommended_action",
+                    "intervention_intensity",
+                    "expected_profit",
+                    "expected_incremental_profit",
+                    "expected_roi",
+                    "priority_score",
+                    "action_status",
+                    "source_type",
+                    "trigger_reason",
+                    "queued_at",
+                    "updated_at",
+                ]
+                if col in actions_df.columns
+            ]
+
+            _render_dataframe_with_count(
+                actions_df[display_cols],
+                label="Live Action Queue",
+                height=520,
+            )
+        else:
+            st.info("현재 queued action이 없습니다. action_threshold를 낮춰 테스트하거나 새 이벤트를 입력하세요.")
+
+        llm_payload = {
+            "mode": "user_live",
+            "health": health,
+            "score_summary": score_summary,
+            "action_summary": action_summary,
+            "recommendation_summary": rec_summary,
+            "score_preview": dataframe_snapshot(
+                scores_df,
+                columns=[
+                    "customer_id",
+                    "churn_score",
+                    "clv",
+                    "uplift_score",
+                    "expected_roi",
+                    "risk_segment",
+                    "scored_at",
+                ],
+                max_rows=20,
+            ) if not scores_df.empty else [],
+            "action_preview": dataframe_snapshot(
+                actions_df,
+                columns=[
+                    "customer_id",
+                    "recommended_action",
+                    "priority_score",
+                    "action_status",
+                    "source_type",
+                    "updated_at",
+                ],
+                max_rows=20,
+            ) if not actions_df.empty else [],
+        }
+
+        st.stop()
+
     _realtime_has_data = (
         (isinstance(realtime_scores, pd.DataFrame) and not realtime_scores.empty)
         or _nonempty_mapping(realtime_summary)

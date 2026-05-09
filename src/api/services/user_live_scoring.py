@@ -603,11 +603,10 @@ def score_changed_customers(
         "records": updated_records,
     }
 
-
 def get_user_live_scores(
     *,
     db_url: str,
-    limit: int = 100,
+    limit: int | None = None,
     customer_id: int | None = None,
 ) -> dict[str, Any]:
     ensure_user_live_seed_columns(db_url)
@@ -622,6 +621,16 @@ def get_user_live_scores(
                 """),
                 {"customer_id": customer_id},
             ).mappings().all()
+
+        elif limit is None:
+            rows = conn.execute(
+                text("""
+                SELECT *
+                FROM customer_scores
+                ORDER BY churn_score DESC NULLS LAST, scored_at DESC
+                """)
+            ).mappings().all()
+
         else:
             rows = conn.execute(
                 text("""
@@ -630,7 +639,7 @@ def get_user_live_scores(
                 ORDER BY churn_score DESC NULLS LAST, scored_at DESC
                 LIMIT :limit
                 """),
-                {"limit": limit},
+                {"limit": int(limit)},
             ).mappings().all()
 
         summary = conn.execute(
