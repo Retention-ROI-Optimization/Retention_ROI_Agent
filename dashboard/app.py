@@ -67,53 +67,90 @@ from dashboard.utils.formatters import money, pct
 
 
 DASHBOARD_VIEW_ITEMS: tuple[tuple[str, str], ...] = (
+    # 고객 현황
     ("1", "이탈현황"),
     ("2", "코호트 리텐션 곡선"),
-    ("3", "Uplift + CLV 상위 고객"),
-    ("4", "예산 배분 결과"),
-    ("5", "예상 최적화 ROI"),
-    ("6", "리텐션 대상 고객 목록"),
-    ("7", "학습 결과 아티팩트"),
-    ("8", "Uplift/최적화 결과 (실시간)"),
-    ("9", "개인화 추천"),
-    ("10", "실시간 위험 스코어링 / 운영 모니터"),
-    ("11", "이탈 시점 예측 (Survival Analysis)"),
-    ("12", "의사결정 엔진 비교"),
-    ("13", "운영 한눈에 보기"),
-    ("14", "증분 성과 / A-B 실험"),
-    ("15", "설명가능성 / 고객별 개입 이유"),
-    ("16", "데이터 진단 / 시뮬레이터 충실도"),
-    ("17", "할인·쿠폰 운영 리스크"),
+
+    # 타겟팅·예산
+    ("3", "Uplift·CLV 세그먼트 분석"),
+    ("4", "예산 최적화 및 리텐션 타겟"),
+    ("5", "개인화 추천"),
+    ("6", "의사결정 엔진 비교"),
+
+    # 운영·리스크
+    ("7", "실시간 운영 모니터"),
+    ("8", "할인·쿠폰 운영 리스크"),
+
+    # 모델 검증·진단
+    ("9", "학습 결과 아티팩트"),
+    ("10", "이탈 시점 예측 (Survival Analysis)"),
+    ("11", "증분 성과 / A-B 실험"),
+    ("12", "설명가능성 / 고객별 개입 이유"),
+    ("13", "데이터 진단 / 시뮬레이터 충실도"),
 )
 
 DASHBOARD_VIEW_OPTIONS: tuple[str, ...] = tuple(f"{n}. {t}" for n, t in DASHBOARD_VIEW_ITEMS)
 VIEW_OPTION_BY_NUM: dict[str, str] = {num: f"{num}. {title}" for num, title in DASHBOARD_VIEW_ITEMS}
+
 DASHBOARD_VIEW_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("핵심 분석", ("1", "2", "3", "4", "5", "6", "7")),
-    ("실시간·예측", ("8", "9", "10", "11", "12")),
-    ("운영 인사이트", ("13", "14", "15", "16", "17")),
+    ("고객 현황", ("1", "2")),
+    ("타겟팅·예산", ("3", "4", "5", "6")),
+    ("운영·리스크", ("7", "8")),
+    ("모델 검증·진단", ("9", "10", "11", "12", "13")),
 )
+
 GROUP_TO_VIEW_OPTIONS: dict[str, tuple[str, ...]] = {
     group: tuple(VIEW_OPTION_BY_NUM[num] for num in nums if num in VIEW_OPTION_BY_NUM)
     for group, nums in DASHBOARD_VIEW_GROUPS
 }
+
 VIEW_TO_GROUP: dict[str, str] = {
     option: group
     for group, options in GROUP_TO_VIEW_OPTIONS.items()
     for option in options
 }
-REALTIME_REFRESH_VIEWS: set[str] = {
-    "8. Uplift/최적화 결과 (실시간)",
-    "10. 실시간 위험 스코어링 / 운영 모니터",
-    "13. 운영 한눈에 보기",
+
+LEGACY_VIEW_REDIRECTS: dict[str, str] = {
+    # 병합/삭제 전 메뉴명
+    "3. Uplift + CLV 상위 고객": "3. Uplift·CLV 세그먼트 분석",
+    "4. 예산 배분 결과": "4. 예산 최적화 및 리텐션 타겟",
+    "5. 예상 최적화 ROI": "4. 예산 최적화 및 리텐션 타겟",
+    "6. 리텐션 대상 고객 목록": "4. 예산 최적화 및 리텐션 타겟",
+    "7. 학습 결과 아티팩트": "9. 학습 결과 아티팩트",
+    "8. Uplift/최적화 결과": "3. Uplift·CLV 세그먼트 분석",
+    "8. Uplift/최적화 결과 (실시간)": "3. Uplift·CLV 세그먼트 분석",
+    "9. 개인화 추천": "5. 개인화 추천",
+    "10. 실시간 운영 모니터": "7. 실시간 운영 모니터",
+    "10. 실시간 위험 스코어링 / 운영 모니터": "7. 실시간 운영 모니터",
+    "11. 이탈 시점 예측 (Survival Analysis)": "10. 이탈 시점 예측 (Survival Analysis)",
+    "12. 의사결정 엔진 비교": "6. 의사결정 엔진 비교",
+    "13. 운영 한눈에 보기": "7. 실시간 운영 모니터",
+    "14. 증분 성과 / A-B 실험": "11. 증분 성과 / A-B 실험",
+    "15. 설명가능성 / 고객별 개입 이유": "12. 설명가능성 / 고객별 개입 이유",
+    "16. 데이터 진단 / 시뮬레이터 충실도": "13. 데이터 진단 / 시뮬레이터 충실도",
+    "17. 할인·쿠폰 운영 리스크": "8. 할인·쿠폰 운영 리스크",
+
+    # 직전 13개 구조에서 새 번호로 이동
+    "5. 학습 결과 아티팩트": "9. 학습 결과 아티팩트",
+    "6. 개인화 추천": "5. 개인화 추천",
+    "8. 이탈 시점 예측 (Survival Analysis)": "10. 이탈 시점 예측 (Survival Analysis)",
+    "9. 의사결정 엔진 비교": "6. 의사결정 엔진 비교",
+    "10. 증분 성과 / A-B 실험": "11. 증분 성과 / A-B 실험",
+    "11. 설명가능성 / 고객별 개입 이유": "12. 설명가능성 / 고객별 개입 이유",
+    "12. 데이터 진단 / 시뮬레이터 충실도": "13. 데이터 진단 / 시뮬레이터 충실도",
+    "13. 할인·쿠폰 운영 리스크": "8. 할인·쿠폰 운영 리스크",
 }
+
+REALTIME_REFRESH_VIEWS: set[str] = {
+    "7. 실시간 운영 모니터",
+}
+
 INSIGHT_HEAVY_VIEWS: set[str] = {
-    "10. 실시간 위험 스코어링 / 운영 모니터",
-    "13. 운영 한눈에 보기",
-    "14. 증분 성과 / A-B 실험",
-    "15. 설명가능성 / 고객별 개입 이유",
-    "16. 데이터 진단 / 시뮬레이터 충실도",
-    "17. 할인·쿠폰 운영 리스크",
+    "7. 실시간 운영 모니터",
+    "8. 할인·쿠폰 운영 리스크",
+    "11. 증분 성과 / A-B 실험",
+    "12. 설명가능성 / 고객별 개입 이유",
+    "13. 데이터 진단 / 시뮬레이터 충실도",
 }
 
 
@@ -2473,7 +2510,27 @@ with st.sidebar:
                     st.error(f"파이프라인 실행 중 오류: {exc}")
 
     st.session_state.setdefault("dashboard_view", DASHBOARD_VIEW_OPTIONS[0])
-    st.session_state.setdefault("dashboard_group", VIEW_TO_GROUP.get(st.session_state["dashboard_view"], DASHBOARD_VIEW_GROUPS[0][0]))
+    st.session_state["dashboard_view"] = LEGACY_VIEW_REDIRECTS.get(
+        st.session_state.get("dashboard_view", DASHBOARD_VIEW_OPTIONS[0]),
+        st.session_state.get("dashboard_view", DASHBOARD_VIEW_OPTIONS[0]),
+    )
+    if st.session_state["dashboard_view"] not in DASHBOARD_VIEW_OPTIONS:
+        st.session_state["dashboard_view"] = DASHBOARD_VIEW_OPTIONS[0]
+
+    # 중요: 분석 분야(dashboard_group)를 매 실행마다 현재 세부 화면(dashboard_view)으로
+    # 다시 덮어쓰면, 사용자가 다른 대분류를 클릭해도 직전 세부 화면의 그룹
+    # 예: "1. 이탈현황" -> "고객 현황"으로 즉시 되돌아간다.
+    # 따라서 group은 독립 상태로 유지하고, 선택한 group 안에 현재 view가 없을 때만
+    # 해당 group의 첫 세부 화면으로 이동시킨다.
+    default_group = VIEW_TO_GROUP.get(st.session_state["dashboard_view"], DASHBOARD_VIEW_GROUPS[0][0])
+    st.session_state.setdefault("dashboard_group", default_group)
+    if st.session_state["dashboard_group"] not in GROUP_TO_VIEW_OPTIONS:
+        st.session_state["dashboard_group"] = default_group
+
+    current_group_options = GROUP_TO_VIEW_OPTIONS.get(st.session_state["dashboard_group"], DASHBOARD_VIEW_OPTIONS)
+    if st.session_state["dashboard_view"] not in current_group_options:
+        st.session_state["dashboard_view"] = current_group_options[0]
+
     st.session_state.setdefault("control_threshold", 0.50)
     st.session_state.setdefault("control_budget", 5_000_000)
     st.session_state.setdefault("control_top_n", 25)
@@ -2483,9 +2540,10 @@ with st.sidebar:
 group_labels = [group for group, _ in DASHBOARD_VIEW_GROUPS]
 
 _group_icons = {
-    "핵심 분석":    "📊",
-    "실시간·예측":  "⚡",
-    "운영 인사이트": "🎯",
+    "고객 현황": "📊",
+    "타겟팅·예산": "🎯",
+    "운영·리스크": "⚡",
+    "모델 검증·진단": "🧪",
 }
 _group_label_with_icon = lambda g: f"{_group_icons.get(g, '')} {g}"
 
@@ -2554,7 +2612,7 @@ with st.sidebar:
         key="control_top_n",
     )
 
-    if view == "9. 개인화 추천":
+    if view == "6. 개인화 추천":
         st.caption("최종 리텐션 타겟 고객군(예산/임계값 적용)에게만 추천을 생성합니다.")
         recommendation_per_customer = st.slider(
             "고객당 추천 개수",
@@ -2661,7 +2719,7 @@ selected_customers, optimize_summary, segment_allocation = get_budget_result(
 # 모든 downstream 화면이 같은 스키마를 보도록 즉시 보정한다.
 selected_customers = _ensure_retention_target_schema(selected_customers)
 
-if view == "12. 의사결정 엔진 비교":
+if view == "9. 의사결정 엔진 비교":
     baseline_selected_customers, baseline_optimize_summary, baseline_segment_allocation = get_baseline_budget_result(
         customers,
         budget=budget,
@@ -2673,7 +2731,7 @@ else:
 
 retention_targets = get_retention_targets(customers, threshold)
 
-if view == "9. 개인화 추천":
+if view == "6. 개인화 추천":
     if st.session_state.get("data_mode", "simulator") == "user":
         _bundle = load_insight_data()
         recommendation_summary = _bundle.personalized_recommendation_summary or {}
@@ -2699,7 +2757,7 @@ else:
     recommendation_summary, personalized_recommendations = {}, pd.DataFrame()
     recommendation_error = None
 
-if view == "10. 실시간 위험 스코어링 / 운영 모니터":
+if view == "7. 실시간 운영 모니터":
     if st.session_state.get("data_mode", "simulator") == "user":
         _bundle = load_insight_data()
         realtime_summary = _bundle.realtime_scores_summary or {}
@@ -2717,7 +2775,7 @@ else:
     realtime_summary, realtime_scores = {}, pd.DataFrame()
     realtime_error = None
 
-if view == "11. 이탈 시점 예측 (Survival Analysis)":
+if view == "8. 이탈 시점 예측 (Survival Analysis)":
     if st.session_state.get("data_mode", "simulator") == "user":
         _mode_result_dir = Path(_resolve_result_dir_for_mode("user"))
         _bundle = load_insight_data()
@@ -2770,7 +2828,7 @@ if view in INSIGHT_HEAVY_VIEWS:
     if realtime_context_df.empty:
         realtime_context_df = insight_bundle.realtime_scores.copy()
 
-    if view in {"13. 운영 한눈에 보기", "15. 설명가능성 / 고객별 개입 이유"}:
+    if view in {"11. 설명가능성 / 고객별 개입 이유"}:
         operational_overview = build_operational_overview(
             customers=customers,
             selected_customers=selected_customers,
@@ -2781,19 +2839,19 @@ if view in INSIGHT_HEAVY_VIEWS:
             insight_bundle=insight_bundle,
         )
 
-    if view == "14. 증분 성과 / A-B 실험":
+    if view == "10. 증분 성과 / A-B 실험":
         experiment_overview = build_experiment_overview(insight_bundle)
 
-    if view == "10. 실시간 위험 스코어링 / 운영 모니터":
+    if view == "7. 실시간 운영 모니터":
         realtime_monitor_overview = build_realtime_monitor_overview(insight_bundle, fallback_scores=realtime_context_df)
 
-    if view == "16. 데이터 진단 / 시뮬레이터 충실도":
+    if view == "12. 데이터 진단 / 시뮬레이터 충실도":
         data_diagnostics = build_data_diagnostics(insight_bundle)
 
-    if view == "17. 할인·쿠폰 운영 리스크":
+    if view == "13. 할인·쿠폰 운영 리스크":
         coupon_risk_overview = build_coupon_risk_overview(insight_bundle)
 
-    if view == "15. 설명가능성 / 고객별 개입 이유":
+    if view == "11. 설명가능성 / 고객별 개입 이유":
         global_feature_table = build_global_feature_table(insight_bundle)
         explanation_limit = max(int(len(selected_customers)) if not selected_customers.empty else int(len(insight_bundle.optimization_selected_customers)), int(top_n), 1)
         customer_explanations = build_customer_explanations(
@@ -3034,10 +3092,41 @@ elif view == "2. 코호트 리텐션 곡선":
         "last_observed_retention": last_period_df.round(4).to_dict(orient="records"),
     }
 
-elif view == "3. Uplift + CLV 상위 고객":
+elif view == "3. Uplift·CLV 세그먼트 분석":
     if _user_mode_unavailable("Uplift Score + CLV 상위 고객 분석", "외부 자사 데이터에는 Treatment/Control 배정 정보가 없어 Uplift Score 계산이 불가합니다."):
         st.stop()
-    st.subheader("Uplift Score + CLV 상위 고가치 고객 목록")
+    st.subheader("Uplift·CLV 세그먼트 분석")
+
+
+    segment_dist = (
+        customers.groupby("uplift_segment", as_index=False)
+        .agg(
+            customer_count=("customer_id", "nunique"),
+            avg_uplift=("uplift_score", "mean"),
+            avg_clv=("clv", "mean"),
+            avg_expected_profit=("expected_incremental_profit", "mean"),
+        )
+        .sort_values("customer_count", ascending=False)
+    ) if "uplift_segment" in customers.columns else pd.DataFrame()
+
+    if not segment_dist.empty:
+        seg_fig = px.bar(
+            segment_dist,
+            x="uplift_segment",
+            y="customer_count",
+            text="customer_count",
+            hover_data=["avg_uplift", "avg_clv", "avg_expected_profit"],
+            title="Uplift 세그먼트별 고객 수",
+        )
+        st.plotly_chart(seg_fig, use_container_width=True)
+
+        segment_display = segment_dist.copy()
+        for col in ["avg_clv", "avg_expected_profit"]:
+            if col in segment_display.columns:
+                segment_display[col] = segment_display[col].map(money)
+        if "avg_uplift" in segment_display.columns:
+            segment_display["avg_uplift"] = segment_display["avg_uplift"].map(lambda x: f"{float(x):.3f}")
+        _render_dataframe_with_count(segment_display, label="Uplift 세그먼트 요약", prefer_static=True)
 
     plot_df = top_customers.head(min(len(top_customers), 500)).copy()
     plot_df["customer_label"] = plot_df["customer_id"].astype(str)
@@ -3086,7 +3175,7 @@ elif view == "3. Uplift + CLV 상위 고객":
 
     llm_payload = {
         "top_n": int(len(top_customers)),
-        "segment_distribution": series_distribution(plot_df, "uplift_segment"),
+        "segment_distribution": segment_dist.to_dict(orient="records") if not segment_dist.empty else series_distribution(plot_df, "uplift_segment"),
         "numeric_summary": numeric_summary(
             plot_df,
             ["uplift_score", "clv", "expected_incremental_profit"],
@@ -3105,227 +3194,170 @@ elif view == "3. Uplift + CLV 상위 고객":
         ),
     }
 
-elif view == "4. 예산 배분 결과":
-    if _user_mode_unavailable("예산 배분 결과 (세그먼트별 배분)", "예산 배분은 Uplift 세그먼트(Persuadables 등)를 기반으로 하며, 외부 데이터에는 Treatment 정보가 없어 산출 불가합니다."):
+elif view == "4. 예산 최적화 및 리텐션 타겟":
+    if _user_mode_unavailable("예산 최적화 및 리텐션 타겟", "예산 최적화와 최종 타겟 선정은 Uplift 기반 증분 이익 추정과 Treatment/Control 정보에 의존합니다."):
         st.stop()
-    st.subheader("예산 배분 결과")
-    st.caption("이 화면은 저장된 optimize 결과 파일이 아니라 현재 입력값으로 다시 계산한 결과입니다.")
+    st.subheader("예산 최적화 및 리텐션 타겟")
+    st.caption("기존의 예산 배분, 예상 ROI, 리텐션 대상 고객 목록을 하나로 병합했습니다. 같은 selected_customers/optimize_summary 결과를 반복 표시하지 않도록 탭으로만 구분합니다.")
 
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("총 예산", money(optimize_summary["budget"]))
-    m2.metric("집행 예산", money(optimize_summary["spent"]))
-    m3.metric("잔여 예산", money(optimize_summary["remaining"]))
-    m4.metric("타겟 고객 수", f"{optimize_summary['num_targeted']:,}")
-
-    candidate_by_segment = pd.DataFrame(
-        {
-            "uplift_segment": list(optimize_summary.get("candidate_segment_counts", {}).keys()),
-            "candidate_customer_count": list(optimize_summary.get("candidate_segment_counts", {}).values()),
-        }
-    )
-
-    if not candidate_by_segment.empty:
-        cand_fig = px.bar(
-            candidate_by_segment,
-            x="uplift_segment",
-            y="candidate_customer_count",
-            text="candidate_customer_count",
-            title="세그먼트별 예산 배분 후보 고객 수",
-        )
-        st.plotly_chart(cand_fig, use_container_width=True)
-
-    if segment_allocation.empty or optimize_summary["num_targeted"] == 0:
-        st.warning("현재 조건에서 예산 배분 대상 고객이 없습니다.")
-    else:
-        chart_df = segment_allocation.copy()
-        label_threshold = float(chart_df["allocated_budget"].max()) * 0.08 if not chart_df.empty else 0.0
-        chart_df["customer_count_label"] = np.where(
-            (chart_df["customer_count"] >= 5) | (chart_df["allocated_budget"] >= label_threshold),
-            chart_df["customer_count"].astype(int).astype(str),
-            "",
-        )
-
-        if "intervention_intensity" in chart_df.columns and chart_df["intervention_intensity"].nunique() > 1:
-            bar_fig = px.bar(
-                chart_df,
-                x="uplift_segment",
-                y="allocated_budget",
-                color="intervention_intensity",
-                barmode="group",
-                text="customer_count_label",
-                hover_data=["customer_count", "expected_profit"],
-                title="세그먼트·개입 강도별 예산 배분",
-            )
-            bar_fig.update_traces(textposition="outside", cliponaxis=False)
-            bar_fig.update_layout(legend_title_text="개입 강도")
-        else:
-            bar_fig = px.bar(
-                chart_df,
-                x="uplift_segment",
-                y="allocated_budget",
-                text="customer_count_label",
-                hover_data=["customer_count", "expected_profit"],
-                title="세그먼트별 예산 배분",
-            )
-            bar_fig.update_traces(textposition="outside", cliponaxis=False)
-
-        st.plotly_chart(bar_fig, use_container_width=True)
-
-        display_df = segment_allocation.copy()
-        display_df["allocated_budget"] = display_df["allocated_budget"].map(money)
-        display_df["expected_profit"] = display_df["expected_profit"].map(money)
-        _render_dataframe_with_count(display_df, label="세그먼트별 예산 배분 테이블")
-
-    llm_payload = {
-        "budget_summary": optimize_summary,
-        "segment_allocation": segment_allocation.round(4).to_dict(orient="records"),
-        "selected_customer_numeric_summary": numeric_summary(
-            selected_customers, ["coupon_cost", "expected_incremental_profit", "expected_roi"]
-        ),
-    }
-
-elif view == "5. 예상 최적화 ROI":
-    if _user_mode_unavailable("예상 최적화 ROI", "ROI 계산은 Uplift 기반 증분 이익 추정이 필요한데, 외부 데이터에는 Treatment 정보가 없어 산출 불가합니다."):
-        st.stop()
-    st.subheader("예상 최적화 ROI")
-    st.caption("이 화면도 현재 입력값 기준의 실시간 재계산 결과입니다.")
-
-    m1, m2, m3 = st.columns(3)
-    m1.metric("예상 증분 이익", money(optimize_summary["expected_incremental_profit"]))
-    m2.metric("예상 ROI", pct(optimize_summary["overall_roi"]))
-    m3.metric("선정 고객 수", f"{optimize_summary['num_targeted']:,}")
-
-    top_roi = selected_customers.copy()
-    if selected_customers.empty:
-        st.warning("현재 조건에서 ROI 계산 대상이 없습니다.")
-    else:
-        roi_fig = px.histogram(
-            selected_customers,
-            x="expected_roi",
-            nbins=25,
-            title="선정 고객의 예상 ROI 분포",
-        )
-        roi_fig.update_traces(
-            marker_line_color="rgba(255,255,255,0.95)",
-            marker_line_width=1.2,
-            opacity=0.9,
-        )
-
-        roi_fig.update_layout(
-            bargap=0.02,
-        )
-
-        st.plotly_chart(roi_fig, use_container_width=True)
-
-        top_roi = selected_customers.sort_values(["expected_roi", "expected_incremental_profit", "customer_id"], ascending=[False, False, True]).copy()
-        roi_display_columns = [
-            "customer_id",
-            "persona",
-            "uplift_segment",
-            "intervention_intensity",
-            "recommended_action",
-            "uplift_score",
-            "clv",
-            "coupon_cost",
-            "expected_incremental_profit",
-            "expected_roi",
-        ]
-        display_df = top_roi[[col for col in roi_display_columns if col in top_roi.columns]].copy()
-        if "uplift_score" in display_df.columns:
-            display_df["uplift_score"] = display_df["uplift_score"].map(lambda x: f"{x:.3f}")
-        if "clv" in display_df.columns:
-            display_df["clv"] = display_df["clv"].map(money)
-        if "coupon_cost" in display_df.columns:
-            display_df["coupon_cost"] = display_df["coupon_cost"].map(money)
-        if "expected_incremental_profit" in display_df.columns:
-            display_df["expected_incremental_profit"] = display_df["expected_incremental_profit"].map(money)
-        if "expected_roi" in display_df.columns:
-            display_df["expected_roi"] = display_df["expected_roi"].map(lambda x: f"{x:.2%}")
-        _render_dataframe_with_count(display_df, label="최적화로 선정된 전체 고객 테이블", height=min(900, 180 + 32 * len(display_df)))
-
-    llm_payload = {
-        "optimize_summary": optimize_summary,
-        "roi_numeric_summary": numeric_summary(
-            selected_customers,
-            ["expected_roi", "coupon_cost", "expected_incremental_profit"],
-        ),
-    }
-
-elif view == "6. 리텐션 대상 고객 목록":
-    if _user_mode_unavailable("리텐션 대상 고객 목록", "최종 리텐션 타겟 선정은 Uplift Score + 예산 최적화에 의존하며, 외부 데이터로는 산출 불가합니다."):
-        st.stop()
-    st.subheader("리텐션 대상 고객 목록")
-    st.caption("현재 budget / threshold / 최대 타겟 고객 수 조건에서 실제로 마케팅 대상으로 선정된 전체 고객을 보여줍니다.")
+    m1, m2, m3, m4, m5, m6 = st.columns(6)
+    m1.metric("총 예산", money(optimize_summary.get("budget", budget)))
+    m2.metric("집행 예산", money(optimize_summary.get("spent", 0)))
+    m3.metric("잔여 예산", money(optimize_summary.get("remaining", 0)))
+    m4.metric("타겟 고객 수", f"{int(optimize_summary.get('num_targeted', len(selected_customers))):,}")
+    m5.metric("예상 증분 이익", money(optimize_summary.get("expected_incremental_profit", 0)))
+    m6.metric("예상 ROI", pct(float(optimize_summary.get("overall_roi", 0.0))))
 
     selected_customers = _ensure_retention_target_schema(selected_customers)
-
     optimized_targets = selected_customers.sort_values(
         ["priority_score", "selection_score", "expected_incremental_profit", "customer_id"],
         ascending=[False, False, False, True],
-    ).copy()
+    ).copy() if not selected_customers.empty else pd.DataFrame()
 
-    if optimized_targets.empty:
-        st.warning("현재 조건에서 리텐션 타겟 고객이 없습니다.")
-    else:
-        priority_chart_df = optimized_targets.head(min(15, len(optimized_targets))).copy()
-        priority_fig = px.bar(
-            priority_chart_df,
-            x="customer_id",
-            y="priority_score",
-            color="intervention_intensity" if "intervention_intensity" in priority_chart_df.columns else None,
-            hover_data=["churn_probability", "uplift_score", "clv", "expected_incremental_profit", "expected_roi"],
-            title="우선순위 상위 리텐션 대상 고객",
-        )
-        st.plotly_chart(priority_fig, use_container_width=True)
+    tab_budget, tab_roi, tab_targets = st.tabs(["예산 배분", "ROI 분포", "선정 고객"])
 
-        display_columns = [
-            "customer_id",
-            "persona",
-            "uplift_segment",
-            "churn_probability",
-            "uplift_score",
-            "clv",
-            "intervention_intensity",
-            "recommended_action",
-            "coupon_cost",
-            "expected_incremental_profit",
-            "expected_roi",
-            "priority_score",
-            "recommended_intervention_window",
-        ]
-        display_df = optimized_targets[[col for col in display_columns if col in optimized_targets.columns]].copy()
-        if "churn_probability" in display_df.columns:
-            display_df["churn_probability"] = display_df["churn_probability"].map(lambda x: f"{x:.3f}")
-        if "uplift_score" in display_df.columns:
-            display_df["uplift_score"] = display_df["uplift_score"].map(lambda x: f"{x:.3f}")
-        if "clv" in display_df.columns:
-            display_df["clv"] = display_df["clv"].map(money)
-        if "coupon_cost" in display_df.columns:
-            display_df["coupon_cost"] = display_df["coupon_cost"].map(money)
-        if "expected_incremental_profit" in display_df.columns:
-            display_df["expected_incremental_profit"] = display_df["expected_incremental_profit"].map(money)
-        if "expected_roi" in display_df.columns:
-            display_df["expected_roi"] = display_df["expected_roi"].map(lambda x: f"{x:.2%}")
-        if "priority_score" in display_df.columns:
-            display_df["priority_score"] = display_df["priority_score"].map(lambda x: f"{x:.3f}")
-        _render_dataframe_with_count(
-            display_df,
-            label="최적화 후 실제 선정된 전체 마케팅 고객 테이블",
-            height=min(1100, 180 + 32 * len(display_df)),
+    with tab_budget:
+        candidate_by_segment = pd.DataFrame(
+            {
+                "uplift_segment": list(optimize_summary.get("candidate_segment_counts", {}).keys()),
+                "candidate_customer_count": list(optimize_summary.get("candidate_segment_counts", {}).values()),
+            }
         )
+        if not candidate_by_segment.empty:
+            cand_fig = px.bar(
+                candidate_by_segment,
+                x="uplift_segment",
+                y="candidate_customer_count",
+                text="candidate_customer_count",
+                title="세그먼트별 예산 배분 후보 고객 수",
+            )
+            st.plotly_chart(cand_fig, use_container_width=True)
+
+        if segment_allocation.empty or int(optimize_summary.get("num_targeted", 0)) == 0:
+            st.warning("현재 조건에서 예산 배분 대상 고객이 없습니다.")
+        else:
+            chart_df = segment_allocation.copy()
+            label_threshold = float(chart_df["allocated_budget"].max()) * 0.08 if not chart_df.empty else 0.0
+            chart_df["customer_count_label"] = np.where(
+                (chart_df["customer_count"] >= 5) | (chart_df["allocated_budget"] >= label_threshold),
+                chart_df["customer_count"].astype(int).astype(str),
+                "",
+            )
+            if "intervention_intensity" in chart_df.columns and chart_df["intervention_intensity"].nunique() > 1:
+                bar_fig = px.bar(
+                    chart_df,
+                    x="uplift_segment",
+                    y="allocated_budget",
+                    color="intervention_intensity",
+                    barmode="group",
+                    text="customer_count_label",
+                    hover_data=["customer_count", "expected_profit"],
+                    title="세그먼트·개입 강도별 예산 배분",
+                )
+                bar_fig.update_layout(legend_title_text="개입 강도")
+            else:
+                bar_fig = px.bar(
+                    chart_df,
+                    x="uplift_segment",
+                    y="allocated_budget",
+                    text="customer_count_label",
+                    hover_data=["customer_count", "expected_profit"],
+                    title="세그먼트별 예산 배분",
+                )
+            bar_fig.update_traces(textposition="outside", cliponaxis=False)
+            st.plotly_chart(bar_fig, use_container_width=True)
+
+            display_df = segment_allocation.copy()
+            if "allocated_budget" in display_df.columns:
+                display_df["allocated_budget"] = display_df["allocated_budget"].map(money)
+            if "expected_profit" in display_df.columns:
+                display_df["expected_profit"] = display_df["expected_profit"].map(money)
+            _render_dataframe_with_count(display_df, label="세그먼트별 예산 배분 테이블")
+
+    with tab_roi:
+        if selected_customers.empty:
+            st.warning("현재 조건에서 ROI 계산 대상이 없습니다.")
+        else:
+            roi_fig = px.histogram(
+                selected_customers,
+                x="expected_roi",
+                nbins=25,
+                title="선정 고객의 예상 ROI 분포",
+            )
+            roi_fig.update_traces(marker_line_color="rgba(255,255,255,0.95)", marker_line_width=1.2, opacity=0.9)
+            roi_fig.update_layout(bargap=0.02)
+            st.plotly_chart(roi_fig, use_container_width=True)
+
+            roi_summary = selected_customers[[col for col in ["expected_roi", "coupon_cost", "expected_incremental_profit"] if col in selected_customers.columns]].describe().T.reset_index()
+            if not roi_summary.empty:
+                _render_dataframe_with_count(roi_summary, label="ROI·비용·기대이익 요약", prefer_static=True)
+
+    with tab_targets:
+        if optimized_targets.empty:
+            st.warning("현재 조건에서 리텐션 타겟 고객이 없습니다.")
+        else:
+            priority_chart_df = optimized_targets.head(min(15, len(optimized_targets))).copy()
+            priority_fig = px.bar(
+                priority_chart_df,
+                x="customer_id",
+                y="priority_score",
+                color="intervention_intensity" if "intervention_intensity" in priority_chart_df.columns else None,
+                hover_data=[col for col in ["churn_probability", "uplift_score", "clv", "expected_incremental_profit", "expected_roi"] if col in priority_chart_df.columns],
+                title="우선순위 상위 리텐션 대상 고객",
+            )
+            st.plotly_chart(priority_fig, use_container_width=True)
+
+            display_columns = [
+                "customer_id",
+                "persona",
+                "uplift_segment",
+                "churn_probability",
+                "uplift_score",
+                "clv",
+                "intervention_intensity",
+                "recommended_action",
+                "coupon_cost",
+                "expected_incremental_profit",
+                "expected_roi",
+                "priority_score",
+                "recommended_intervention_window",
+            ]
+            display_df = optimized_targets[[col for col in display_columns if col in optimized_targets.columns]].copy()
+            if "churn_probability" in display_df.columns:
+                display_df["churn_probability"] = display_df["churn_probability"].map(lambda x: f"{float(x):.3f}")
+            if "uplift_score" in display_df.columns:
+                display_df["uplift_score"] = display_df["uplift_score"].map(lambda x: f"{float(x):.3f}")
+            if "clv" in display_df.columns:
+                display_df["clv"] = display_df["clv"].map(money)
+            if "coupon_cost" in display_df.columns:
+                display_df["coupon_cost"] = display_df["coupon_cost"].map(money)
+            if "expected_incremental_profit" in display_df.columns:
+                display_df["expected_incremental_profit"] = display_df["expected_incremental_profit"].map(money)
+            if "expected_roi" in display_df.columns:
+                display_df["expected_roi"] = display_df["expected_roi"].map(lambda x: f"{float(x):.2%}")
+            if "priority_score" in display_df.columns:
+                display_df["priority_score"] = display_df["priority_score"].map(lambda x: f"{float(x):.3f}")
+            _render_dataframe_with_count(
+                display_df,
+                label="최종 리텐션 타겟 고객 테이블",
+                height=min(1100, 180 + 32 * len(display_df)),
+            )
 
     llm_payload = {
         "threshold": threshold,
         "budget": budget,
+        "optimize_summary": optimize_summary,
+        "segment_allocation": segment_allocation.round(4).to_dict(orient="records") if not segment_allocation.empty else [],
         "target_count": int(len(optimized_targets)),
-        "persona_distribution": series_distribution(optimized_targets, "persona"),
-        "segment_distribution": series_distribution(optimized_targets, "uplift_segment"),
-        "numeric_summary": numeric_summary(
-            optimized_targets, ["priority_score", "selection_score", "churn_probability", "uplift_score", "clv", "expected_incremental_profit", "expected_roi"]
+        "persona_distribution": series_distribution(optimized_targets, "persona") if not optimized_targets.empty else {},
+        "segment_distribution": series_distribution(optimized_targets, "uplift_segment") if not optimized_targets.empty else {},
+        "target_numeric_summary": numeric_summary(
+            optimized_targets,
+            ["priority_score", "selection_score", "churn_probability", "uplift_score", "clv", "coupon_cost", "expected_incremental_profit", "expected_roi"],
         ),
     }
 
-elif view == "7. 학습 결과 아티팩트":
+elif view == "5. 학습 결과 아티팩트":
     st.subheader("학습 결과 아티팩트")
     st.caption("이 화면은 백엔드 API가 보관 중인 최신 학습 산출물을 읽기 전용으로 표시합니다. 대시보드에서 학습 파라미터를 조정하거나 재학습을 직접 실행하지 않습니다.")
 
@@ -3414,128 +3446,7 @@ elif view == "7. 학습 결과 아티팩트":
         ) if not customer_features_df.empty else [],
     }
 
-elif view == "8. Uplift/최적화 결과 (실시간)":
-    if _user_mode_unavailable("Uplift / 최적화 실시간 결과", "외부 자사 데이터에는 Treatment/Control 배정 정보가 없어 Uplift 학습과 최적화가 불가합니다."):
-        st.stop()
-    st.subheader("Uplift/최적화 결과 (실시간)")
-    st.caption("Uplift 결과는 최신 raw 데이터를 기준으로 필요 시 다시 만들고, 최적화 결과는 현재 budget/threshold/max-customers 조건으로 즉시 다시 계산합니다.")
-    rebuild_saved_results = st.button("현재 조건으로 Uplift/최적화 다시 계산", key="rebuild_saved_results")
-
-    try:
-        saved_payload = load_saved_results_artifacts_api(
-            int(budget),
-            float(threshold),
-            int(target_cap) if target_cap else None,
-            rebuild=rebuild_saved_results,
-        )
-    except Exception as exc:
-        st.error(f"저장 결과 API 호출 실패: {exc}")
-        saved_payload = {}
-
-    uplift_summary = saved_payload.get("uplift_summary", {})
-    uplift_segmentation_df = _artifact_frame(saved_payload.get("uplift_segmentation"))
-    optimization_summary = saved_payload.get("optimization_summary", {})
-    optimization_segment_budget_df = _artifact_frame(saved_payload.get("optimization_segment_budget"))
-    optimization_selected_customers_df = _artifact_frame(saved_payload.get("optimization_selected_customers"))
-    saved_parameters = saved_payload.get("parameters", {})
-
-    if saved_parameters:
-        st.caption(
-            f"현재 반영 조건 · budget={money(saved_parameters.get('budget', 0))}, "
-            f"threshold={float(saved_parameters.get('threshold', 0.0)):.2f}, "
-            f"max_customers={int(saved_parameters.get('max_customers') or 0):,}"
-        )
-
-    uplift_tab, optimize_tab = st.tabs(["Uplift 결과", "Optimize 결과"])
-
-    with uplift_tab:
-        if not uplift_summary and uplift_segmentation_df.empty:
-            _mode_now = st.session_state.get("data_mode", "simulator")
-            if _mode_now == "user":
-                st.warning(
-                    "📂 자사 데이터 모드에 학습된 uplift 결과가 없습니다.\n\n"
-                    "사이드바에서 CSV를 업로드하고 **'✅ 매핑 확정 후 학습 시작'**을 눌러주세요."
-                )
-            else:
-                st.warning("저장된 uplift 결과를 찾지 못했습니다.")
-        else:
-            m1, m2 = st.columns(2)
-            m1.metric("Uplift rows", int(uplift_summary.get("rows", len(uplift_segmentation_df))))
-            segment_counts = uplift_summary.get("segment_counts", {})
-            m2.metric("세그먼트 종류 수", len(segment_counts))
-
-            if segment_counts:
-                seg_df = pd.DataFrame(
-                    {
-                        "uplift_segment": list(segment_counts.keys()),
-                        "customer_count": list(segment_counts.values()),
-                    }
-                )
-                fig = px.bar(seg_df, x="uplift_segment", y="customer_count", text="customer_count")
-                st.plotly_chart(fig, use_container_width=True)
-
-            if not uplift_segmentation_df.empty:
-                _render_dataframe_with_count(
-                    uplift_segmentation_df,
-                    label="Uplift 세그먼트 미리보기",
-                )
-
-    with optimize_tab:
-        if not optimization_summary and optimization_segment_budget_df.empty:
-            st.warning("저장된 optimize 결과를 찾지 못했습니다.")
-        else:
-            m1, m2, m3, m4 = st.columns(4)
-            m1.metric("현재 예산", money(optimization_summary.get("budget", 0)))
-            m2.metric("현재 집행 예산", money(optimization_summary.get("spent", 0)))
-            m3.metric("현재 잔여 예산", money(optimization_summary.get("remaining", 0)))
-            m4.metric("현재 타겟 고객 수", f"{int(optimization_summary.get('num_targeted', 0)):,}")
-
-            intensity_counts = optimization_summary.get("selected_intensity_counts", {}) if optimization_summary else {}
-            if intensity_counts:
-                st.markdown("### 선택된 개입 강도 구성")
-                intensity_df = pd.DataFrame({
-                    "intervention_intensity": list(intensity_counts.keys()),
-                    "customer_count": list(intensity_counts.values()),
-                })
-                intensity_fig = px.bar(
-                    intensity_df,
-                    x="intervention_intensity",
-                    y="customer_count",
-                    text="customer_count",
-                    title="선택된 고객의 개입 강도 분포",
-                )
-                st.plotly_chart(intensity_fig, use_container_width=True)
-
-            if not optimization_segment_budget_df.empty:
-                display_df = optimization_segment_budget_df.copy()
-                if "allocated_budget" in display_df.columns:
-                    display_df["allocated_budget"] = display_df["allocated_budget"].map(money)
-                if "expected_profit" in display_df.columns:
-                    display_df["expected_profit"] = display_df["expected_profit"].map(money)
-                result_heading = "### 세그먼트·강도별 실시간 결과" if "intervention_intensity" in display_df.columns else "### 세그먼트별 실시간 결과"
-                result_label = "세그먼트·강도별 실시간 결과" if "intervention_intensity" in display_df.columns else "세그먼트별 실시간 결과"
-                st.markdown(result_heading)
-                _render_dataframe_with_count(display_df, label=result_label)
-
-            if not optimization_selected_customers_df.empty:
-                st.markdown("### 현재 조건에서 선정된 고객")
-                _render_dataframe_with_count(
-                    optimization_selected_customers_df,
-                    label="현재 조건에서 선정된 고객",
-                )
-
-    llm_payload = {
-        "uplift_summary": uplift_summary,
-        "optimization_summary": optimization_summary,
-        "optimization_segment_budget": optimization_segment_budget_df.to_dict(orient="records") if not optimization_segment_budget_df.empty else [],
-        "optimization_selected_preview": dataframe_snapshot(
-            optimization_selected_customers_df,
-            columns=list(optimization_selected_customers_df.columns[:12]),
-            max_rows=12,
-        ) if not optimization_selected_customers_df.empty else [],
-    }
-
-elif view == "9. 개인화 추천":
+elif view == "6. 개인화 추천":
     st.subheader("최종 타겟 고객 대상 개인화 추천")
     st.caption("예산/임계값으로 선별된 최종 리텐션 타겟 고객에게만 추천을 생성합니다. 추천 점수는 구매 이력 + 최근 관심 + 세그먼트 인기 + 전역 인기를 혼합해 계산합니다.")
 
@@ -3605,8 +3516,8 @@ elif view == "9. 개인화 추천":
         ) if not personalized_recommendations.empty else [],
     }
 
-elif view == "10. 실시간 위험 스코어링 / 운영 모니터":
-    st.subheader("실시간 위험 스코어링 / 운영 모니터")
+elif view == "7. 실시간 운영 모니터":
+    st.subheader("실시간 운영 모니터")
     st.caption("Redis Streams로 적재된 이벤트를 조금씩 재생하며 고객별 실시간 위험 점수와 액션 큐 상태를 함께 갱신합니다.")
 
     if realtime_error:
@@ -3738,7 +3649,7 @@ elif view == "10. 실시간 위험 스코어링 / 운영 모니터":
         'queue_preview': dataframe_snapshot(realtime_monitor_overview.get("queue_df", pd.DataFrame()), max_rows=20) if realtime_monitor_overview and not realtime_monitor_overview.get("queue_df", pd.DataFrame()).empty else [],
     }
 
-elif view == "11. 이탈 시점 예측 (Survival Analysis)":
+elif view == "8. 이탈 시점 예측 (Survival Analysis)":
     st.subheader("이탈 시점 예측 (Survival Analysis)")
     st.caption('Cox Proportional Hazards 기반으로 landmark 시점 이후 얼마 안에 churn risk 상태로 진입할지를 추정합니다. 분류 모델과 달리 "언제" 위험이 커지는지를 함께 봅니다.')
 
@@ -3811,7 +3722,7 @@ elif view == "11. 이탈 시점 예측 (Survival Analysis)":
         'survival_coefficients': survival_coefficients.head(15).to_dict(orient='records') if not survival_coefficients.empty else [],
     }
 
-elif view == "12. 의사결정 엔진 비교":
+elif view == "9. 의사결정 엔진 비교":
     st.subheader("의사결정 엔진 비교")
     st.caption("기존 예산 최적화(이탈·업리프트·ROI 중심)와 현재 의사결정 엔진(이탈 시점 + intervention window + 개입 강도)을 같은 예산 조건에서 비교합니다.")
 
@@ -3973,142 +3884,16 @@ elif view == "12. 의사결정 엔진 비교":
             )
             st.plotly_chart(intensity_fig, use_container_width=True)
 
-    if not selected_customers.empty:
-        st.markdown("### 현재 엔진이 실제로 선택한 고객 예시")
-        preview_df = selected_customers.copy()
-        preview_columns = [
-            "customer_id",
-            "persona",
-            "uplift_segment",
-            "recommended_intervention_window",
-            "intervention_intensity",
-            "churn_probability",
-            "uplift_score",
-            "coupon_cost",
-            "expected_incremental_profit",
-            "expected_roi",
-        ]
-        preview_columns = [column for column in preview_columns if column in preview_df.columns]
-        preview_df = preview_df[preview_columns].head(20).copy()
-        if "churn_probability" in preview_df.columns:
-            preview_df["churn_probability"] = preview_df["churn_probability"].map(lambda x: f"{float(x):.3f}")
-        if "uplift_score" in preview_df.columns:
-            preview_df["uplift_score"] = preview_df["uplift_score"].map(lambda x: f"{float(x):.3f}")
-        if "coupon_cost" in preview_df.columns:
-            preview_df["coupon_cost"] = preview_df["coupon_cost"].map(money)
-        if "expected_incremental_profit" in preview_df.columns:
-            preview_df["expected_incremental_profit"] = preview_df["expected_incremental_profit"].map(money)
-        if "expected_roi" in preview_df.columns:
-            preview_df["expected_roi"] = preview_df["expected_roi"].map(lambda x: f"{float(x):.2%}")
-        _render_dataframe_with_count(preview_df, label="현재 엔진 선택 고객 예시")
+    st.caption("고객별 상세 명단은 4번 '예산 최적화 및 리텐션 타겟' 화면에서만 관리합니다. 이 화면은 엔진 간 정책 차이만 비교합니다.")
 
     llm_payload = {
         "decision_engine_factors": factor_table.to_dict(orient="records"),
         "baseline_summary": baseline_optimize_summary,
         "enhanced_summary": optimize_summary,
         "enhanced_segment_summary": enhanced_segment_summary.to_dict(orient="records") if not enhanced_segment_summary.empty else [],
-        "selected_customer_preview": dataframe_snapshot(
-            selected_customers,
-            columns=[
-                "customer_id",
-                "uplift_segment",
-                "recommended_intervention_window",
-                "intervention_intensity",
-                "expected_incremental_profit",
-                "expected_roi",
-            ],
-            max_rows=15,
-        ) if not selected_customers.empty else [],
     }
 
-elif view == "13. 운영 한눈에 보기":
-    st.subheader("운영 한눈에 보기")
-    st.caption("현 시점의 위험 고객 규모, 예산 집행, 추천 생성, 실시간 액션 큐, 세그먼트 구성을 한 화면에서 묶어 보여줍니다.")
-
-    overview_cards = operational_overview.get("summary_cards", {})
-    m1, m2, m3, m4, m5 = st.columns(5)
-    m1.metric("현재 리텐션 타겟", f"{int(overview_cards.get('selected_count', 0)):,}명")
-    m2.metric("예상 증분 이익", money(float(overview_cards.get('expected_profit', 0.0))))
-    m3.metric("예상 ROI", pct(float(overview_cards.get('overall_roi', 0.0))))
-    m4.metric("추천 생성 건수", f"{int(overview_cards.get('recommended_rows', 0)):,}건")
-    m5.metric("실시간 큐 적재", f"{int(overview_cards.get('queued_actions', 0)):,}건")
-
-    st.info(
-        "사용자가 보통 궁금해하는 질문을 기준으로 묶었습니다: 지금 누구를 잡고 있는가, 왜 그 고객들인가, "
-        "이벤트는 어느 단계에서 많이 쌓이고 있는가, 실시간 큐에 얼마나 액션이 대기 중인가, 어떤 세그먼트가 가장 중요한가."
-    )
-
-    tab1, tab2, tab3 = st.tabs(["운영 파이프라인", "행동/세그먼트", "지금 봐야 할 포인트"])
-
-    with tab1:
-        pipeline_rows = pd.DataFrame([
-            {"stage": "전체 고객", "count": int(len(customers)), "note": "현재 customer_summary 기준 전체 모수"},
-            {"stage": "위험 고객(현재 threshold)", "count": int(churn_summary.get('at_risk_customers', 0)), "note": "threshold 이상인 고객"},
-            {"stage": "최종 타겟 고객", "count": int(len(selected_customers)), "note": "예산·ROI·타이밍을 고려해 선별"},
-            {"stage": "개인화 추천 생성", "count": int(recommendation_summary.get('rows', 0) or 0), "note": "최종 타겟 대상 추천 산출"},
-            {"stage": "실시간 액션 큐", "count": int(realtime_monitor_overview.get('summary', {}).get('queued_actions_total', 0) or 0), "note": "즉시/후속 조치 대기"},
-        ])
-        fig = px.funnel(pipeline_rows, x="count", y="stage", title="운영 파이프라인 요약")
-        st.plotly_chart(fig, use_container_width=True)
-        _render_dataframe_with_count(pipeline_rows, label="운영 파이프라인 단계")
-
-    with tab2:
-        funnel_df = operational_overview.get("funnel_df", pd.DataFrame())
-        persona_df = operational_overview.get("persona_df", pd.DataFrame())
-        segment_df = operational_overview.get("segment_df", pd.DataFrame())
-
-        left, right = st.columns(2)
-        with left:
-            if not funnel_df.empty:
-                fig = px.bar(funnel_df, x="stage", y="events", title="이벤트 단계별 발생량", text="events")
-                st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.warning("이벤트 믹스를 계산할 데이터가 없습니다.")
-        with right:
-            if not persona_df.empty:
-                plot_df = persona_df.head(10).copy()
-                fig = px.bar(
-                    plot_df,
-                    x="persona",
-                    y="avg_churn_probability",
-                    hover_data=[col for col in ["customers", "avg_uplift_score", "avg_clv"] if col in plot_df.columns],
-                    title="페르소나별 평균 이탈 위험",
-                )
-                st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.warning("페르소나 집계를 계산할 수 없습니다.")
-
-        if not segment_df.empty:
-            display_segment_df = segment_df.head(10).copy()
-            for col in ["avg_clv", "avg_priority_score"]:
-                if col in display_segment_df.columns:
-                    display_segment_df[col] = display_segment_df[col].map(money)
-            for col in ["avg_churn_probability", "avg_uplift"]:
-                if col in display_segment_df.columns:
-                    display_segment_df[col] = display_segment_df[col].map(lambda x: f"{float(x):.3f}")
-            _render_dataframe_with_count(display_segment_df, label="핵심 고객 세그먼트")
-
-    with tab3:
-        cA, cB, cC = st.columns(3)
-        cA.metric("평균 개입 윈도우", f"{float(overview_cards.get('avg_window', 0.0)):.1f}일")
-        cB.metric("Survival C-index", f"{float(overview_cards.get('survival_c_index', 0.0)):.4f}")
-        cC.metric("누적 주문 건수", f"{int(overview_cards.get('order_count', 0)):,}건")
-        st.markdown("### 지금 바로 확인할 것")
-        st.markdown(
-            "- 현재 threshold와 예산에서 실제로 선별된 고객 수가 얼마나 되는지\n"
-            "- 세그먼트별로 churn만 높은지, uplift와 CLV까지 같이 높은지\n"
-            "- 실시간 액션 큐가 채널 용량보다 빠르게 늘고 있지 않은지\n"
-            "- 추천 건수는 충분한데 실제 선택 고객이 적다면 예산/ROI 제약이 과한지"
-        )
-
-    llm_payload = {
-        "overview_cards": overview_cards,
-        "pipeline": pipeline_rows.to_dict(orient="records"),
-        "persona_summary": operational_overview.get("persona_df", pd.DataFrame()).head(10).to_dict(orient="records") if not operational_overview.get("persona_df", pd.DataFrame()).empty else [],
-        "segment_summary": operational_overview.get("segment_df", pd.DataFrame()).head(10).to_dict(orient="records") if not operational_overview.get("segment_df", pd.DataFrame()).empty else [],
-    }
-
-elif view == "14. 증분 성과 / A-B 실험":
+elif view == "10. 증분 성과 / A-B 실험":
     if _user_mode_unavailable("증분 성과 / A-B 실험 분석", "A/B 테스트 분석은 Treatment/Control 그룹 분리 데이터가 필수이며, 외부 데이터에는 해당 정보가 없습니다."):
         st.stop()
     st.subheader("증분 성과 / A-B 실험")
@@ -4175,7 +3960,7 @@ elif view == "14. 증분 성과 / A-B 실험":
         "persuadables": experiment_overview.get("persuadables", {}),
     }
 
-elif view == "15. 설명가능성 / 고객별 개입 이유":
+elif view == "11. 설명가능성 / 고객별 개입 이유":
     st.subheader("설명가능성 / 고객별 개입 이유")
     st.caption("왜 이 고객이 위험군인지, 왜 개입 후보로 뽑혔는지, 무엇을 조심해야 하는지를 운영 언어로 풀어 보여줍니다.")
 
@@ -4222,7 +4007,7 @@ elif view == "15. 설명가능성 / 고객별 개입 이유":
         "customer_explanations": customer_explanations.head(20).to_dict(orient="records") if not customer_explanations.empty else [],
     }
 
-elif view == "16. 데이터 진단 / 시뮬레이터 충실도":
+elif view == "12. 데이터 진단 / 시뮬레이터 충실도":
     st.subheader("데이터 진단 / 시뮬레이터 충실도")
     st.caption("시뮬레이터가 만든 원천 데이터와 파생 산출물이 운영형 분석에 쓰기 적절한지, 기본적인 정합성과 분포를 함께 점검합니다.")
 
@@ -4270,7 +4055,7 @@ elif view == "16. 데이터 진단 / 시뮬레이터 충실도":
         "distribution": distribution_df.head(30).to_dict(orient="records") if not distribution_df.empty else [],
     }
 
-elif view == "17. 할인·쿠폰 운영 리스크":
+elif view == "13. 할인·쿠폰 운영 리스크":
     st.subheader("할인·쿠폰 운영 리스크")
     st.caption("쿠폰 노출 누적, 리딤 효율, 강도별 효과, 추천/개입 믹스를 같이 보면서 할인 남발의 부작용 가능성을 점검합니다.")
 
