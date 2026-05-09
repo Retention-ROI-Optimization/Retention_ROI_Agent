@@ -178,3 +178,58 @@ def init_user_live_tables(db_url: str) -> None:
         CREATE INDEX IF NOT EXISTS idx_action_queue_status_priority
         ON action_queue (action_status, priority_score DESC)
         """))
+def ensure_user_live_seed_columns(db_url: str) -> None:
+    """
+    3단계 seed 작업에 필요한 보강 컬럼을 추가한다.
+
+    이미 1~2단계에서 테이블이 생성되어 있어도 안전하게 실행된다.
+    feature_payload / score_payload / source_payload는 기존 CSV row 전체를 JSONB로 저장하기 위한 컬럼이다.
+    이후 4단계 모델 재추론에서 원본 feature schema를 맞출 때 사용할 수 있다.
+    """
+    init_user_live_tables(db_url)
+
+    with user_live_session(db_url) as conn:
+        conn.execute(text("""
+        ALTER TABLE customer_feature_state
+        ADD COLUMN IF NOT EXISTS feature_payload JSONB DEFAULT '{}'::jsonb
+        """))
+
+        conn.execute(text("""
+        ALTER TABLE customer_feature_state
+        ADD COLUMN IF NOT EXISTS seeded_at TIMESTAMPTZ
+        """))
+
+        conn.execute(text("""
+        ALTER TABLE customer_feature_state
+        ADD COLUMN IF NOT EXISTS source_updated_at TIMESTAMPTZ
+        """))
+
+        conn.execute(text("""
+        ALTER TABLE customer_scores
+        ADD COLUMN IF NOT EXISTS score_payload JSONB DEFAULT '{}'::jsonb
+        """))
+
+        conn.execute(text("""
+        ALTER TABLE customer_scores
+        ADD COLUMN IF NOT EXISTS seeded_at TIMESTAMPTZ
+        """))
+
+        conn.execute(text("""
+        ALTER TABLE recommendation_candidates
+        ADD COLUMN IF NOT EXISTS source_payload JSONB DEFAULT '{}'::jsonb
+        """))
+
+        conn.execute(text("""
+        ALTER TABLE recommendation_candidates
+        ADD COLUMN IF NOT EXISTS seeded_at TIMESTAMPTZ
+        """))
+
+        conn.execute(text("""
+        ALTER TABLE action_queue
+        ADD COLUMN IF NOT EXISTS source_payload JSONB DEFAULT '{}'::jsonb
+        """))
+
+        conn.execute(text("""
+        ALTER TABLE action_queue
+        ADD COLUMN IF NOT EXISTS seeded_at TIMESTAMPTZ
+        """))
