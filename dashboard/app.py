@@ -2514,30 +2514,45 @@ with st.sidebar:
     st.divider()
     st.markdown("#### ⚙️ 분석 컨트롤")
 
-    threshold = float(st.session_state["control_threshold"])
-    budget = int(st.session_state["control_budget"])
-    top_n = int(st.session_state["control_top_n"])
-    target_cap = int(st.session_state["control_target_cap"])
-    recommendation_per_customer = int(st.session_state["control_recommendation_per_customer"])
+    # 모든 세부 화면에서 같은 widget key를 항상 렌더링한다.
+    # 이렇게 해야 1번에서 바꾼 threshold/예산이 3번으로 가도 유지되고,
+    # 3번에서 다시 바꾼 값도 4번·6번 등 다른 화면에서 그대로 이어진다.
+    threshold = st.slider(
+        "이탈 Threshold",
+        min_value=0.10,
+        max_value=0.90,
+        step=0.01,
+        key="control_threshold",
+        help="이 값 이상인 고객을 이탈 위험군으로 간주합니다. 모든 화면에서 동일하게 유지됩니다.",
+    )
 
-    if view in {"1. 이탈현황", "4. 예산 배분 결과", "5. 예상 최적화 ROI", "6. 리텐션 대상 고객 목록", "8. Uplift/최적화 결과 (실시간)", "9. 개인화 추천", "12. 의사결정 엔진 비교", "13. 운영 한눈에 보기"}:
-        threshold = st.slider(
-            "이탈 Threshold",
-            min_value=0.10,
-            max_value=0.90,
-            step=0.01,
-            key="control_threshold",
-            help="이 값 이상인 고객을 이탈 위험군으로 간주합니다.",
-        )
+    budget = int(st.number_input(
+        "총 마케팅 예산",
+        min_value=100_000,
+        max_value=500_000_000,
+        step=100_000,
+        key="control_budget",
+        help="모든 화면에서 동일하게 유지되는 분석 예산입니다.",
+    ))
 
-    if view in {"10. 실시간 위험 스코어링 / 운영 모니터", "11. 이탈 시점 예측 (Survival Analysis)", "15. 설명가능성 / 고객별 개입 이유", "17. 할인·쿠폰 운영 리스크"}:
-        top_n = st.slider(
-            "차트 기준 표시 고객 수",
-            min_value=5,
-            max_value=200,
-            step=5,
-            key="control_top_n",
-        )
+    target_cap = st.slider(
+        "최대 타겟 고객 수",
+        min_value=100,
+        max_value=5000,
+        step=100,
+        key="control_target_cap",
+        help="예산이 충분하더라도 이 수를 넘겨 타겟팅하지 않습니다. 모든 화면에서 동일하게 유지됩니다.",
+    )
+
+    # top_n은 실시간/설명가능성/리스크 화면에서 주로 쓰지만,
+    # 화면 이동 시 값이 사라지지 않도록 항상 렌더링한다.
+    top_n = st.slider(
+        "차트 기준 표시 고객 수",
+        min_value=5,
+        max_value=200,
+        step=5,
+        key="control_top_n",
+    )
 
     if view == "9. 개인화 추천":
         st.caption("최종 리텐션 타겟 고객군(예산/임계값 적용)에게만 추천을 생성합니다.")
@@ -2548,26 +2563,19 @@ with st.sidebar:
             step=1,
             key="control_recommendation_per_customer",
         )
+    else:
+        recommendation_per_customer = int(st.session_state["control_recommendation_per_customer"])
 
-    if view in {"4. 예산 배분 결과", "5. 예상 최적화 ROI", "6. 리텐션 대상 고객 목록", "8. Uplift/최적화 결과 (실시간)", "9. 개인화 추천", "12. 의사결정 엔진 비교", "13. 운영 한눈에 보기"}:
-        budget = int(st.number_input("총 마케팅 예산", step=100000, key="control_budget"))
-        target_cap = st.slider(
-            "최대 타겟 고객 수",
-            min_value=100,
-            max_value=5000,
-            step=100,
-            key="control_target_cap",
-            help="예산이 충분하더라도 이 수를 넘겨 타겟팅하지 않습니다.",
-        )
-
-    if view == "9. 개인화 추천":
-        preview_selected_customers, _, _ = get_budget_result(
-            customers,
-            budget=budget,
-            threshold=threshold,
-            max_customers=target_cap,
-        )
-        st.caption(f"현재 조건의 최종 타겟 고객 수: {int(len(preview_selected_customers)):,}명")
+    preview_selected_customers, _, _ = get_budget_result(
+        customers,
+        budget=budget,
+        threshold=threshold,
+        max_customers=target_cap,
+    )
+    st.caption(
+        f"현재 공통 조건: threshold={float(threshold):.2f} / "
+        f"예산={int(budget):,}원 / 최종 타겟 고객 수={int(len(preview_selected_customers)):,}명"
+    )
 
 with st.sidebar:
     st.divider()
