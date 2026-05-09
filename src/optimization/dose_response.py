@@ -152,10 +152,20 @@ class DoseResponsePolicyModel:
     def _prepare_features(self, frame: pd.DataFrame) -> pd.DataFrame:
         X = frame.copy()
         if "tenure_days_at_assignment" not in X.columns:
-            signup = pd.to_datetime(X.get("signup_date"), errors="coerce")
-            assigned = pd.to_datetime(X.get("assigned_at"), errors="coerce")
-            if signup.notna().any() and assigned.notna().any():
-                X["tenure_days_at_assignment"] = (assigned.dt.normalize() - signup.dt.normalize()).dt.days.clip(lower=0)
+            # 두 컬럼이 frame에 모두 있어야 일자 차이를 계산할 수 있음.
+            # 없거나 None이면 0.0으로 fallback (Series로 보장).
+            has_signup = "signup_date" in X.columns and X["signup_date"] is not None
+            has_assigned = "assigned_at" in X.columns and X["assigned_at"] is not None
+            if has_signup and has_assigned:
+                signup = pd.to_datetime(X["signup_date"], errors="coerce")
+                assigned = pd.to_datetime(X["assigned_at"], errors="coerce")
+                if isinstance(signup, pd.Series) and isinstance(assigned, pd.Series) \
+                        and signup.notna().any() and assigned.notna().any():
+                    X["tenure_days_at_assignment"] = (
+                        assigned.dt.normalize() - signup.dt.normalize()
+                    ).dt.days.clip(lower=0).fillna(0.0)
+                else:
+                    X["tenure_days_at_assignment"] = 0.0
             else:
                 X["tenure_days_at_assignment"] = 0.0
         if "avg_order_value_hist" not in X.columns:
@@ -221,8 +231,13 @@ def _build_training_dataset(data_dir: Path, horizon_days: int = DEFAULT_HORIZON_
     df = df.merge(assignment_view, on="customer_id", how="left")
 
     df["assigned_at"] = _prepare_dates(df, "assigned_at")
-    df["signup_date"] = pd.to_datetime(df.get("signup_date"), errors="coerce").dt.normalize()
-    df["tenure_days_at_assignment"] = (df["assigned_at"] - df["signup_date"]).dt.days.clip(lower=0)
+    if "signup_date" in df.columns and df["signup_date"] is not None:
+        df["signup_date"] = pd.to_datetime(df["signup_date"], errors="coerce").dt.normalize()
+    else:
+        df["signup_date"] = pd.NaT
+    df["tenure_days_at_assignment"] = (
+        (df["assigned_at"] - df["signup_date"]).dt.days.clip(lower=0).fillna(0.0)
+    )
     df["avg_order_value_hist"] = _safe_div(
         _safe_series(df.get("monetary"), index=df.index, default=0.0),
         np.maximum(_safe_series(df.get("frequency"), index=df.index, default=0.0), 0.0),

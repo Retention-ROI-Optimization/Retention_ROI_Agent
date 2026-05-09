@@ -337,7 +337,9 @@ def _build_funnel(customers: pd.DataFrame, orders: pd.DataFrame, churners: pd.Da
     stage_df["reached_first_purchase"] = stage_df["purchase_count"] >= 1
     stage_df["reached_repeat_purchase"] = stage_df["purchase_count"] >= 2
     stage_df["reached_loyal"] = stage_df["purchase_count"] >= 3
-    stage_df["is_churned"] = stage_df["customer_id"].isin(set(churners["customer_id"]))
+    # churners DataFrame에 customer_id가 없을 수 있음 (사용자 데이터 흐름에서 churn 라벨 미생성 시)
+    churner_ids = set(churners["customer_id"]) if "customer_id" in churners.columns else set()
+    stage_df["is_churned"] = stage_df["customer_id"].isin(churner_ids)
 
     total_signup = int(len(stage_df))
     first_purchase_count = int(stage_df["reached_first_purchase"].sum())

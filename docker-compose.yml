@@ -2,6 +2,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: retention-redis
+    restart: unless-stopped
     ports:
       - "6379:6379"
 
@@ -10,6 +11,7 @@ services:
       context: .
       dockerfile: Dockerfile.api
     container_name: retention-api
+    restart: unless-stopped
     depends_on:
       - redis
     environment:
@@ -24,18 +26,36 @@ services:
       - "8000:8000"
     volumes:
       - .:/app
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 1G
 
   dashboard:
     build:
       context: .
       dockerfile: Dockerfile.dashboard
     container_name: retention-dashboard
+    restart: unless-stopped       # OOM 등으로 죽으면 자동 재시작
     depends_on:
       - api
     environment:
       RETENTION_API_BASE_URL: http://api:8000
       PYTHONPATH: /app
+      # Streamlit 추가 안정화 설정
+      STREAMLIT_SERVER_MAX_UPLOAD_SIZE: "1024"
+      STREAMLIT_SERVER_MAX_MESSAGE_SIZE: "512"
+      STREAMLIT_SERVER_FILE_WATCHER_TYPE: "none"
+      STREAMLIT_BROWSER_GATHER_USAGE_STATS: "false"
     ports:
       - "8501:8501"
     volumes:
       - .:/app
+    deploy:
+      resources:
+        limits:
+          memory: 6G              # 큰 CSV 업로드 + 학습 처리용
+        reservations:
+          memory: 2G

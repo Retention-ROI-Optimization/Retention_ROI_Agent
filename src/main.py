@@ -38,6 +38,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--mode",
         required=True,
         choices=[
+            "ingest",
             "features",
             "train",
             "uplift",
@@ -102,6 +103,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--stream-max-events", type=int, default=10000, help="실시간 consume/replay에서 처리할 최대 이벤트 수")
     parser.add_argument("--stream-sleep-ms", type=int, default=0, help="produce 모드에서 이벤트 간 대기(ms)")
     parser.add_argument("--survival-horizon-days", type=int, default=90, help="survival 모드 예측 horizon(day)")
+    parser.add_argument("--csv-path", default=None, help="ingest 모드에서 사용할 CSV 파일 경로")
     return parser
 
 
@@ -135,6 +137,30 @@ def main() -> int:
         "simulation_seed": args.seed,
         "randomize_simulation": args.randomize,
     }
+
+    if args.mode == "ingest":
+        if not args.csv_path:
+            raise SystemExit("--csv-path is required for ingest mode.")
+        from src.ingestion.pipeline import run_ingestion_pipeline
+        pipeline_result = run_ingestion_pipeline(
+            file_path=args.csv_path,
+            data_dir=data_dir,
+            model_dir=model_dir,
+            result_dir=result_dir,
+            feature_store_dir=feature_store_dir,
+            budget=args.budget,
+            threshold=args.threshold,
+            max_customers=args.max_customers,
+        )
+        if pipeline_result.success:
+            print(f"Ingestion pipeline completed successfully.")
+            if pipeline_result.training:
+                print(f"  Completed stages: {', '.join(pipeline_result.training.stages_completed)}")
+                if pipeline_result.training.stages_failed:
+                    print(f"  Failed stages: {', '.join(pipeline_result.training.stages_failed.keys())}")
+        else:
+            print(f"Ingestion pipeline failed: {pipeline_result.error}")
+        return 0
 
     if args.mode == "simulate":
         ensure_simulation_outputs(

@@ -18,9 +18,16 @@ In short, this project is an end-to-end **Retention Decision Intelligence Pipeli
 
 ## Image
 
-<img src="assets/dashboard.png" width="600"/>
+<img src="assets/dash1.jpeg" width="400"/>
 
-<img src="assets/chatbot.png" width="600"/>
+
+<img src="assets/dash2.jpeg" width="400"/>
+
+
+<img src="assets/dash3.jpeg" width="400"/>
+
+<img src="assets/dash4.jpeg" width="400"/>
+
 
 ## Installment
 
