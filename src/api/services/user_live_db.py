@@ -233,3 +233,41 @@ def ensure_user_live_seed_columns(db_url: str) -> None:
         ALTER TABLE action_queue
         ADD COLUMN IF NOT EXISTS seeded_at TIMESTAMPTZ
         """))
+        conn.execute(text("""
+        ALTER TABLE action_queue
+        ADD COLUMN IF NOT EXISTS seeded_at TIMESTAMPTZ
+        """))
+
+
+def ensure_user_live_job_tables(db_url: str) -> None:
+    """
+    7단계 배치/주기 작업 실행 기록 테이블을 생성한다.
+
+    user_live_job_runs는 이벤트 단위 실시간 처리와 분리된
+    drift check, recent action refresh, 재학습/재계산 job의 실행 상태를 기록한다.
+    """
+    init_user_live_tables(db_url)
+
+    with user_live_session(db_url) as conn:
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS user_live_job_runs (
+            id BIGSERIAL PRIMARY KEY,
+            job_name TEXT NOT NULL,
+            job_status TEXT NOT NULL,
+            started_at TIMESTAMPTZ DEFAULT now(),
+            finished_at TIMESTAMPTZ,
+            duration_sec FLOAT,
+            message TEXT,
+            result_payload JSONB DEFAULT '{}'::jsonb
+        )
+        """))
+
+        conn.execute(text("""
+        CREATE INDEX IF NOT EXISTS idx_user_live_job_runs_started
+        ON user_live_job_runs (started_at DESC)
+        """))
+
+        conn.execute(text("""
+        CREATE INDEX IF NOT EXISTS idx_user_live_job_runs_name_status
+        ON user_live_job_runs (job_name, job_status)
+        """))
