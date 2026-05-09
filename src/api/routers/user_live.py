@@ -712,19 +712,25 @@ def score_customers(
 
 @router.get("/scores")
 def live_scores(
-    limit: int = 100,
+    limit: int | None = Query(default=None, ge=1),
     customer_id: int | None = None,
     settings: ApiSettings = Depends(get_settings),
 ):
     """
     PostgreSQL customer_scores 최신 점수 조회.
-    4단계 테스트용 API다.
+
+    limit을 생략하면 전체 customer_scores를 반환한다.
+    예:
+    - /api/v1/user-live/scores              → 전체 조회
+    - /api/v1/user-live/scores?limit=100    → 100명만 조회
+    - /api/v1/user-live/scores?customer_id=1001 → 특정 고객 조회
     """
     return get_user_live_scores(
         db_url=settings.user_db_url,
         limit=limit,
         customer_id=customer_id,
     )
+
 @router.post("/refresh-actions")
 def refresh_actions(
     customer_ids: list[int],

@@ -46,14 +46,26 @@ def _candidate_api_base_urls() -> list[str]:
     return candidates
 
 
-def _request_json(path: str, params: Dict[str, Any] | None = None, *, method: str = 'GET') -> Dict[str, Any]:
+def _request_json(
+    path: str,
+    params: Dict[str, Any] | None = None,
+    *,
+    method: str = 'GET',
+    json_body: Any | None = None,
+) -> Dict[str, Any]:
     last_exc: Exception | None = None
     attempted: list[str] = []
     for base_url in _candidate_api_base_urls():
         url = f"{base_url}{path}"
         attempted.append(url)
         try:
-            response = requests.request(method.upper(), url, params=params, timeout=DEFAULT_TIMEOUT)
+            response = requests.request(
+                method.upper(),
+                url,
+                params=params,
+                json=json_body,
+                timeout=DEFAULT_TIMEOUT,
+            )
             response.raise_for_status()
             return response.json()
         except requests.RequestException as exc:
@@ -183,3 +195,97 @@ def advance_realtime_stream(batch_size: int = 250, top_n: int = 50, reset_when_e
         },
         method='POST',
     )
+
+# -----------------------------------------------------------------------------
+# User live PostgreSQL serving APIs
+# -----------------------------------------------------------------------------
+def fetch_user_live_health() -> Dict[str, Any]:
+    """user mode PostgreSQL live DB 상태 조회."""
+    return _request_json('/api/v1/user-live/health')
+
+
+def fetch_user_live_seed_status() -> Dict[str, Any]:
+    """user mode live table seed 상태 조회."""
+    return _request_json('/api/v1/user-live/seed-status')
+
+
+def fetch_user_live_scores(
+    limit: int | None = None,
+    customer_id: int | None = None,
+) -> tuple[dict, pd.DataFrame]:
+    """
+    PostgreSQL customer_scores 최신 점수 조회.
+
+    limit=None이면 전체 customer_scores를 조회한다.
+    """
+    params: dict = {}
+
+    if limit is not None:
+        params["limit"] = int(limit)
+
+    if customer_id is not None:
+        params["customer_id"] = int(customer_id)
+
+    payload = _request_json(
+        "/api/v1/user-live/scores",
+        params=params or None,
+    )
+
+    summary = payload.get("summary", {}) or {}
+    records = payload.get("records", []) or []
+
+    return summary, pd.DataFrame(records)
+
+def fetch_user_live_recommendations(
+    limit: int = 100,
+    customer_id: int | None = None,
+    source_type: str | None = None,
+) -> tuple[Dict[str, Any], pd.DataFrame]:
+    """PostgreSQL recommendation_candidates 조회."""
+    params: Dict[str, Any] = {'limit': int(limit)}
+    if customer_id is not None:
+        params['customer_id'] = int(customer_id)
+    if source_type is not None:
+        params['source_type'] = source_type
+
+    data = _request_json('/api/v1/user-live/recommendations', params)
+    return data.get('summary', {}) or {}, pd.DataFrame(data.get('records', []) or [])
+
+
+def fetch_user_live_actions(
+    limit: int = 100,
+    customer_id: int | None = None,
+    source_type: str | None = None,
+    status: str | None = None,
+) -> tuple[Dict[str, Any], pd.DataFrame]:
+    """PostgreSQL action_queue 조회."""
+    params: Dict[str, Any] = {'limit': int(limit)}
+    if customer_id is not None:
+        params['customer_id'] = int(customer_id)
+    if source_type is not None:
+        params['source_type'] = source_type
+    if status is not None:
+        params['status'] = status
+
+    data = _request_json('/api/v1/user-live/actions', params)
+    return data.get('summary', {}) or {}, pd.DataFrame(data.get('records', []) or [])
+
+
+def refresh_user_live_actions(
+    customer_ids: list[int],
+    action_threshold: float = 0.5,
+    min_expected_roi: float = 0.0,
+    min_expected_profit: float = 0.0,
+) -> Dict[str, Any]:
+    """선택 고객의 live recommendation/action queue만 수동 갱신."""
+    return _request_json(
+        '/api/v1/user-live/refresh-actions',
+        {
+            'action_threshold': float(action_threshold),
+            'min_expected_roi': float(min_expected_roi),
+            'min_expected_profit': float(min_expected_profit),
+        },
+        method='POST',
+        json_body=[int(customer_id) for customer_id in customer_ids],
+    )
+
