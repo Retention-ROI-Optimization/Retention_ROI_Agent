@@ -216,6 +216,84 @@ def _user_mode_unavailable(feature_name: str, reason: str = "") -> bool:
 # [/PATCH]
 # ============================================================
 
+def _path_exists(path_value: Any) -> bool:
+    """컨테이너/로컬 양쪽에서 산출물 경로가 실제로 존재하는지 확인한다."""
+    if not path_value:
+        return False
+    try:
+        path = Path(str(path_value))
+    except Exception:
+        return False
+
+    candidates = [path]
+    if not path.is_absolute():
+        candidates.append(_project_root() / path)
+    return any(candidate.exists() for candidate in candidates)
+
+
+def _render_missing_data_box(feature_name: str, reason: str = "", action_hint: str = "") -> None:
+    """산출물이 아직 없을 때 렌더링 실패 대신 일관된 '해당 데이터 없음' 박스를 보여준다."""
+    default_reason = (
+        "이 화면에 필요한 산출물이 아직 생성되지 않았습니다. "
+        "Docker 컨테이너만 실행한 상태라면 학습/생존분석/실험/실시간 리플레이 관련 결과 파일이 없을 수 있습니다."
+    )
+    default_hint = (
+        "필요한 경우 시뮬레이터 파이프라인 명령을 먼저 실행한 뒤 대시보드를 새로고침하세요."
+    )
+    safe_feature = html.escape(str(feature_name))
+    safe_reason = html.escape(str(reason or default_reason))
+    safe_hint = html.escape(str(action_hint or default_hint))
+    st.markdown(
+        f"""
+        <div style="
+            background-color: #F3F4F6;
+            border: 1px dashed #9CA3AF;
+            border-radius: 12px;
+            padding: 32px 24px;
+            margin: 16px 0;
+            text-align: center;
+        ">
+            <div style="font-size: 40px; opacity: 0.5;">📭</div>
+            <div style="font-size: 20px; font-weight: 700; color: #374151; margin-top: 8px;">
+                해당 데이터 없음
+            </div>
+            <div style="font-size: 14px; color: #6B7280; margin-top: 8px;">
+                {safe_feature}
+            </div>
+            <div style="font-size: 13px; color: #9CA3AF; margin-top: 12px; line-height: 1.5;">
+                {safe_reason}
+            </div>
+            <div style="font-size: 12px; color: #9CA3AF; margin-top: 12px; font-style: italic;">
+                💡 {safe_hint}
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _simulator_missing_result_box(feature_name: str, reason: str = "", action_hint: str = "") -> None:
+    """시뮬레이터 데모에서 산출물이 없을 때 사용할 안내 박스."""
+    _render_missing_data_box(
+        feature_name,
+        reason or "시뮬레이터 데모 산출물이 아직 없습니다. docker compose up만 실행하면 일부 모델 검증/생존분석/실험 산출물은 생성되지 않습니다.",
+        action_hint or "python src/main.py --mode train, survival, abtest, fidelity 등 필요한 시뮬레이터 산출 명령을 먼저 실행하세요.",
+    )
+
+
+def _nonempty_mapping(value: Any) -> bool:
+    return isinstance(value, dict) and len(value) > 0
+
+
+def _simulator_mode_unavailable(feature_name: str, has_data: bool, reason: str = "", action_hint: str = "") -> bool:
+    """simulator 모드에서 필요한 데이터가 없을 때 일관된 안내를 보여준다."""
+    if st.session_state.get("data_mode", "simulator") != "simulator":
+        return False
+    if has_data:
+        return False
+    _simulator_missing_result_box(feature_name, reason=reason, action_hint=action_hint)
+    return True
+
 
 def _ensure_retention_target_schema(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -2586,8 +2664,7 @@ with st.sidebar:
 
     budget = int(st.number_input(
         "총 마케팅 예산",
-        min_value=100_000,
-        max_value=500_000_000,
+        min_value=0,
         step=100_000,
         key="control_budget",
         help="모든 화면에서 동일하게 유지되는 분석 예산입니다.",
@@ -2612,7 +2689,7 @@ with st.sidebar:
         key="control_top_n",
     )
 
-    if view == "6. 개인화 추천":
+    if view == "5. 개인화 추천":
         st.caption("최종 리텐션 타겟 고객군(예산/임계값 적용)에게만 추천을 생성합니다.")
         recommendation_per_customer = st.slider(
             "고객당 추천 개수",
@@ -2719,7 +2796,7 @@ selected_customers, optimize_summary, segment_allocation = get_budget_result(
 # 모든 downstream 화면이 같은 스키마를 보도록 즉시 보정한다.
 selected_customers = _ensure_retention_target_schema(selected_customers)
 
-if view == "9. 의사결정 엔진 비교":
+if view == "6. 의사결정 엔진 비교":
     baseline_selected_customers, baseline_optimize_summary, baseline_segment_allocation = get_baseline_budget_result(
         customers,
         budget=budget,
@@ -2731,7 +2808,7 @@ else:
 
 retention_targets = get_retention_targets(customers, threshold)
 
-if view == "6. 개인화 추천":
+if view == "5. 개인화 추천":
     if st.session_state.get("data_mode", "simulator") == "user":
         _bundle = load_insight_data()
         recommendation_summary = _bundle.personalized_recommendation_summary or {}
@@ -2775,7 +2852,7 @@ else:
     realtime_summary, realtime_scores = {}, pd.DataFrame()
     realtime_error = None
 
-if view == "8. 이탈 시점 예측 (Survival Analysis)":
+if view == "10. 이탈 시점 예측 (Survival Analysis)":
     if st.session_state.get("data_mode", "simulator") == "user":
         _mode_result_dir = Path(_resolve_result_dir_for_mode("user"))
         _bundle = load_insight_data()
@@ -2828,7 +2905,7 @@ if view in INSIGHT_HEAVY_VIEWS:
     if realtime_context_df.empty:
         realtime_context_df = insight_bundle.realtime_scores.copy()
 
-    if view in {"11. 설명가능성 / 고객별 개입 이유"}:
+    if view in {"12. 설명가능성 / 고객별 개입 이유"}:
         operational_overview = build_operational_overview(
             customers=customers,
             selected_customers=selected_customers,
@@ -2839,19 +2916,19 @@ if view in INSIGHT_HEAVY_VIEWS:
             insight_bundle=insight_bundle,
         )
 
-    if view == "10. 증분 성과 / A-B 실험":
+    if view == "11. 증분 성과 / A-B 실험":
         experiment_overview = build_experiment_overview(insight_bundle)
 
     if view == "7. 실시간 운영 모니터":
         realtime_monitor_overview = build_realtime_monitor_overview(insight_bundle, fallback_scores=realtime_context_df)
 
-    if view == "12. 데이터 진단 / 시뮬레이터 충실도":
+    if view == "13. 데이터 진단 / 시뮬레이터 충실도":
         data_diagnostics = build_data_diagnostics(insight_bundle)
 
-    if view == "13. 할인·쿠폰 운영 리스크":
+    if view == "8. 할인·쿠폰 운영 리스크":
         coupon_risk_overview = build_coupon_risk_overview(insight_bundle)
 
-    if view == "11. 설명가능성 / 고객별 개입 이유":
+    if view == "12. 설명가능성 / 고객별 개입 이유":
         global_feature_table = build_global_feature_table(insight_bundle)
         explanation_limit = max(int(len(selected_customers)) if not selected_customers.empty else int(len(insight_bundle.optimization_selected_customers)), int(top_n), 1)
         customer_explanations = build_customer_explanations(
@@ -2876,6 +2953,18 @@ llm_payload: Dict = {}
 llm_api_key_value = llm_api_key.strip() if llm_api_key else None
 
 if view == "1. 이탈현황":
+    _churn_has_data = (
+        isinstance(customers, pd.DataFrame)
+        and not customers.empty
+        and all(col in customers.columns for col in ["customer_id", "churn_probability"])
+    )
+    if _simulator_mode_unavailable(
+        "이탈현황",
+        _churn_has_data,
+        "고객 요약 또는 churn score 산출물이 없습니다.",
+        "시뮬레이터 데모에서는 python src/main.py --mode simulate --force --randomize → features → train 순서로 실행한 뒤 새로고침하세요.",
+    ):
+        st.stop()
     st.subheader("이탈현황")
 
     col1, col2 = st.columns([1.2, 1])
@@ -2950,6 +3039,14 @@ if view == "1. 이탈현황":
     }
 
 elif view == "2. 코호트 리텐션 곡선":
+    _cohort_has_data = isinstance(cohort_df, pd.DataFrame) and not cohort_df.empty
+    if _simulator_mode_unavailable(
+        "코호트 리텐션 곡선",
+        _cohort_has_data,
+        "코호트 리텐션 입력 데이터가 없습니다.",
+        "시뮬레이터 데모에서는 simulate 결과를 생성한 뒤 코호트 관련 산출물을 준비하고 새로고침하세요.",
+    ):
+        st.stop()
     st.subheader("코호트 리텐션 분석")
 
     activity_options = get_available_activity_definitions(cohort_df)
@@ -3095,6 +3192,22 @@ elif view == "2. 코호트 리텐션 곡선":
 elif view == "3. Uplift·CLV 세그먼트 분석":
     if _user_mode_unavailable("Uplift Score + CLV 상위 고객 분석", "외부 자사 데이터에는 Treatment/Control 배정 정보가 없어 Uplift Score 계산이 불가합니다."):
         st.stop()
+    _uplift_has_data = (
+        isinstance(top_customers, pd.DataFrame)
+        and not top_customers.empty
+        and all(col in top_customers.columns for col in ["customer_id", "uplift_score", "clv"])
+    ) or (
+        isinstance(customers, pd.DataFrame)
+        and not customers.empty
+        and all(col in customers.columns for col in ["customer_id", "uplift_score", "clv"])
+    )
+    if _simulator_mode_unavailable(
+        "Uplift·CLV 세그먼트 분석",
+        _uplift_has_data,
+        "Uplift/CLV 세그먼트 산출물이 없습니다.",
+        "시뮬레이터 데모에서는 python src/main.py --mode uplift → clv → segment 순서의 산출물을 먼저 생성하세요.",
+    ):
+        st.stop()
     st.subheader("Uplift·CLV 세그먼트 분석")
 
 
@@ -3196,6 +3309,18 @@ elif view == "3. Uplift·CLV 세그먼트 분석":
 
 elif view == "4. 예산 최적화 및 리텐션 타겟":
     if _user_mode_unavailable("예산 최적화 및 리텐션 타겟", "예산 최적화와 최종 타겟 선정은 Uplift 기반 증분 이익 추정과 Treatment/Control 정보에 의존합니다."):
+        st.stop()
+    _opt_has_data = (
+        (isinstance(selected_customers, pd.DataFrame) and not selected_customers.empty)
+        or (isinstance(segment_allocation, pd.DataFrame) and not segment_allocation.empty)
+        or _nonempty_mapping(optimize_summary)
+    )
+    if _simulator_mode_unavailable(
+        "예산 최적화 및 리텐션 타겟",
+        _opt_has_data,
+        "예산 최적화 결과 또는 리텐션 타겟 산출물이 없습니다.",
+        "시뮬레이터 데모에서는 python src/main.py --mode optimize 및 --mode recommend 를 실행한 뒤 새로고침하세요.",
+    ):
         st.stop()
     st.subheader("예산 최적화 및 리텐션 타겟")
     st.caption("기존의 예산 배분, 예상 ROI, 리텐션 대상 고객 목록을 하나로 병합했습니다. 같은 selected_customers/optimize_summary 결과를 반복 표시하지 않도록 탭으로만 구분합니다.")
@@ -3357,15 +3482,14 @@ elif view == "4. 예산 최적화 및 리텐션 타겟":
         ),
     }
 
-elif view == "5. 학습 결과 아티팩트":
+elif view == "9. 학습 결과 아티팩트":
     st.subheader("학습 결과 아티팩트")
     st.caption("이 화면은 백엔드 API가 보관 중인 최신 학습 산출물을 읽기 전용으로 표시합니다. 대시보드에서 학습 파라미터를 조정하거나 재학습을 직접 실행하지 않습니다.")
 
     try:
         training_payload = load_training_artifacts_api()
     except Exception as exc:
-        st.error(f"학습 결과 API 호출 실패: {exc}")
-        training_payload = {}
+        training_payload = {"_load_error": str(exc)}
 
     churn_metrics = training_payload.get("churn_metrics", {})
     threshold_analysis = training_payload.get("threshold_analysis", {})
@@ -3375,64 +3499,80 @@ elif view == "5. 학습 결과 아티팩트":
     model_paths = training_payload.get("model_paths", {})
     training_parameters = training_payload.get("training_parameters", {}) or churn_metrics.get("training_parameters", {})
 
-    if not churn_metrics:
-        st.warning("학습 결과를 아직 불러오지 못했습니다.")
-    else:
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Best model", str(churn_metrics.get("best_model_name", "-")))
-        m2.metric("Test AUC", f"{float(churn_metrics.get('test_auc_roc', 0.0)):.4f}")
-        m3.metric("Selected threshold", f"{float(churn_metrics.get('selected_threshold', 0.0)):.4f}")
-        m4.metric("Positive rate", f"{float(churn_metrics.get('positive_rate', 0.0)):.2%}")
-
-        st.markdown("### 학습 메타데이터")
-        meta_df = pd.DataFrame(
-            [
-                {"key": "train_rows", "value": churn_metrics.get("train_rows")},
-                {"key": "test_rows", "value": churn_metrics.get("test_rows")},
-                {"key": "numeric_feature_count", "value": churn_metrics.get("numeric_feature_count")},
-                {"key": "categorical_feature_count", "value": churn_metrics.get("categorical_feature_count")},
-                {"key": "lightgbm_available", "value": churn_metrics.get("lightgbm_available")},
-                {"key": "model_path", "value": model_paths.get("churn_model")},
-                {"key": "requested_models", "value": training_parameters.get("candidate_models") or training_parameters.get("requested_models")},
-                {"key": "test_size", "value": training_parameters.get("test_size")},
-                {"key": "random_state", "value": training_parameters.get("random_state")},
-                {"key": "shap_sample_size", "value": training_parameters.get("shap_sample_size")},
-            ]
+    _training_error = str(training_payload.get("_load_error", "") or "")
+    _training_has_data = bool(
+        churn_metrics
+        or threshold_analysis
+        or not top_feature_importance_df.empty
+        or not customer_features_df.empty
+        or any(_path_exists(path) for path in (image_paths or {}).values())
+        or any(_path_exists(path) for path in (model_paths or {}).values())
+    )
+    if not _training_has_data:
+        _simulator_missing_result_box(
+            "학습 결과 아티팩트",
+            _training_error or "churn_metrics, feature importance, feature store, 학습 이미지/모델 파일을 찾지 못했습니다.",
+            "시뮬레이터 데모에서는 python src/main.py --mode simulate --force --randomize → features → train 순서로 실행한 뒤 새로고침하세요.",
         )
-        _render_artifact_table(meta_df, label="학습 메타데이터")
+    else:
+        if not churn_metrics:
+            st.warning("학습 결과를 아직 불러오지 못했습니다.")
+        else:
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Best model", str(churn_metrics.get("best_model_name", "-")))
+            m2.metric("Test AUC", f"{float(churn_metrics.get('test_auc_roc', 0.0)):.4f}")
+            m3.metric("Selected threshold", f"{float(churn_metrics.get('selected_threshold', 0.0)):.4f}")
+            m4.metric("Positive rate", f"{float(churn_metrics.get('positive_rate', 0.0)):.2%}")
 
-    if not top_feature_importance_df.empty:
-        st.markdown("### Top feature importance")
-        _render_artifact_table(top_feature_importance_df, label="Top feature importance")
+            st.markdown("### 학습 메타데이터")
+            meta_df = pd.DataFrame(
+                [
+                    {"key": "train_rows", "value": churn_metrics.get("train_rows")},
+                    {"key": "test_rows", "value": churn_metrics.get("test_rows")},
+                    {"key": "numeric_feature_count", "value": churn_metrics.get("numeric_feature_count")},
+                    {"key": "categorical_feature_count", "value": churn_metrics.get("categorical_feature_count")},
+                    {"key": "lightgbm_available", "value": churn_metrics.get("lightgbm_available")},
+                    {"key": "model_path", "value": model_paths.get("churn_model")},
+                    {"key": "requested_models", "value": training_parameters.get("candidate_models") or training_parameters.get("requested_models")},
+                    {"key": "test_size", "value": training_parameters.get("test_size")},
+                    {"key": "random_state", "value": training_parameters.get("random_state")},
+                    {"key": "shap_sample_size", "value": training_parameters.get("shap_sample_size")},
+                ]
+            )
+            _render_artifact_table(meta_df, label="학습 메타데이터")
 
-    if threshold_analysis and threshold_analysis.get("selected"):
-        st.markdown("### 선택된 threshold 요약")
-        selected_df = _sanitize_artifact_dataframe(pd.DataFrame([threshold_analysis["selected"]]))
-        _render_artifact_table(selected_df, label="선택 threshold 요약")
+        if not top_feature_importance_df.empty:
+            st.markdown("### Top feature importance")
+            _render_artifact_table(top_feature_importance_df, label="Top feature importance")
 
-    if training_parameters:
-        st.markdown("### 학습 파라미터 (서버 반영값)")
-        training_parameter_df = _sanitize_artifact_dataframe(pd.DataFrame([training_parameters]))
-        _render_artifact_table(training_parameter_df, label="학습 파라미터")
+        if threshold_analysis and threshold_analysis.get("selected"):
+            st.markdown("### 선택된 threshold 요약")
+            selected_df = _sanitize_artifact_dataframe(pd.DataFrame([threshold_analysis["selected"]]))
+            _render_artifact_table(selected_df, label="선택 threshold 요약")
 
-    st.markdown("### 학습 시각화")
-    image_cols = st.columns(2)
-    image_items = [
-        ("ROC Curve", image_paths.get("churn_auc_roc")),
-        ("Precision-Recall Tradeoff", image_paths.get("churn_precision_recall_tradeoff")),
-        ("SHAP Summary", image_paths.get("churn_shap_summary")),
-        ("SHAP Local", image_paths.get("churn_shap_local")),
-    ]
-    for idx, (title, img_path) in enumerate(image_items):
-        with image_cols[idx % 2]:
-            if img_path:
-                st.image(img_path, caption=title, use_container_width=True)
-            else:
-                st.info(f"{title} 파일이 없습니다.")
+        if training_parameters:
+            st.markdown("### 학습 파라미터 (서버 반영값)")
+            training_parameter_df = _sanitize_artifact_dataframe(pd.DataFrame([training_parameters]))
+            _render_artifact_table(training_parameter_df, label="학습 파라미터")
 
-    if not customer_features_df.empty:
-        st.markdown("### Feature store 미리보기")
-        _render_artifact_table(customer_features_df.head(20), use_dataframe=True, height=420, label="Feature store 미리보기")
+        st.markdown("### 학습 시각화")
+        image_cols = st.columns(2)
+        image_items = [
+            ("ROC Curve", image_paths.get("churn_auc_roc")),
+            ("Precision-Recall Tradeoff", image_paths.get("churn_precision_recall_tradeoff")),
+            ("SHAP Summary", image_paths.get("churn_shap_summary")),
+            ("SHAP Local", image_paths.get("churn_shap_local")),
+        ]
+        for idx, (title, img_path) in enumerate(image_items):
+            with image_cols[idx % 2]:
+                if img_path and _path_exists(img_path):
+                    st.image(img_path, caption=title, use_container_width=True)
+                else:
+                    st.info(f"{title} 파일이 없습니다.")
+
+        if not customer_features_df.empty:
+            st.markdown("### Feature store 미리보기")
+            _render_artifact_table(customer_features_df.head(20), use_dataframe=True, height=420, label="Feature store 미리보기")
 
     llm_payload = {
         "churn_metrics": churn_metrics,
@@ -3446,7 +3586,15 @@ elif view == "5. 학습 결과 아티팩트":
         ) if not customer_features_df.empty else [],
     }
 
-elif view == "6. 개인화 추천":
+elif view == "5. 개인화 추천":
+    _recommend_has_data = isinstance(personalized_recommendations, pd.DataFrame) and not personalized_recommendations.empty
+    if _simulator_mode_unavailable(
+        "개인화 추천",
+        _recommend_has_data,
+        recommendation_error or "개인화 추천 산출물이 없습니다.",
+        "시뮬레이터 데모에서는 python src/main.py --mode recommend 를 실행한 뒤 새로고침하세요.",
+    ):
+        st.stop()
     st.subheader("최종 타겟 고객 대상 개인화 추천")
     st.caption("예산/임계값으로 선별된 최종 리텐션 타겟 고객에게만 추천을 생성합니다. 추천 점수는 구매 이력 + 최근 관심 + 세그먼트 인기 + 전역 인기를 혼합해 계산합니다.")
 
@@ -3517,6 +3665,18 @@ elif view == "6. 개인화 추천":
     }
 
 elif view == "7. 실시간 운영 모니터":
+    _realtime_has_data = (
+        (isinstance(realtime_scores, pd.DataFrame) and not realtime_scores.empty)
+        or _nonempty_mapping(realtime_summary)
+        or (isinstance(realtime_monitor_overview, dict) and any(isinstance(v, pd.DataFrame) and not v.empty for v in realtime_monitor_overview.values()))
+    )
+    if _simulator_mode_unavailable(
+        "실시간 운영 모니터",
+        _realtime_has_data,
+        realtime_error or "실시간 스코어 스냅샷 또는 액션 큐 산출물이 없습니다.",
+        "시뮬레이터 데모에서는 python src/main.py --mode realtime-bootstrap 및 --mode realtime-replay 를 실행한 뒤 새로고침하세요.",
+    ):
+        st.stop()
     st.subheader("실시간 운영 모니터")
     st.caption("Redis Streams로 적재된 이벤트를 조금씩 재생하며 고객별 실시간 위험 점수와 액션 큐 상태를 함께 갱신합니다.")
 
@@ -3649,14 +3809,16 @@ elif view == "7. 실시간 운영 모니터":
         'queue_preview': dataframe_snapshot(realtime_monitor_overview.get("queue_df", pd.DataFrame()), max_rows=20) if realtime_monitor_overview and not realtime_monitor_overview.get("queue_df", pd.DataFrame()).empty else [],
     }
 
-elif view == "8. 이탈 시점 예측 (Survival Analysis)":
+elif view == "10. 이탈 시점 예측 (Survival Analysis)":
     st.subheader("이탈 시점 예측 (Survival Analysis)")
     st.caption('Cox Proportional Hazards 기반으로 landmark 시점 이후 얼마 안에 churn risk 상태로 진입할지를 추정합니다. 분류 모델과 달리 "언제" 위험이 커지는지를 함께 봅니다.')
 
-    if survival_error:
-        st.error(f"Survival API 호출 실패: {survival_error}")
-    elif not survival_metrics:
-        st.warning("Survival 분석 결과를 아직 불러오지 못했습니다.")
+    if survival_error or not survival_metrics:
+        _simulator_missing_result_box(
+            "이탈 시점 예측 (Survival Analysis)",
+            survival_error or "survival_metrics.json, survival_predictions.csv 또는 survival 모델 산출물을 찾지 못했습니다.",
+            "시뮬레이터 데모에서는 python src/main.py --mode survival 실행 후 대시보드를 새로고침하세요.",
+        )
     else:
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("모델", str(survival_metrics.get('model_name', '-')))
@@ -3676,7 +3838,7 @@ elif view == "8. 이탈 시점 예측 (Survival Analysis)":
         _render_artifact_table(meta_df, label="Survival 메타데이터")
 
         risk_plot = survival_image_paths.get('risk_stratification')
-        if risk_plot:
+        if risk_plot and _path_exists(risk_plot):
             st.image(risk_plot, caption='예측 위험군별 생존 곡선', use_container_width=True)
 
         if not survival_predictions.empty:
@@ -3722,7 +3884,21 @@ elif view == "8. 이탈 시점 예측 (Survival Analysis)":
         'survival_coefficients': survival_coefficients.head(15).to_dict(orient='records') if not survival_coefficients.empty else [],
     }
 
-elif view == "9. 의사결정 엔진 비교":
+elif view == "6. 의사결정 엔진 비교":
+    _engine_has_data = (
+        _nonempty_mapping(optimize_summary)
+        or _nonempty_mapping(baseline_optimize_summary)
+        or (isinstance(segment_allocation, pd.DataFrame) and not segment_allocation.empty)
+        or (isinstance(baseline_segment_allocation, pd.DataFrame) and not baseline_segment_allocation.empty)
+        or (isinstance(selected_customers, pd.DataFrame) and not selected_customers.empty)
+    )
+    if _simulator_mode_unavailable(
+        "의사결정 엔진 비교",
+        _engine_has_data,
+        "기존/현재 엔진 비교에 필요한 최적화 산출물이 없습니다.",
+        "시뮬레이터 데모에서는 python src/main.py --mode optimize 와 --mode recommend 를 실행한 뒤 새로고침하세요.",
+    ):
+        st.stop()
     st.subheader("의사결정 엔진 비교")
     st.caption("기존 예산 최적화(이탈·업리프트·ROI 중심)와 현재 의사결정 엔진(이탈 시점 + intervention window + 개입 강도)을 같은 예산 조건에서 비교합니다.")
 
@@ -3893,66 +4069,80 @@ elif view == "9. 의사결정 엔진 비교":
         "enhanced_segment_summary": enhanced_segment_summary.to_dict(orient="records") if not enhanced_segment_summary.empty else [],
     }
 
-elif view == "10. 증분 성과 / A-B 실험":
+elif view == "11. 증분 성과 / A-B 실험":
     if _user_mode_unavailable("증분 성과 / A-B 실험 분석", "A/B 테스트 분석은 Treatment/Control 그룹 분리 데이터가 필수이며, 외부 데이터에는 해당 정보가 없습니다."):
         st.stop()
     st.subheader("증분 성과 / A-B 실험")
     st.caption("정확도보다 더 중요한 운영 지표인 증분 리텐션, 추가 유지 고객 수, 비용 대비 유지 성과, dose-response 결과를 함께 봅니다.")
 
     exp_metrics = experiment_overview.get("metrics", {})
-    m1, m2, m3, m4, m5 = st.columns(5)
-    m1.metric("증분 리텐션", pct(float(exp_metrics.get('incremental_retention', 0.0))))
-    m2.metric("추가 유지 고객 수", f"{int(round(float(exp_metrics.get('incremental_retained_customers', 0.0)))):,}명")
-    m3.metric("쿠폰 집행 총액", money(float(exp_metrics.get('coupon_spend_total', 0.0))))
-    cpic_val = exp_metrics.get('incremental_cpic', np.nan)
-    m4.metric("CPIC", money(float(cpic_val)) if pd.notna(cpic_val) else "-")
-    m5.metric("Z-test p-value", f"{float(exp_metrics.get('p_value', np.nan)):.6f}" if pd.notna(exp_metrics.get('p_value', np.nan)) else "-")
+    _dose_df_for_check = experiment_overview.get("dose_df", pd.DataFrame())
+    _ab_has_data = bool(
+        experiment_overview.get("ab_test")
+        or not _dose_df_for_check.empty
+        or experiment_overview.get("persuadables")
+        or any(value not in (None, "", 0, 0.0) for value in exp_metrics.values())
+    )
+    if not _ab_has_data:
+        _simulator_missing_result_box(
+            "증분 성과 / A-B 실험",
+            "A/B 테스트, dose-response, persuadables 산출물을 찾지 못했습니다.",
+            "시뮬레이터 데모에서는 python src/main.py --mode abtest 실행 후 대시보드를 새로고침하세요.",
+        )
+    else:
+        m1, m2, m3, m4, m5 = st.columns(5)
+        m1.metric("증분 리텐션", pct(float(exp_metrics.get('incremental_retention', 0.0))))
+        m2.metric("추가 유지 고객 수", f"{int(round(float(exp_metrics.get('incremental_retained_customers', 0.0)))):,}명")
+        m3.metric("쿠폰 집행 총액", money(float(exp_metrics.get('coupon_spend_total', 0.0))))
+        cpic_val = exp_metrics.get('incremental_cpic', np.nan)
+        m4.metric("CPIC", money(float(cpic_val)) if pd.notna(cpic_val) else "-")
+        m5.metric("Z-test p-value", f"{float(exp_metrics.get('p_value', np.nan)):.6f}" if pd.notna(exp_metrics.get('p_value', np.nan)) else "-")
 
-    tab1, tab2, tab3 = st.tabs(["A/B 해석", "개입 강도 효과", "Persuadables 프로필"])
+        tab1, tab2, tab3 = st.tabs(["A/B 해석", "개입 강도 효과", "Persuadables 프로필"])
 
-    with tab1:
-        ab_test = experiment_overview.get("ab_test", {})
-        if ab_test:
-            report_md = ab_test.get("report_markdown", "")
-            if report_md:
-                st.markdown(report_md)
-        else:
-            st.warning("A/B 테스트 산출물을 찾지 못했습니다.")
+        with tab1:
+            ab_test = experiment_overview.get("ab_test", {})
+            if ab_test:
+                report_md = ab_test.get("report_markdown", "")
+                if report_md:
+                    st.markdown(report_md)
+            else:
+                st.warning("A/B 테스트 산출물을 찾지 못했습니다.")
 
-    with tab2:
-        dose_df = experiment_overview.get("dose_df", pd.DataFrame())
-        if not dose_df.empty:
-            chart_df = dose_df.copy()
-            fig = px.bar(
-                chart_df,
-                x="arm",
-                y="retention_rate",
-                hover_data=["samples", "avg_coupon_cost", "effect_prior", "cost_multiplier"],
-                title="개입 강도별 retention rate",
-            )
-            st.plotly_chart(fig, use_container_width=True)
-            display_df = dose_df.copy()
-            for col in ["retention_rate", "effect_prior"]:
-                if col in display_df.columns:
-                    display_df[col] = display_df[col].map(lambda x: f"{float(x):.3f}")
-            for col in ["avg_coupon_cost", "avg_revenue_post_horizon"]:
-                if col in display_df.columns:
-                    display_df[col] = display_df[col].map(money)
-            _render_dataframe_with_count(display_df, label="dose-response arm 요약")
-        else:
-            st.warning("dose-response 요약을 찾지 못했습니다.")
+        with tab2:
+            dose_df = experiment_overview.get("dose_df", pd.DataFrame())
+            if not dose_df.empty:
+                chart_df = dose_df.copy()
+                fig = px.bar(
+                    chart_df,
+                    x="arm",
+                    y="retention_rate",
+                    hover_data=["samples", "avg_coupon_cost", "effect_prior", "cost_multiplier"],
+                    title="개입 강도별 retention rate",
+                )
+                st.plotly_chart(fig, use_container_width=True)
+                display_df = dose_df.copy()
+                for col in ["retention_rate", "effect_prior"]:
+                    if col in display_df.columns:
+                        display_df[col] = display_df[col].map(lambda x: f"{float(x):.3f}")
+                for col in ["avg_coupon_cost", "avg_revenue_post_horizon"]:
+                    if col in display_df.columns:
+                        display_df[col] = display_df[col].map(money)
+                _render_dataframe_with_count(display_df, label="dose-response arm 요약")
+            else:
+                st.warning("dose-response 요약을 찾지 못했습니다.")
 
-    with tab3:
-        persuadables = experiment_overview.get("persuadables", {})
-        st.metric("Persuadables 비중", pct(float(persuadables.get('persuadables_share', 0.0))))
-        rules = persuadables.get("derived_targeting_rules", [])
-        if rules:
-            st.markdown("### 도출된 타겟팅 규칙")
-            for rule in rules:
-                st.markdown(f"- {rule}")
-        numeric_deltas = experiment_overview.get("numeric_deltas", pd.DataFrame())
-        if not numeric_deltas.empty:
-            _render_dataframe_with_count(numeric_deltas, label="Persuadables 수치 프로필 차이")
+        with tab3:
+            persuadables = experiment_overview.get("persuadables", {})
+            st.metric("Persuadables 비중", pct(float(persuadables.get('persuadables_share', 0.0))))
+            rules = persuadables.get("derived_targeting_rules", [])
+            if rules:
+                st.markdown("### 도출된 타겟팅 규칙")
+                for rule in rules:
+                    st.markdown(f"- {rule}")
+            numeric_deltas = experiment_overview.get("numeric_deltas", pd.DataFrame())
+            if not numeric_deltas.empty:
+                _render_dataframe_with_count(numeric_deltas, label="Persuadables 수치 프로필 차이")
 
     llm_payload = {
         "experiment_metrics": exp_metrics,
@@ -3960,54 +4150,66 @@ elif view == "10. 증분 성과 / A-B 실험":
         "persuadables": experiment_overview.get("persuadables", {}),
     }
 
-elif view == "11. 설명가능성 / 고객별 개입 이유":
+elif view == "12. 설명가능성 / 고객별 개입 이유":
     st.subheader("설명가능성 / 고객별 개입 이유")
     st.caption("왜 이 고객이 위험군인지, 왜 개입 후보로 뽑혔는지, 무엇을 조심해야 하는지를 운영 언어로 풀어 보여줍니다.")
 
-    tab1, tab2 = st.tabs(["전역 설명", "고객별 설명"])
+    _explain_has_data = bool(
+        not global_feature_table.empty
+        or not customer_explanations.empty
+        or not operational_overview.get("persona_df", pd.DataFrame()).empty
+    )
+    if not _explain_has_data:
+        _simulator_missing_result_box(
+            "설명가능성 / 고객별 개입 이유",
+            "전역 feature importance, 고객별 설명 테이블, 운영 요약 산출물을 찾지 못했습니다.",
+            "시뮬레이터 데모에서는 train/explain/recommend 관련 명령을 먼저 실행한 뒤 새로고침하세요.",
+        )
+    else:
+        tab1, tab2 = st.tabs(["전역 설명", "고객별 설명"])
 
-    with tab1:
-        if not global_feature_table.empty:
-            chart_df = global_feature_table.head(10).copy()
-            fig = px.bar(chart_df.iloc[::-1], x="importance", y="feature_display", orientation="h", title="전역 중요 변수 Top 10")
-            st.plotly_chart(fig, use_container_width=True)
-            display_df = global_feature_table[["feature_display", "importance", "importance_share"]].copy()
-            display_df.columns = ["feature", "importance", "importance_share"]
-            display_df["importance"] = display_df["importance"].map(lambda x: f"{float(x):.4f}")
-            display_df["importance_share"] = display_df["importance_share"].map(lambda x: f"{float(x):.2%}")
-            _render_dataframe_with_count(display_df, label="전역 중요 변수")
-        else:
-            st.warning("전역 중요 변수 파일을 찾지 못했습니다.")
+        with tab1:
+            if not global_feature_table.empty:
+                chart_df = global_feature_table.head(10).copy()
+                fig = px.bar(chart_df.iloc[::-1], x="importance", y="feature_display", orientation="h", title="전역 중요 변수 Top 10")
+                st.plotly_chart(fig, use_container_width=True)
+                display_df = global_feature_table[["feature_display", "importance", "importance_share"]].copy()
+                display_df.columns = ["feature", "importance", "importance_share"]
+                display_df["importance"] = display_df["importance"].map(lambda x: f"{float(x):.4f}")
+                display_df["importance_share"] = display_df["importance_share"].map(lambda x: f"{float(x):.2%}")
+                _render_dataframe_with_count(display_df, label="전역 중요 변수")
+            else:
+                st.warning("전역 중요 변수 파일을 찾지 못했습니다.")
 
-        if not operational_overview.get("persona_df", pd.DataFrame()).empty:
-            persona_reason_df = operational_overview["persona_df"].copy()
-            if "avg_churn_probability" in persona_reason_df.columns:
-                persona_reason_df["avg_churn_probability"] = persona_reason_df["avg_churn_probability"].map(lambda x: f"{float(x):.3f}")
-            if "avg_uplift_score" in persona_reason_df.columns:
-                persona_reason_df["avg_uplift_score"] = persona_reason_df["avg_uplift_score"].map(lambda x: f"{float(x):.3f}")
-            if "avg_clv" in persona_reason_df.columns:
-                persona_reason_df["avg_clv"] = persona_reason_df["avg_clv"].map(money)
-            _render_dataframe_with_count(persona_reason_df, label="페르소나별 위험·가치 프로필")
+            if not operational_overview.get("persona_df", pd.DataFrame()).empty:
+                persona_reason_df = operational_overview["persona_df"].copy()
+                if "avg_churn_probability" in persona_reason_df.columns:
+                    persona_reason_df["avg_churn_probability"] = persona_reason_df["avg_churn_probability"].map(lambda x: f"{float(x):.3f}")
+                if "avg_uplift_score" in persona_reason_df.columns:
+                    persona_reason_df["avg_uplift_score"] = persona_reason_df["avg_uplift_score"].map(lambda x: f"{float(x):.3f}")
+                if "avg_clv" in persona_reason_df.columns:
+                    persona_reason_df["avg_clv"] = persona_reason_df["avg_clv"].map(money)
+                _render_dataframe_with_count(persona_reason_df, label="페르소나별 위험·가치 프로필")
 
-    with tab2:
-        if not customer_explanations.empty:
-            display_df = customer_explanations.copy()
-            for col in ["churn_probability", "realtime_churn_score", "uplift_score", "expected_roi", "survival_prob_30d"]:
-                if col in display_df.columns:
-                    display_df[col] = display_df[col].map(lambda x: f"{float(x):.3f}" if pd.notna(x) else "")
-            for col in ["clv", "expected_incremental_profit"]:
-                if col in display_df.columns:
-                    display_df[col] = display_df[col].map(lambda x: money(float(x)) if pd.notna(x) else "")
-            _render_dataframe_with_count(display_df, label="고객별 선택 이유 / 주의사항", height=min(760, 220 + 34 * len(display_df)))
-        else:
-            st.warning("설명가능성 테이블을 만들 데이터가 부족합니다.")
+        with tab2:
+            if not customer_explanations.empty:
+                display_df = customer_explanations.copy()
+                for col in ["churn_probability", "realtime_churn_score", "uplift_score", "expected_roi", "survival_prob_30d"]:
+                    if col in display_df.columns:
+                        display_df[col] = display_df[col].map(lambda x: f"{float(x):.3f}" if pd.notna(x) else "")
+                for col in ["clv", "expected_incremental_profit"]:
+                    if col in display_df.columns:
+                        display_df[col] = display_df[col].map(lambda x: money(float(x)) if pd.notna(x) else "")
+                _render_dataframe_with_count(display_df, label="고객별 선택 이유 / 주의사항", height=min(760, 220 + 34 * len(display_df)))
+            else:
+                st.warning("설명가능성 테이블을 만들 데이터가 부족합니다.")
 
     llm_payload = {
         "global_feature_table": global_feature_table.head(15).to_dict(orient="records") if not global_feature_table.empty else [],
         "customer_explanations": customer_explanations.head(20).to_dict(orient="records") if not customer_explanations.empty else [],
     }
 
-elif view == "12. 데이터 진단 / 시뮬레이터 충실도":
+elif view == "13. 데이터 진단 / 시뮬레이터 충실도":
     st.subheader("데이터 진단 / 시뮬레이터 충실도")
     st.caption("시뮬레이터가 만든 원천 데이터와 파생 산출물이 운영형 분석에 쓰기 적절한지, 기본적인 정합성과 분포를 함께 점검합니다.")
 
@@ -4016,37 +4218,50 @@ elif view == "12. 데이터 진단 / 시뮬레이터 충실도":
     event_mix_df = data_diagnostics.get("event_mix_df", pd.DataFrame())
     distribution_df = data_diagnostics.get("distribution_df", pd.DataFrame())
 
-    if not checks_df.empty:
-        status_counts = checks_df["status"].value_counts().to_dict()
-        st.info(f"양호 {status_counts.get('양호', 0)}개 / 주의 {status_counts.get('주의', 0)}개 점검 항목")
-        _render_dataframe_with_count(checks_df, label="정합성 점검 결과", prefer_static=True)
+    _diagnostics_has_data = bool(
+        not checks_df.empty
+        or not volumes_df.empty
+        or not event_mix_df.empty
+        or not distribution_df.empty
+    )
+    if not _diagnostics_has_data:
+        _simulator_missing_result_box(
+            "데이터 진단 / 시뮬레이터 충실도",
+            "시뮬레이터 원천 데이터/산출 데이터 볼륨, 행동 분포, 고객 분포 진단 결과를 찾지 못했습니다.",
+            "시뮬레이터 데모에서는 simulate, features, fidelity 관련 명령을 먼저 실행한 뒤 새로고침하세요.",
+        )
+    else:
+        if not checks_df.empty:
+            status_counts = checks_df["status"].value_counts().to_dict()
+            st.info(f"양호 {status_counts.get('양호', 0)}개 / 주의 {status_counts.get('주의', 0)}개 점검 항목")
+            _render_dataframe_with_count(checks_df, label="정합성 점검 결과", prefer_static=True)
 
-    tab1, tab2, tab3 = st.tabs(["데이터 볼륨", "행동 분포", "고객 분포"])
+        tab1, tab2, tab3 = st.tabs(["데이터 볼륨", "행동 분포", "고객 분포"])
 
-    with tab1:
-        _render_dataframe_with_count(volumes_df, label="원천/산출 데이터 볼륨", prefer_static=True)
+        with tab1:
+            _render_dataframe_with_count(volumes_df, label="원천/산출 데이터 볼륨", prefer_static=True)
 
-    with tab2:
-        if not event_mix_df.empty:
-            fig = px.bar(event_mix_df, x="event_type", y="count", title="이벤트 타입 분포", text="count")
-            st.plotly_chart(fig, use_container_width=True)
-            display_df = event_mix_df.copy()
-            if "share" in display_df.columns:
-                display_df["share"] = display_df["share"].map(lambda x: f"{float(x):.2%}")
-            _render_dataframe_with_count(display_df, label="이벤트 타입 분포", prefer_static=True)
-        else:
-            st.warning("이벤트 분포를 계산할 데이터가 없습니다.")
+        with tab2:
+            if not event_mix_df.empty:
+                fig = px.bar(event_mix_df, x="event_type", y="count", title="이벤트 타입 분포", text="count")
+                st.plotly_chart(fig, use_container_width=True)
+                display_df = event_mix_df.copy()
+                if "share" in display_df.columns:
+                    display_df["share"] = display_df["share"].map(lambda x: f"{float(x):.2%}")
+                _render_dataframe_with_count(display_df, label="이벤트 타입 분포", prefer_static=True)
+            else:
+                st.warning("이벤트 분포를 계산할 데이터가 없습니다.")
 
-    with tab3:
-        if not distribution_df.empty:
-            selected_dimension = st.selectbox("분포 차원 선택", options=sorted(distribution_df["dimension"].unique()), key="diagnostic_dimension")
-            subset = distribution_df[distribution_df["dimension"] == selected_dimension].copy()
-            fig = px.bar(subset, x="value", y="count", title=f"{selected_dimension} 분포", text="count")
-            st.plotly_chart(fig, use_container_width=True)
-            subset["share"] = subset["share"].map(lambda x: f"{float(x):.2%}")
-            _render_dataframe_with_count(subset, label=f"{selected_dimension} 분포", prefer_static=True)
-        else:
-            st.warning("고객 분포를 계산할 데이터가 없습니다.")
+        with tab3:
+            if not distribution_df.empty:
+                selected_dimension = st.selectbox("분포 차원 선택", options=sorted(distribution_df["dimension"].unique()), key="diagnostic_dimension")
+                subset = distribution_df[distribution_df["dimension"] == selected_dimension].copy()
+                fig = px.bar(subset, x="value", y="count", title=f"{selected_dimension} 분포", text="count")
+                st.plotly_chart(fig, use_container_width=True)
+                subset["share"] = subset["share"].map(lambda x: f"{float(x):.2%}")
+                _render_dataframe_with_count(subset, label=f"{selected_dimension} 분포", prefer_static=True)
+            else:
+                st.warning("고객 분포를 계산할 데이터가 없습니다.")
 
     llm_payload = {
         "checks": checks_df.to_dict(orient="records") if not checks_df.empty else [],
@@ -4055,7 +4270,23 @@ elif view == "12. 데이터 진단 / 시뮬레이터 충실도":
         "distribution": distribution_df.head(30).to_dict(orient="records") if not distribution_df.empty else [],
     }
 
-elif view == "13. 할인·쿠폰 운영 리스크":
+elif view == "8. 할인·쿠폰 운영 리스크":
+    _coupon_has_data = False
+    if isinstance(coupon_risk_overview, dict):
+        _coupon_has_data = bool(
+            _nonempty_mapping(coupon_risk_overview.get("metrics", {}))
+            or not coupon_risk_overview.get("flags_df", pd.DataFrame()).empty
+            or not coupon_risk_overview.get("segment_df", pd.DataFrame()).empty
+            or not coupon_risk_overview.get("recommendation_mix", pd.DataFrame()).empty
+            or not coupon_risk_overview.get("intensity_mix", pd.DataFrame()).empty
+        )
+    if _simulator_mode_unavailable(
+        "할인·쿠폰 운영 리스크",
+        _coupon_has_data,
+        "쿠폰 노출/리딤/믹스 리스크 산출물이 없습니다.",
+        "시뮬레이터 데모에서는 recommend, abtest 또는 관련 운영 분석 산출물을 먼저 생성한 뒤 새로고침하세요.",
+    ):
+        st.stop()
     st.subheader("할인·쿠폰 운영 리스크")
     st.caption("쿠폰 노출 누적, 리딤 효율, 강도별 효과, 추천/개입 믹스를 같이 보면서 할인 남발의 부작용 가능성을 점검합니다.")
 
