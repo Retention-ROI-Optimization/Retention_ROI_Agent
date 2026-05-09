@@ -24,6 +24,12 @@ class ApiSettings:
     default_budget: int = field(default_factory=lambda: int(os.getenv("RETENTION_API_DEFAULT_BUDGET", "5000000")))
     default_threshold: float = field(default_factory=lambda: float(os.getenv("RETENTION_API_DEFAULT_THRESHOLD", "0.50")))
     redis_url: str = field(default_factory=lambda: os.getenv("RETENTION_REDIS_URL", "redis://redis:6379/0"))
+    user_db_url: str = field(
+        default_factory=lambda: os.getenv(
+            "RETENTION_USER_DB_URL",
+            "postgresql+psycopg://yeongwonshin@host.docker.internal:5432/retention_db",
+        )
+    )
     realtime_stream_key: str = field(default_factory=lambda: os.getenv("RETENTION_REALTIME_STREAM_KEY", "retention:events"))
     realtime_consumer_group: str = field(default_factory=lambda: os.getenv("RETENTION_REALTIME_CONSUMER_GROUP", "retention-risk-scorers"))
     realtime_consumer_name: str = field(default_factory=lambda: os.getenv("RETENTION_REALTIME_CONSUMER_NAME", "retention-risk-worker-1"))
@@ -42,7 +48,7 @@ class ApiSettings:
 
     @property
     def resolved_data_dir(self) -> Path:
-        return self.d햐ata_dir.resolve()
+        return self.data_dir.resolve()
 
     @property
     def resolved_model_dir(self) -> Path:
