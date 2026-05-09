@@ -30,6 +30,11 @@ from src.api.services.user_live_actions import (
     get_live_recommendation_candidates,
     update_live_actions_for_customers,
 )
+from src.api.services.user_live_jobs import (
+    get_user_live_job_status,
+    run_live_drift_check,
+    run_recent_action_refresh,
+)
 
 router = APIRouter(prefix="/user-live", tags=["user-live"])
 
@@ -793,4 +798,46 @@ def live_actions(
         customer_id=customer_id,
         source_type=source_type,
         status=status,
+    )
+@router.post("/jobs/drift-check")
+def run_drift_check_job(
+    settings: ApiSettings = Depends(get_settings),
+):
+    """
+    가벼운 drift check job.
+    모델 재학습은 하지 않는다.
+    """
+    return run_live_drift_check(
+        db_url=settings.user_db_url,
+    )
+
+
+@router.post("/jobs/recent-action-refresh")
+def run_recent_action_refresh_job(
+    limit: int = 1000,
+    action_threshold: float = 0.5,
+    settings: ApiSettings = Depends(get_settings),
+):
+    """
+    최근 갱신 고객 중심 action queue microbatch refresh.
+    전체 최적화 full recompute가 아니다.
+    """
+    return run_recent_action_refresh(
+        db_url=settings.user_db_url,
+        limit=limit,
+        action_threshold=action_threshold,
+    )
+
+
+@router.get("/jobs/status")
+def user_live_jobs_status(
+    limit: int = 20,
+    settings: ApiSettings = Depends(get_settings),
+):
+    """
+    user-live batch job 실행 기록 조회.
+    """
+    return get_user_live_job_status(
+        db_url=settings.user_db_url,
+        limit=limit,
     )
