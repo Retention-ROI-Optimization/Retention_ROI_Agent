@@ -263,6 +263,13 @@ STRICT_FORBIDDEN_FEATURE_TOKENS = (
     "visit_prob",
     "purchase_prob",
     "exposure_prob",
+    "frequency",
+    "monetary",
+    "clv",
+    "amount_sum",
+    "quantity_sum",
+    "session_duration_sec_sum",
+    "avg_purchase_gap_days",
 )
 
 IDENTIFIER_TOKENS = (
