@@ -482,17 +482,37 @@ def _deduplicate_customer_summary(customer_summary: pd.DataFrame) -> pd.DataFram
 
 
 def _estimate_churn_probability(customer_summary: pd.DataFrame, observed_label: Optional[pd.Series] = None, *, seed: int = 42) -> pd.Series:
-    """Create a continuous, feature-based churn probability instead of echoing 0/1 labels."""
+    """Create a continuous, rank-calibrated churn probability instead of echoing 0/1 labels.
+
+    External files often contain coarse recency/frequency values or an uploaded churn flag.
+    A raw weighted average then collapses many customers into the same narrow band.  The
+    dashboard needs a probability-like operating score, so we keep the business rank signal
+    but spread it through a logit calibration around the observed/base churn rate.
+    """
     cs = customer_summary.copy()
     n = len(cs)
     if n == 0:
         return pd.Series(dtype=float)
 
+    rng = np.random.default_rng(seed)
+
     def _rank01(values: pd.Series, ascending: bool = True) -> pd.Series:
         v = pd.to_numeric(values, errors="coerce").replace([np.inf, -np.inf], np.nan)
         if v.notna().nunique() <= 1:
-            return pd.Series(0.5, index=values.index)
-        return v.rank(pct=True, ascending=ascending).fillna(0.5)
+            # Break ties deterministically so a flat uploaded column does not create
+            # thousands of identical churn probabilities in the dashboard histogram.
+            return pd.Series(rng.random(len(values)), index=values.index).rank(pct=True, ascending=ascending)
+        jitter = pd.Series(rng.normal(0.0, 1e-7, size=len(values)), index=values.index)
+        return (v + jitter).rank(method="first", pct=True, ascending=ascending).fillna(0.5).clip(0.001, 0.999)
+
+    def _sigmoid(x: pd.Series | np.ndarray | float) -> pd.Series:
+        arr = np.asarray(x, dtype=float)
+        arr = np.clip(arr, -18, 18)
+        return pd.Series(1.0 / (1.0 + np.exp(-arr)), index=cs.index)
+
+    def _logit(p: float) -> float:
+        p = float(np.clip(p, 0.02, 0.98))
+        return float(np.log(p / (1.0 - p)))
 
     recency_risk = _rank01(cs.get("recency_days", pd.Series(0, index=cs.index)), ascending=True)
     inactivity_risk = _rank01(cs.get("inactivity_days", cs.get("recency_days", pd.Series(0, index=cs.index))), ascending=True)
@@ -508,22 +528,31 @@ def _estimate_churn_probability(customer_summary: pd.DataFrame, observed_label: 
     if pageviews.notna().nunique() > 1:
         engagement_risk = 0.5 * engagement_risk + 0.5 * (1.0 - _rank01(pageviews, ascending=True))
 
-    behavior_score = (0.28 * recency_risk + 0.20 * inactivity_risk + 0.16 * low_frequency_risk + 0.12 * low_monetary_risk + 0.12 * support_risk + 0.06 * discount_risk + 0.06 * engagement_risk).clip(0.01, 0.99)
-    rng = np.random.default_rng(seed)
-    tiny_jitter = pd.Series(rng.normal(0.0, 0.015, size=n), index=cs.index)
+    behavior_score = (
+        0.28 * recency_risk
+        + 0.20 * inactivity_risk
+        + 0.16 * low_frequency_risk
+        + 0.12 * low_monetary_risk
+        + 0.12 * support_risk
+        + 0.06 * discount_risk
+        + 0.06 * engagement_risk
+    ).clip(0.01, 0.99)
+    centered_behavior = behavior_score - float(behavior_score.mean())
+    tie_breaker = pd.Series(rng.normal(0.0, 0.025, size=n), index=cs.index)
 
     if observed_label is not None:
         label = pd.to_numeric(observed_label.reindex(cs.index), errors="coerce")
         if label.notna().any():
             label = label.fillna(label.mean()).clip(0, 1)
             rate = float(np.clip(label.mean(), 0.03, 0.97))
-            logit_prior = np.log(rate / (1.0 - rate))
-            logit = logit_prior + 1.65 * (label - rate) + 1.35 * (behavior_score - 0.5) + tiny_jitter
-            prob = 1.0 / (1.0 + np.exp(-logit))
-            return pd.Series(prob, index=cs.index).clip(0.02, 0.98)
+            rank_signal = _rank01(behavior_score + 0.35 * (label - rate), ascending=True) - 0.5
+            logit = _logit(rate) + 2.35 * rank_signal + 1.10 * (label - rate) + 0.75 * centered_behavior + tie_breaker
+            return _sigmoid(logit).clip(0.02, 0.98)
 
-    prob = 0.08 + 0.84 * behavior_score + tiny_jitter
-    return pd.Series(prob, index=cs.index).clip(0.02, 0.98)
+    base_rate = float(np.clip(0.10 + 0.70 * float(behavior_score.mean()), 0.08, 0.72))
+    rank_signal = _rank01(behavior_score, ascending=True) - 0.5
+    logit = _logit(base_rate) + 2.60 * rank_signal + 0.90 * centered_behavior + tie_breaker
+    return _sigmoid(logit).clip(0.02, 0.98)
 
 
 def _detect_date_column(df: pd.DataFrame, col: str) -> pd.Series:
@@ -1199,8 +1228,8 @@ def preprocess_uploaded_data(
         seed=seed,
     )
     metadata["churn_probability_strategy"] = (
-        "continuous_model_proxy_blended_with_uploaded_label" if has_explicit_churn_label
-        else "continuous_behavior_proxy_from_recency_frequency_value_engagement"
+        "rank_calibrated_continuous_proxy_blended_with_uploaded_label" if has_explicit_churn_label
+        else "rank_calibrated_continuous_behavior_proxy_from_recency_frequency_value_engagement"
     )
 
     # ── Step 7: Fill missing core features ──
