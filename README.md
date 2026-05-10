@@ -336,6 +336,33 @@ curl -X POST "http://localhost:8000/api/v1/user-live/events" \
     "raw_payload": {"test": true}
   }' | python3 -m json.tool
 
+#5.1 2초마다 반복 고객 이벤트 발생
+while true; do
+  CID=$(curl -s "http://localhost:8000/api/v1/user-live/scores?limit=100" \
+    | python3 -c 'import sys,json,random; r=json.load(sys.stdin).get("records",[]); print(random.choice(r)["customer_id"] if r else 1001)')
+
+  NOW=$(python3 -c 'from datetime import datetime, timezone; print(datetime.now(timezone.utc).isoformat())')
+  EVENT_ID="demo-${CID}-$(date +%s)-${RANDOM}"
+
+  curl -s -X POST \
+    "http://localhost:8000/api/v1/user-live/events?score_after_event=true&update_actions=true&action_threshold=0.30" \
+    -H "Content-Type: application/json" \
+    -d "{
+      \"customer_id\": ${CID},
+      \"event_type\": \"add_to_cart\",
+      \"event_time\": \"${NOW}\",
+      \"amount\": 35000,
+      \"source_event_id\": \"${EVENT_ID}\",
+      \"item_category\": \"fashion\",
+      \"channel\": \"demo_stream\",
+      \"raw_payload\": {\"demo_stream\": true}
+    }" \
+    | python3 -c 'import sys,json; d=json.load(sys.stdin); print("event:", d.get("result",{}).get("customer_id"), "score_updated:", d.get("scoring",{}).get("updated_customers"), "queue_updated:", d.get("actions",{}).get("action_queue_updated"))'
+
+  sleep 2
+done
+
+
 # 6. 해당 고객 feature_state 확인
 curl -s "http://localhost:8000/api/v1/user-live/feature-state?customer_id=1001" | python3 -m json.tool
 
