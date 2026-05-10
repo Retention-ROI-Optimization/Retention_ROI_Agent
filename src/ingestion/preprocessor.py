@@ -527,11 +527,49 @@ def _estimate_churn_probability(customer_summary: pd.DataFrame, observed_label: 
 
 
 def _detect_date_column(df: pd.DataFrame, col: str) -> pd.Series:
-    """Try to parse a column as datetime."""
+    """Try to parse a column as datetime.
+
+    Handles three input formats commonly found in uploaded CSVs:
+    - Already datetime64 dtype (returned as-is)
+    - Numeric epoch timestamps in seconds, milliseconds, or microseconds
+      (e.g. Retailrocket dataset uses ms-precision integers like 1433221332117)
+    - String date formats parseable by pandas
+    """
     if pd.api.types.is_datetime64_any_dtype(df[col]):
         return df[col]
+
+    series = df[col]
+
+    # Numeric input: detect epoch unit by magnitude.
+    # Year 2001 ~ 2286 ranges:
+    #   seconds:      1e9  ~ 1e10
+    #   milliseconds: 1e12 ~ 1e13
+    #   microseconds: 1e15 ~ 1e16
+    if pd.api.types.is_numeric_dtype(series):
+        numeric = pd.to_numeric(series, errors="coerce")
+        sample = numeric.dropna()
+        if sample.empty:
+            return pd.Series(pd.NaT, index=df.index)
+        median = float(sample.abs().median())
+
+        if 1e15 <= median < 1e17:
+            unit = "us"
+        elif 1e12 <= median < 1e14:
+            unit = "ms"
+        elif 1e9 <= median < 1e11:
+            unit = "s"
+        else:
+            unit = None  # fall through to default parsing below
+
+        if unit is not None:
+            try:
+                return pd.to_datetime(numeric, unit=unit, errors="coerce")
+            except Exception:
+                return pd.Series(pd.NaT, index=df.index)
+
+    # Default: string or other parseable input
     try:
-        return pd.to_datetime(df[col], errors="coerce")
+        return pd.to_datetime(series, errors="coerce")
     except Exception:
         return pd.Series(pd.NaT, index=df.index)
 
