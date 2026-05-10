@@ -86,7 +86,6 @@ DASHBOARD_VIEW_ITEMS: tuple[tuple[str, str], ...] = (
     ("9", "이탈 시점 예측 (Survival Analysis)"),
     ("10", "증분 성과 / A-B 실험"),
     ("11", "설명가능성 / 고객별 개입 이유"),
-    ("12", "데이터 진단 / 시뮬레이터 충실도"),
 )
 DASHBOARD_VIEW_OPTIONS: tuple[str, ...] = tuple(f"{n}. {t}" for n, t in DASHBOARD_VIEW_ITEMS)
 VIEW_OPTION_BY_NUM: dict[str, str] = {num: f"{num}. {title}" for num, title in DASHBOARD_VIEW_ITEMS}
@@ -95,7 +94,7 @@ DASHBOARD_VIEW_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("고객 현황", ("1", "2")),
     ("타겟팅·예산", ("3", "4", "5")),
     ("운영·리스크", ("6", "7")),
-    ("모델 검증·진단", ("8", "9", "10", "11", "12")),
+    ("모델 검증·진단", ("8", "9", "10", "11")),
 )
 
 GROUP_TO_VIEW_OPTIONS: dict[str, tuple[str, ...]] = {
@@ -127,7 +126,6 @@ LEGACY_VIEW_REDIRECTS: dict[str, str] = {
     "13. 운영 한눈에 보기": "6. 실시간 운영 모니터",
     "14. 증분 성과 / A-B 실험": "10. 증분 성과 / A-B 실험",
     "15. 설명가능성 / 고객별 개입 이유": "11. 설명가능성 / 고객별 개입 이유",
-    "16. 데이터 진단 / 시뮬레이터 충실도": "12. 데이터 진단 / 시뮬레이터 충실도",
     "17. 할인·쿠폰 운영 리스크": "7. 할인·쿠폰 운영 리스크",
 
     # 의사결정 엔진 비교 삭제 직후 13개 구조에서 새 번호로 이동
@@ -137,7 +135,6 @@ LEGACY_VIEW_REDIRECTS: dict[str, str] = {
     "10. 이탈 시점 예측 (Survival Analysis)": "9. 이탈 시점 예측 (Survival Analysis)",
     "11. 증분 성과 / A-B 실험": "10. 증분 성과 / A-B 실험",
     "12. 설명가능성 / 고객별 개입 이유": "11. 설명가능성 / 고객별 개입 이유",
-    "13. 데이터 진단 / 시뮬레이터 충실도": "12. 데이터 진단 / 시뮬레이터 충실도",
 
     # 더 오래된 user-mode 메뉴명
     "6. 개인화 추천": "5. 개인화 추천",
@@ -145,7 +142,6 @@ LEGACY_VIEW_REDIRECTS: dict[str, str] = {
     "9. 의사결정 엔진 비교": "4. 예산 최적화 및 리텐션 타겟",
     "10. 증분 성과 / A-B 실험": "10. 증분 성과 / A-B 실험",
     "11. 설명가능성 / 고객별 개입 이유": "11. 설명가능성 / 고객별 개입 이유",
-    "12. 데이터 진단 / 시뮬레이터 충실도": "12. 데이터 진단 / 시뮬레이터 충실도",
     "13. 할인·쿠폰 운영 리스크": "7. 할인·쿠폰 운영 리스크",
 }
 REALTIME_REFRESH_VIEWS: set[str] = {
@@ -157,7 +153,6 @@ INSIGHT_HEAVY_VIEWS: set[str] = {
     "7. 할인·쿠폰 운영 리스크",
     "10. 증분 성과 / A-B 실험",
     "11. 설명가능성 / 고객별 개입 이유",
-    "12. 데이터 진단 / 시뮬레이터 충실도",
 }
 
 def parse_unlimited_nonnegative_int(raw_value: str, default: int = 0) -> int:
