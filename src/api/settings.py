@@ -42,7 +42,7 @@ class ApiSettings:
 
     @property
     def resolved_data_dir(self) -> Path:
-        return self.d햐ata_dir.resolve()
+        return self.data_dir.resolve()
 
     @property
     def resolved_model_dir(self) -> Path:
