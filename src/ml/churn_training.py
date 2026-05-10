@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 import joblib
 import matplotlib
@@ -23,11 +23,24 @@ from sklearn.metrics import (
     roc_auc_score,
     roc_curve,
 )
-from sklearn.model_selection import GridSearchCV, train_test_split
+from sklearn.model_selection import (
+    GridSearchCV,
+    GroupShuffleSplit,
+    StratifiedKFold,
+    train_test_split,
+)
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.utils.class_weight import compute_sample_weight
 from xgboost import XGBClassifier
+
+try:
+    from sklearn.model_selection import StratifiedGroupKFold
+
+    STRATIFIED_GROUP_KFOLD_AVAILABLE = True
+except Exception:  # pragma: no cover
+    StratifiedGroupKFold = None
+    STRATIFIED_GROUP_KFOLD_AVAILABLE = False
 
 try:
     from lightgbm import LGBMClassifier
@@ -73,6 +86,303 @@ def _ensure_dir(path: Path) -> Path:
     return path
 
 
+def _normalize_column_name(col: object) -> str:
+    lower = str(col).strip().lower()
+    for prefix in (
+        "ext_num__",
+        "ext_cat__",
+        "num__",
+        "cat__",
+        "feature__",
+        "features__",
+    ):
+        lower = lower.replace(prefix, "")
+    for suffix in (
+        "_mean",
+        "_median",
+        "_max",
+        "_min",
+        "_mode",
+        "_sum",
+        "_std",
+        "_avg",
+        "_cnt",
+        "_count",
+        "_rate",
+        "_ratio",
+        "_flag",
+        "_value",
+    ):
+        if lower.endswith(suffix):
+            lower = lower[: -len(suffix)]
+    return lower
+
+
+DIRECT_LEAKAGE_COLUMNS = {
+    "label",
+    "target",
+    "target_label",
+    "target_churn",
+    "churn",
+    "churn_flag",
+    "churn_label",
+    "churn_label_observed",
+    "churn_probability",
+    "churn_prob",
+    "churn_score",
+    "is_churn",
+    "is_churned",
+    "is_churner",
+    "will_churn",
+    "label_observed",
+    "retention",
+    "retention_label",
+    "retention_rate",
+    "retained",
+    "is_retained",
+    "rolling_retention",
+    "survival",
+    "survived",
+    "inactive_label",
+    "inactive_45d",
+    "future_active",
+    "future_activity",
+    "future_purchase",
+    "next_purchase",
+    "next_event",
+    "outcome",
+    "observed_outcome",
+    "prediction",
+    "predicted_label",
+    "predicted_churn",
+    "probability",
+    "score",
+    "risk_score",
+    "rank_score",
+    "selected_threshold",
+    # Stage/segment columns derived from churn logic should not be model inputs.
+    "current_journey_stage",
+    "journey_stage",
+    "customer_journey_stage",
+    "lifecycle_stage",
+    "customer_status",
+    "risk_stage",
+    "risk_segment",
+    "risk_tier",
+    "churn_risk_stage",
+    "churn_segment",
+    # In this pipeline the churn label is inactivity/recency based, so these are label proxies.
+    "inactivity_days",
+    "inactive_days",
+    "days_since_last_event",
+    "days_since_last_activity",
+    "recency_days",
+    "current_non_purchase_days",
+    "non_purchase_days",
+    "days_from_simulation_start",
+}
+
+DIRECT_LEAKAGE_TOKENS = (
+    "target",
+    "label",
+    "churn",
+    "retention",
+    "retained",
+    "survival",
+    "outcome",
+    "future_",
+    "next_",
+    "after_",
+    "post_",
+    "predicted",
+    "prediction",
+    "probability",
+    "score",
+    "risk_score",
+    "rank_score",
+    "selected_threshold",
+    "inactive_45d",
+    "days_to_churn",
+    "days_until_churn",
+    # Stage/segment leakage observed in feature importance.
+    "current_journey_stage",
+    "journey_stage",
+    "lifecycle_stage",
+    "customer_status",
+    "churn_risk",
+    "at_risk",
+    "risk_stage",
+    "risk_segment",
+    "risk_tier",
+    "churn_segment",
+    # Inactivity/recency label proxies observed after removing stage leakage.
+    "inactivity_days",
+    "inactive_days",
+    "days_since_last_event",
+    "days_since_last_activity",
+    "recency_days",
+    "current_non_purchase_days",
+    "non_purchase_days",
+    "days_from_simulation_start",
+)
+
+# Final fail-safe blacklist. These are not ordinary behavioral features in this
+# project; they are derived from the same inactivity/risk logic used to create
+# the churn label or from simulator latent probabilities. They must never reach
+# the model input.
+STRICT_FORBIDDEN_FEATURE_TOKENS = (
+    "current_journey_stage",
+    "journey_stage",
+    "customer_journey_stage",
+    "lifecycle_stage",
+    "customer_status",
+    "churn_risk",
+    "at_risk",
+    "risk_stage",
+    "risk_segment",
+    "risk_tier",
+    "churn_segment",
+    "dormant",
+    "inactivity_days",
+    "inactive_days",
+    "days_since_last_event",
+    "days_since_last_activity",
+    "recency_days",
+    "current_non_purchase_days",
+    "non_purchase_days",
+    "days_from_simulation_start",
+    "base_visit_prob",
+    "persona",
+    "days_since_registration",
+    "customer_age_days",
+    "base_purchase_prob",
+    "base_exposure_prob",
+    "visit_probability",
+    "purchase_probability",
+    "exposure_probability",
+    "visit_prob",
+    "purchase_prob",
+    "exposure_prob",
+)
+
+IDENTIFIER_TOKENS = (
+    "customer_id",
+    "user_id",
+    "member_id",
+    "account_id",
+    "client_id",
+    "order_id",
+    "invoice",
+    "session_id",
+    "event_id",
+    "transaction_id",
+    "email",
+    "phone",
+    "uuid",
+    "name",
+)
+
+
+def _identify_name_based_leakage_columns(columns) -> List[str]:
+    """Drop target/score/outcome columns that make churn AUC artificially perfect."""
+    leakage: List[str] = []
+    for col in columns:
+        lower = str(col).strip().lower()
+        normalized = _normalize_column_name(col)
+        if lower in DIRECT_LEAKAGE_COLUMNS or normalized in DIRECT_LEAKAGE_COLUMNS:
+            leakage.append(col)
+            continue
+        if any(token in lower for token in DIRECT_LEAKAGE_TOKENS):
+            leakage.append(col)
+            continue
+        if any(token in normalized for token in DIRECT_LEAKAGE_TOKENS):
+            leakage.append(col)
+            continue
+    return leakage
+
+
+def _identify_strict_forbidden_columns(columns) -> List[str]:
+    """Fail-safe removal for known project-specific churn label proxies."""
+    forbidden: List[str] = []
+    for col in columns:
+        lower = str(col).strip().lower()
+        normalized = _normalize_column_name(col)
+        if any(token in lower for token in STRICT_FORBIDDEN_FEATURE_TOKENS):
+            forbidden.append(col)
+            continue
+        if any(token in normalized for token in STRICT_FORBIDDEN_FEATURE_TOKENS):
+            forbidden.append(col)
+            continue
+    return forbidden
+
+
+
+def _identify_identifier_columns(X: pd.DataFrame, max_unique_ratio: float = 0.85) -> List[str]:
+    """Remove IDs/high-cardinality categoricals that allow memorization rather than learning."""
+    identifier_cols: List[str] = []
+    n = max(len(X), 1)
+    for col in X.columns:
+        lower = str(col).strip().lower()
+        if any(token in lower for token in IDENTIFIER_TOKENS):
+            identifier_cols.append(col)
+            continue
+
+        if pd.api.types.is_object_dtype(X[col]) or str(X[col].dtype) == "category":
+            nunique = X[col].nunique(dropna=True)
+            if nunique > 50 and (nunique / n) >= max_unique_ratio:
+                identifier_cols.append(col)
+    return identifier_cols
+
+
+def _identify_target_proxy_columns(
+    X: pd.DataFrame,
+    y: pd.Series,
+    auc_cutoff: float = 0.995,
+    purity_cutoff: float = 0.995,
+) -> List[str]:
+    """
+    Data-driven guardrail: drop columns that almost exactly reproduce y.
+
+    This intentionally uses the label only as a leakage detector, not as a feature
+    selector. If a single column alone separates the label with AUC ~= 1.0 or
+    category purity ~= 1.0, keeping it makes the test AUC meaningless.
+    """
+    proxy_cols: List[str] = []
+    y_arr = pd.Series(y).astype(int).to_numpy()
+    if len(np.unique(y_arr)) < 2:
+        return proxy_cols
+
+    for col in X.columns:
+        s = X[col]
+        if s.nunique(dropna=True) <= 1:
+            continue
+
+        if pd.api.types.is_bool_dtype(s) or pd.api.types.is_numeric_dtype(s):
+            numeric = pd.to_numeric(s, errors="coerce").replace([np.inf, -np.inf], np.nan)
+            mask = numeric.notna().to_numpy()
+            if mask.sum() < 10 or len(np.unique(y_arr[mask])) < 2:
+                continue
+            try:
+                auc = roc_auc_score(y_arr[mask], numeric.to_numpy()[mask])
+                separability = max(float(auc), float(1.0 - auc))
+            except Exception:
+                continue
+            if separability >= auc_cutoff:
+                proxy_cols.append(col)
+            continue
+
+        # For categoricals, target leakage often appears as a category that maps
+        # almost deterministically to the label.
+        tmp = pd.DataFrame({"feature": s.astype("object").where(s.notna(), "__missing__"), "y": y_arr})
+        stats = tmp.groupby("feature")["y"].agg(["mean", "count"])
+        purity = np.maximum(stats["mean"], 1.0 - stats["mean"])
+        weighted_purity = float((purity * stats["count"]).sum() / stats["count"].sum())
+        if weighted_purity >= purity_cutoff:
+            proxy_cols.append(col)
+
+    return proxy_cols
+
+
 def _extract_datetime_features(df: pd.DataFrame) -> tuple[pd.DataFrame, List[str]]:
     out = df.copy()
     converted_cols: List[str] = []
@@ -81,9 +391,9 @@ def _extract_datetime_features(df: pd.DataFrame) -> tuple[pd.DataFrame, List[str
 
     for col in datetime_cols:
         ts = pd.to_datetime(out[col], errors="coerce")
-        out[f"{col}_days_from_epoch"] = (
-            (ts - pd.Timestamp("1970-01-01")).dt.total_seconds() / 86400.0
-        )
+        # Absolute epoch time can leak the train/test period. Keep coarse calendar
+        # features only. If recency features are needed, generate them upstream
+        # using only information available at scoring time.
         out[f"{col}_year"] = ts.dt.year
         out[f"{col}_month"] = ts.dt.month
         out[f"{col}_dayofweek"] = ts.dt.dayofweek
@@ -93,12 +403,49 @@ def _extract_datetime_features(df: pd.DataFrame) -> tuple[pd.DataFrame, List[str
     return out, converted_cols
 
 
-def _sanitize_training_frame(features_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series, Dict]:
+def _sanitize_training_frame(
+    features_df: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.Series, pd.Series | None, Dict]:
+    if "label" not in features_df.columns:
+        raise ValueError("features_df must contain a binary 'label' column for churn training.")
+
     y = features_df["label"].astype(int)
+    if y.nunique(dropna=True) < 2:
+        raise ValueError("Churn training needs both positive and negative labels.")
+
+    groups = None
+    if "customer_id" in features_df.columns:
+        groups = features_df["customer_id"].astype("object").where(
+            features_df["customer_id"].notna(), "__missing_customer__"
+        )
 
     X = features_df.drop(columns=["label", "customer_id"], errors="ignore").copy()
 
+    name_leakage_columns = _identify_name_based_leakage_columns(X.columns)
+    if name_leakage_columns:
+        X = X.drop(columns=name_leakage_columns, errors="ignore")
+
+    strict_forbidden_columns = _identify_strict_forbidden_columns(X.columns)
+    if strict_forbidden_columns:
+        X = X.drop(columns=strict_forbidden_columns, errors="ignore")
+
+    identifier_columns = _identify_identifier_columns(X)
+    if identifier_columns:
+        X = X.drop(columns=identifier_columns, errors="ignore")
+
+    target_proxy_columns = _identify_target_proxy_columns(X, y)
+    if target_proxy_columns:
+        X = X.drop(columns=target_proxy_columns, errors="ignore")
+
     X, converted_datetime_cols = _extract_datetime_features(X)
+
+    post_datetime_forbidden_columns = _identify_strict_forbidden_columns(X.columns)
+    if post_datetime_forbidden_columns:
+        X = X.drop(columns=post_datetime_forbidden_columns, errors="ignore")
+
+    constant_columns = [col for col in X.columns if X[col].nunique(dropna=True) <= 1]
+    if constant_columns:
+        X = X.drop(columns=constant_columns, errors="ignore")
 
     for col in X.columns:
         if pd.api.types.is_bool_dtype(X[col]):
@@ -111,12 +458,138 @@ def _sanitize_training_frame(features_df: pd.DataFrame) -> tuple[pd.DataFrame, p
         else:
             X[col] = X[col].astype("object").where(X[col].notna(), "unknown")
 
+    if X.shape[1] == 0:
+        raise ValueError(
+            "No usable training features remain after leakage/identifier filtering. "
+            "Check whether the input frame contains only labels, IDs, predictions, or future outcomes."
+        )
+
     metadata = {
         "input_feature_count": int(features_df.shape[1] - 1),
         "training_feature_count": int(X.shape[1]),
         "converted_datetime_columns": converted_datetime_cols,
+        "excluded_name_leakage_columns": [str(col) for col in name_leakage_columns],
+        "excluded_strict_forbidden_columns": [str(col) for col in strict_forbidden_columns],
+        "excluded_post_datetime_forbidden_columns": [str(col) for col in post_datetime_forbidden_columns],
+        "excluded_identifier_columns": [str(col) for col in identifier_columns],
+        "excluded_target_proxy_columns": [str(col) for col in target_proxy_columns],
+        "excluded_constant_columns": [str(col) for col in constant_columns],
+        "leakage_guardrail": (
+            "dropped direct target/score/outcome columns, project-specific churn stage/inactivity proxies, "
+            "ID-like columns, near-perfect single-column target proxies, and constant columns before splitting"
+        ),
+        "group_column": "customer_id" if groups is not None else None,
+        "unique_groups": int(groups.nunique(dropna=False)) if groups is not None else None,
     }
-    return X, y, metadata
+    return X, y, groups, metadata
+
+
+def _make_train_test_split(
+    X: pd.DataFrame,
+    y: pd.Series,
+    groups: pd.Series | None,
+    test_size: float,
+    random_state: int,
+) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series, pd.Series | None, pd.Series | None, Dict]:
+    """Prefer a customer-level split so the same customer never appears in train and test."""
+    split_meta: Dict = {}
+
+    if groups is not None and groups.nunique(dropna=False) >= 2:
+        groups_arr = groups.reset_index(drop=True)
+        X_reset = X.reset_index(drop=True)
+        y_reset = y.reset_index(drop=True)
+
+        splitter = GroupShuffleSplit(
+            n_splits=50,
+            test_size=float(test_size),
+            random_state=int(random_state),
+        )
+        best_split = None
+        best_balance_gap = float("inf")
+        overall_pos_rate = float(y_reset.mean())
+
+        for train_idx, test_idx in splitter.split(X_reset, y_reset, groups_arr):
+            y_train_candidate = y_reset.iloc[train_idx]
+            y_test_candidate = y_reset.iloc[test_idx]
+            if y_train_candidate.nunique() < 2 or y_test_candidate.nunique() < 2:
+                continue
+            gap = abs(float(y_test_candidate.mean()) - overall_pos_rate)
+            if gap < best_balance_gap:
+                best_split = (train_idx, test_idx)
+                best_balance_gap = gap
+
+        if best_split is not None:
+            train_idx, test_idx = best_split
+            train_groups = groups_arr.iloc[train_idx].reset_index(drop=True)
+            test_groups = groups_arr.iloc[test_idx].reset_index(drop=True)
+            overlap = set(train_groups.astype(str)).intersection(set(test_groups.astype(str)))
+            split_meta = {
+                "split_strategy": "customer-level GroupShuffleSplit",
+                "customer_id_overlap_count": int(len(overlap)),
+                "train_groups": int(train_groups.nunique(dropna=False)),
+                "test_groups": int(test_groups.nunique(dropna=False)),
+                "test_positive_rate_gap": float(best_balance_gap),
+            }
+            return (
+                X_reset.iloc[train_idx].reset_index(drop=True),
+                X_reset.iloc[test_idx].reset_index(drop=True),
+                y_reset.iloc[train_idx].reset_index(drop=True),
+                y_reset.iloc[test_idx].reset_index(drop=True),
+                train_groups,
+                test_groups,
+                split_meta,
+            )
+
+    # Fallback for one-row-per-customer frames or missing customer_id.
+    X_train, X_test, y_train, y_test = train_test_split(
+        X,
+        y,
+        test_size=float(test_size),
+        random_state=int(random_state),
+        stratify=y,
+    )
+    split_meta = {
+        "split_strategy": "row-level stratified train_test_split fallback",
+        "customer_id_overlap_count": None,
+        "train_groups": None,
+        "test_groups": None,
+        "test_positive_rate_gap": float(abs(float(y_test.mean()) - float(y.mean()))),
+    }
+    return (
+        X_train.reset_index(drop=True),
+        X_test.reset_index(drop=True),
+        y_train.reset_index(drop=True),
+        y_test.reset_index(drop=True),
+        None,
+        None,
+        split_meta,
+    )
+
+
+def _build_cv(
+    y_train: pd.Series,
+    groups_train: pd.Series | None,
+    random_state: int,
+) -> Tuple[object, pd.Series | None, str]:
+    min_class_count = int(y_train.value_counts().min())
+    if min_class_count < 2:
+        raise ValueError("Not enough samples in one of the classes for cross-validation.")
+
+    if groups_train is not None and groups_train.nunique(dropna=False) >= 3 and STRATIFIED_GROUP_KFOLD_AVAILABLE:
+        n_splits = min(5, int(groups_train.nunique(dropna=False)), min_class_count)
+        if n_splits >= 2:
+            return (
+                StratifiedGroupKFold(n_splits=n_splits, shuffle=True, random_state=int(random_state)),
+                groups_train,
+                f"{n_splits}-fold StratifiedGroupKFold grouped by customer_id",
+            )
+
+    n_splits = min(5, min_class_count)
+    return (
+        StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=int(random_state)),
+        None,
+        f"{n_splits}-fold StratifiedKFold fallback",
+    )
 
 
 def _build_preprocessor(X: pd.DataFrame):
@@ -306,36 +779,47 @@ def train_churn_models(
     model_dir = _ensure_dir(Path(model_dir))
     result_dir = _ensure_dir(Path(result_dir))
 
-    X, y, preprocessing_meta = _sanitize_training_frame(features_df)
+    X, y, groups, preprocessing_meta = _sanitize_training_frame(features_df)
     requested_models = _resolve_requested_models(candidate_models)
 
-    X_train, X_test, y_train, y_test = train_test_split(
+    (
+        X_train,
+        X_test,
+        y_train,
+        y_test,
+        groups_train,
+        groups_test,
+        split_meta,
+    ) = _make_train_test_split(
         X,
         y,
+        groups,
         test_size=float(test_size),
         random_state=int(random_state),
-        stratify=y,
     )
 
     sample_weight = compute_sample_weight(class_weight="balanced", y=y_train)
     pre, num_cols, cat_cols = _build_preprocessor(X_train)
+    cv, cv_groups, cv_strategy_text = _build_cv(y_train, groups_train, random_state)
 
     candidates: Dict[str, tuple[object, Dict]] = {
         "xgboost": (
             XGBClassifier(
                 random_state=int(random_state),
-                n_estimators=120,
-                learning_rate=0.08,
-                max_depth=4,
-                subsample=0.85,
-                colsample_bytree=0.85,
-                reg_lambda=5,  # Increase regularization to reduce overfitting
+                n_estimators=90,
+                learning_rate=0.06,
+                max_depth=3,
+                min_child_weight=5,
+                subsample=0.80,
+                colsample_bytree=0.80,
+                reg_lambda=10.0,
+                reg_alpha=1.0,
                 eval_metric="logloss",
                 n_jobs=4,
             ),
             {
-                "model__max_depth": [4, 6],
-                "model__min_child_weight": [1, 3],
+                "model__max_depth": [2, 3],
+                "model__min_child_weight": [5, 10],
             },
         ),
     }
@@ -344,15 +828,16 @@ def train_churn_models(
         candidates["lightgbm"] = (
             LGBMClassifier(
                 random_state=int(random_state),
-                n_estimators=160,
-                learning_rate=0.08,
-                num_leaves=31,
+                n_estimators=120,
+                learning_rate=0.06,
+                num_leaves=15,
+                min_child_samples=40,
                 class_weight="balanced",
                 verbosity=-1,
             ),
             {
-                "model__num_leaves": [31, 63],
-                "model__min_child_samples": [20, 40],
+                "model__num_leaves": [15, 31],
+                "model__min_child_samples": [40, 80],
             },
         )
 
@@ -381,13 +866,15 @@ def train_churn_models(
             pipe,
             grid_params,
             scoring="roc_auc",
-            cv=5,
+            cv=cv,
             n_jobs=1,
             refit=True,
             error_score="raise",
         )
 
         fit_kwargs = {"model__sample_weight": sample_weight} if name == "xgboost" else {}
+        if cv_groups is not None:
+            fit_kwargs["groups"] = cv_groups
 
         try:
             grid.fit(X_train, y_train, **fit_kwargs)
@@ -472,6 +959,20 @@ def train_churn_models(
         else "balanced sample weights for XGBoost only (LightGBM unavailable in this environment)"
     )
 
+    excluded_columns = (
+        preprocessing_meta.get("excluded_name_leakage_columns", [])
+        + preprocessing_meta.get("excluded_strict_forbidden_columns", [])
+        + preprocessing_meta.get("excluded_post_datetime_forbidden_columns", [])
+        + preprocessing_meta.get("excluded_identifier_columns", [])
+        + preprocessing_meta.get("excluded_target_proxy_columns", [])
+        + preprocessing_meta.get("excluded_constant_columns", [])
+    )
+
+    forbidden_top_features = [
+        item for item in top10
+        if any(token in str(item.get("feature", "")).lower() for token in STRICT_FORBIDDEN_FEATURE_TOKENS)
+    ]
+
     metrics = {
         "best_model_name": best_name,
         "comparison": comparison,
@@ -493,9 +994,20 @@ def train_churn_models(
         "numeric_feature_count": len(num_cols),
         "categorical_feature_count": len(cat_cols),
         "converted_datetime_columns": preprocessing_meta["converted_datetime_columns"],
+        "excluded_leakage_columns": [str(col) for col in excluded_columns],
+        "excluded_name_leakage_columns": preprocessing_meta.get("excluded_name_leakage_columns", []),
+        "excluded_strict_forbidden_columns": preprocessing_meta.get("excluded_strict_forbidden_columns", []),
+        "excluded_post_datetime_forbidden_columns": preprocessing_meta.get("excluded_post_datetime_forbidden_columns", []),
+        "excluded_identifier_columns": preprocessing_meta.get("excluded_identifier_columns", []),
+        "excluded_target_proxy_columns": preprocessing_meta.get("excluded_target_proxy_columns", []),
+        "excluded_constant_columns": preprocessing_meta.get("excluded_constant_columns", []),
+        "forbidden_top_features": forbidden_top_features,
+        "leakage_guardrail": preprocessing_meta.get("leakage_guardrail"),
+        "split_strategy": split_meta.get("split_strategy"),
+        "split_diagnostics": split_meta,
+        "cv_strategy": cv_strategy_text,
         "top_10_feature_importance": top10,
         "imbalance_handling": imbalance_text,
-        "cv_strategy": "5-fold cross validation + GridSearchCV",
         "business_threshold_rule": f"maximize TP*{float(threshold_tp_value):.0f} - FP*{float(threshold_fp_cost):.0f} - FN*{float(threshold_fn_cost):.0f}",
         "training_parameters": {
             "requested_models": requested_models,
