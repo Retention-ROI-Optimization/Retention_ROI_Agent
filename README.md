@@ -254,52 +254,24 @@ User Live DB Mode is the production-style path for uploaded company data. It ini
 
 Core flow:
 
-1. Start PostgreSQL.
-2. Configure `.env` from `.env.example`.
-3. Start Docker services.
-4. Upload CSV and generate user artifacts from the dashboard.
-5. Seed PostgreSQL live tables from `data/raw_user`, `data/feature_store_user`, and `results_user`.
-6. Ingest customer events.
-7. Verify `feature_state`, `score`, `recommendation_candidates`, and `action_queue`.
-8. Confirm the dashboard uses User Live DB results in 자사 데이터 mode.
 
-### 1. PostgreSQL
+1. Start Docker services.
+2. Upload CSV and generate user artifacts from the dashboard.
+3. The dashboard automatically seeds PostgreSQL live tables from `data/raw_user`, `data/feature_store_user`, and `results_user` after "매핑 확정 후 학습 시작" completes.
+4. Ingest customer events.
+5. Verify `feature_state`, `score`, `recommendation_candidates`, and `action_queue`.
+6. Confirm the dashboard uses User Live DB results in 자사 데이터 mode.
 
-```bash
-brew services start postgresql@16
-createdb retention_db || true
-```
 
-### 2. Environment variables
 
-```bash
-cp .env.example .env
-```
-
-Edit `.env` for your machine:
-
-```bash
-RETENTION_USER_DB_URL=postgresql+psycopg://YOUR_OS_USER@host.docker.internal:5432/retention_db
-```
-
-The application code reads only `RETENTION_USER_DB_URL`; it does not keep a personal Mac username as a source-code default.
-
-### 3. Docker
+### 1. Docker
 
 ```bash
 docker compose up -d --build
 ```
 
-### 4. Seed live tables
 
-After CSV upload and user artifact generation are complete:
-
-```bash
-curl -X POST "http://localhost:8000/api/v1/user-live/seed-from-user-artifacts?reset=true"
-curl -s "http://localhost:8000/api/v1/user-live/seed-status" | python3 -m json.tool
-```
-
-### 5. Fixed E2E validation routine
+### 2. Fixed E2E validation routine
 
 Run the whole User Live DB smoke test:
 
@@ -313,16 +285,10 @@ Equivalent manual sequence:
 # 1. live DB 상태 확인
 curl -s "http://localhost:8000/api/v1/user-live/health" | python3 -m json.tool
 
-# 2. 기존 live table 초기화
-curl -X POST "http://localhost:8000/api/v1/user-live/reset?confirm=true" | python3 -m json.tool
-
-# 3. user 산출물을 PostgreSQL live table에 seed
-curl -X POST "http://localhost:8000/api/v1/user-live/seed-from-user-artifacts?reset=true" | python3 -m json.tool
-
-# 4. seed 결과 확인
+# 2. seed 결과 확인
 curl -s "http://localhost:8000/api/v1/user-live/seed-status" | python3 -m json.tool
 
-# 5. 특정 고객 이벤트 발생
+# 3. 특정 고객 이벤트 발생
 curl -X POST "http://localhost:8000/api/v1/user-live/events" \
   -H "Content-Type: application/json" \
   -d '{
@@ -336,7 +302,8 @@ curl -X POST "http://localhost:8000/api/v1/user-live/events" \
     "raw_payload": {"test": true}
   }' | python3 -m json.tool
 
-#5.1 2초마다 반복 고객 이벤트 발생
+### Continuous event injection for live demo. Run this in a separate terminal:
+
 while true; do
   CID=$(curl -s "http://localhost:8000/api/v1/user-live/scores?limit=100" \
     | python3 -c 'import sys,json,random; r=json.load(sys.stdin).get("records",[]); print(random.choice(r)["customer_id"] if r else 1001)')
@@ -363,19 +330,19 @@ while true; do
 done
 
 
-# 6. 해당 고객 feature_state 확인
+# 4. 해당 고객 feature_state 확인
 curl -s "http://localhost:8000/api/v1/user-live/feature-state?customer_id=1001" | python3 -m json.tool
 
-# 7. 해당 고객 score 확인
+# 5. 해당 고객 score 확인
 curl -s "http://localhost:8000/api/v1/user-live/scores?customer_id=1001" | python3 -m json.tool
 
-# 8. 해당 고객 action_queue 확인
+# 6. 해당 고객 action_queue 확인
 curl -s "http://localhost:8000/api/v1/user-live/actions?customer_id=1001" | python3 -m json.tool
 ```
 
 All eight checks should pass consistently before treating the User Live DB MVP as complete.
 
-### 6. Dashboard verification points
+### 3. Dashboard verification points
 
 In 자사 데이터 mode, verify these before a PR or presentation:
 
@@ -385,32 +352,7 @@ In 자사 데이터 mode, verify these before a PR or presentation:
 4. Refreshing the dashboard preserves values from PostgreSQL.
 5. Simulator mode and user mode do not mix. User mode must not fall back to `results/` or `data/raw` simulator artifacts.
 
-### 7. Keep PR clean
 
-Check before opening the PR:
-
-```bash
-git status
-git ls-files .env
-git ls-files data results results_user models models_user
-```
-
-`.env` should not appear. Large generated artifacts under `data/`, `results*`, and `models*` should not appear unless they are intentional tiny samples.
-
-If they were tracked before, remove them from the index only:
-
-```bash
-./scripts/clean_tracked_artifacts.sh
-git commit -m "chore: exclude local artifacts from git"
-```
-
-### 8. Suggested PR
-
-Title:
-
-```text
-feat: add user live PostgreSQL serving pipeline
-```
 
 Summary:
 
