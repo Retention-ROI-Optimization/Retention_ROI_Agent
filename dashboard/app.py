@@ -24,6 +24,7 @@ from dashboard.services.api_client import (
     fetch_user_live_recommendations,
     fetch_user_live_scores,
     fetch_user_live_seed_status,
+    seed_user_live_from_artifacts,
 )
 from dashboard.services.churn_service import get_churn_status
 from dashboard.services.cohort_service import (
@@ -1899,6 +1900,11 @@ def load_insight_data():
 def clear_dashboard_caches() -> None:
     _load_app_bundle_cached.clear()
     _load_insight_bundle_cached.clear()
+    # user-live score 전체 조회는 별도 cache를 쓰므로, 업로드/학습/seed 직후 함께 비운다.
+    try:
+        _fetch_user_live_scores_cached.clear()
+    except Exception:
+        pass
 
 
 def load_training_artifacts_api():
@@ -3123,8 +3129,36 @@ with st.sidebar:
                     pipeline_result = _result_holder["result"]
 
                     if pipeline_result.success:
+                        progress_bar.progress(96, text="PostgreSQL user-live 테이블 초기 적재 중...")
+
+                        live_seed_result = None
+                        live_seed_error = None
+                        try:
+                            # 학습 산출물(results_user/models_user/feature_store_user)이 생성된 직후
+                            # 이를 PostgreSQL user-live serving table에 자동 적재한다.
+                            # 이후 curl로 /api/v1/user-live/events를 호출하면 바로 feature/state/score/action이 갱신된다.
+                            live_seed_result = seed_user_live_from_artifacts(reset=True)
+                            st.session_state["user_live_seed_result"] = live_seed_result
+                            st.session_state.pop("user_live_seed_error", None)
+                        except Exception as _seed_exc:
+                            live_seed_error = _seed_exc
+                            st.session_state["user_live_seed_error"] = str(_seed_exc)
+
                         progress_bar.progress(100, text="완료!")
-                        st.success("🎉 전처리 및 모델 학습이 완료되었습니다! 대시보드가 자동으로 새로고침됩니다.")
+                        if isinstance(live_seed_result, dict) and live_seed_result.get("success"):
+                            st.success(
+                                "🎉 전처리, 모델 학습, user-live DB 초기 적재가 완료되었습니다! "
+                                "이제 터미널에서 curl 이벤트를 주입하면 실시간 운영 모니터에 반영됩니다."
+                            )
+                        else:
+                            st.success("🎉 전처리 및 모델 학습이 완료되었습니다! 대시보드가 자동으로 새로고침됩니다.")
+                            st.warning(
+                                "PostgreSQL user-live DB 자동 적재는 실패했습니다. "
+                                "시연 전 RETENTION_USER_DB_URL, PostgreSQL 실행 상태, API 로그를 확인하세요. "
+                                "필요하면 터미널에서 seed-from-user-artifacts를 수동 호출하면 됩니다."
+                            )
+                            if live_seed_error is not None:
+                                st.caption(f"seed 오류: {live_seed_error}")
 
                         if pipeline_result.preprocessing:
                             meta = pipeline_result.preprocessing.metadata or {}
