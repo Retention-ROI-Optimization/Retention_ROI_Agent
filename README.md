@@ -316,33 +316,20 @@ curl -s "http://localhost:8000/api/v1/user-live/actions?customer_id=1001" | pyth
 All 6 checks should pass consistently before treating the User Live DB MVP as complete.
 
 
-### Continuous event injection for live demo. Run this in a separate terminal:
+### Continuous mixed event injection for live demo
+
+This script simulates both existing-customer behavior changes and new-customer acquisition.
+
+- Existing customers are sampled from PostgreSQL `customer_scores`.
+- New customers are assigned new `customer_id` values above the current maximum ID.
+- Existing-customer events are sent to `/api/v1/user-live/events`.
+- New-customer initial behavior sequences are sent to `/api/v1/user-live/events/batch`.
+- Each event updates `customer_events`, `customer_feature_state`, `customer_scores`, `recommendation_candidates`, and `action_queue` when scoring/action flags are enabled.
+
+Run this in a separate terminal:
 
 ```bash
-while true; do
-  CID=$(curl -s "http://localhost:8000/api/v1/user-live/scores?limit=100" \
-    | python3 -c 'import sys,json,random; r=json.load(sys.stdin).get("records",[]); print(random.choice(r)["customer_id"] if r else 1001)')
-
-  NOW=$(python3 -c 'from datetime import datetime, timezone; print(datetime.now(timezone.utc).isoformat())')
-  EVENT_ID="demo-${CID}-$(date +%s)-${RANDOM}"
-
-  curl -s -X POST \
-    "http://localhost:8000/api/v1/user-live/events?score_after_event=true&update_actions=true&action_threshold=0.30" \
-    -H "Content-Type: application/json" \
-    -d "{
-      \"customer_id\": ${CID},
-      \"event_type\": \"add_to_cart\",
-      \"event_time\": \"${NOW}\",
-      \"amount\": 35000,
-      \"source_event_id\": \"${EVENT_ID}\",
-      \"item_category\": \"fashion\",
-      \"channel\": \"demo_stream\",
-      \"raw_payload\": {\"demo_stream\": true}
-    }" \
-    | python3 -c 'import sys,json; d=json.load(sys.stdin); print("event:", d.get("result",{}).get("customer_id"), "score_updated:", d.get("scoring",{}).get("updated_customers"), "queue_updated:", d.get("actions",{}).get("action_queue_updated"))'
-
-  sleep 2
-done
+bash scripts/live_demo_mixed_events.sh
 ```
 
 ### 3. Dashboard verification points
