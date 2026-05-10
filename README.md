@@ -302,8 +302,23 @@ curl -X POST "http://localhost:8000/api/v1/user-live/events" \
     "raw_payload": {"test": true}
   }' | python3 -m json.tool
 
+
+# 4. 해당 고객 feature_state 확인
+curl -s "http://localhost:8000/api/v1/user-live/feature-state?customer_id=1001" | python3 -m json.tool
+
+# 5. 해당 고객 score 확인
+curl -s "http://localhost:8000/api/v1/user-live/scores?customer_id=1001" | python3 -m json.tool
+
+# 6. 해당 고객 action_queue 확인
+curl -s "http://localhost:8000/api/v1/user-live/actions?customer_id=1001" | python3 -m json.tool
+```
+
+All 6 checks should pass consistently before treating the User Live DB MVP as complete.
+
+
 ### Continuous event injection for live demo. Run this in a separate terminal:
 
+```bash
 while true; do
   CID=$(curl -s "http://localhost:8000/api/v1/user-live/scores?limit=100" \
     | python3 -c 'import sys,json,random; r=json.load(sys.stdin).get("records",[]); print(random.choice(r)["customer_id"] if r else 1001)')
@@ -328,19 +343,7 @@ while true; do
 
   sleep 2
 done
-
-
-# 4. 해당 고객 feature_state 확인
-curl -s "http://localhost:8000/api/v1/user-live/feature-state?customer_id=1001" | python3 -m json.tool
-
-# 5. 해당 고객 score 확인
-curl -s "http://localhost:8000/api/v1/user-live/scores?customer_id=1001" | python3 -m json.tool
-
-# 6. 해당 고객 action_queue 확인
-curl -s "http://localhost:8000/api/v1/user-live/actions?customer_id=1001" | python3 -m json.tool
 ```
-
-All eight checks should pass consistently before treating the User Live DB MVP as complete.
 
 ### 3. Dashboard verification points
 
@@ -351,7 +354,6 @@ In 자사 데이터 mode, verify these before a PR or presentation:
 3. `action_queue` count increases or the existing row is updated.
 4. Refreshing the dashboard preserves values from PostgreSQL.
 5. Simulator mode and user mode do not mix. User mode must not fall back to `results/` or `data/raw` simulator artifacts.
-
 
 
 Summary:
