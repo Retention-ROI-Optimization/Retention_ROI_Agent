@@ -252,6 +252,24 @@ def _get_model_feature_columns(model: Any, metadata: dict[str, Any], fallback_df
     return numeric_cols
 
 
+def _model_expects_raw_dataframe(model: Any) -> bool:
+    """Return True for sklearn Pipelines/ColumnTransformer-style models.
+
+    The churn training artifact is saved as a Pipeline containing the same
+    preprocessor used during training.  For that model, categorical columns must
+    remain as strings so OneHotEncoder can transform them.  The previous live
+    scorer coerced every column to numeric, turning categories into 0 and making
+    PostgreSQL live scores diverge from the metrics/model artifact.
+    """
+    if model is None:
+        return False
+    if hasattr(model, "named_steps"):
+        return True
+    if hasattr(model, "transformers_"):
+        return True
+    return False
+
+
 def _predict_model(
     *,
     model: Any,
@@ -270,8 +288,9 @@ def _predict_model(
 
     X = X[feature_columns].copy()
 
-    for col in X.columns:
-        X[col] = pd.to_numeric(X[col], errors="coerce").fillna(0)
+    if not _model_expects_raw_dataframe(model):
+        for col in X.columns:
+            X[col] = pd.to_numeric(X[col], errors="coerce").fillna(0)
 
     if proba and hasattr(model, "predict_proba"):
         pred = model.predict_proba(X)
@@ -362,6 +381,78 @@ def _load_existing_scores(
         result[customer_id] = row_dict
 
     return result
+
+
+def get_all_live_customer_ids(*, db_url: str) -> list[int]:
+    """Return all customers currently seeded in customer_feature_state."""
+    ensure_user_live_seed_columns(db_url)
+
+    with user_live_session(db_url) as conn:
+        rows = conn.execute(
+            text("""
+            SELECT customer_id
+            FROM customer_feature_state
+            ORDER BY customer_id
+            """)
+        ).scalars().all()
+
+    return [int(customer_id) for customer_id in rows if customer_id is not None]
+
+
+def score_all_customers(
+    *,
+    db_url: str,
+    model_dir: Path | None = None,
+    batch_size: int = 2000,
+) -> dict[str, Any]:
+    """Rescore every seeded customer with models_user and upsert customer_scores.
+
+    This is the missing bridge after CSV mapping/training: seeding initially puts
+    artifact/proxy scores into PostgreSQL, but the dashboard should serve the
+    latest trained model's predict_proba values.
+    """
+    customer_ids = get_all_live_customer_ids(db_url=db_url)
+    if not customer_ids:
+        return {
+            "success": True,
+            "requested_customers": 0,
+            "updated_customers": 0,
+            "batches": [],
+            "message": "no customer_feature_state rows",
+        }
+
+    safe_batch_size = max(int(batch_size or 2000), 1)
+    batches: list[dict[str, Any]] = []
+    updated_total = 0
+    failed_batches: list[dict[str, Any]] = []
+
+    for start in range(0, len(customer_ids), safe_batch_size):
+        batch_ids = customer_ids[start:start + safe_batch_size]
+        result = score_changed_customers(
+            db_url=db_url,
+            customer_ids=batch_ids,
+            model_dir=model_dir,
+        )
+        batches.append({
+            "start": start,
+            "requested_customers": len(batch_ids),
+            "success": bool(result.get("success")),
+            "updated_customers": int(result.get("updated_customers", 0) or 0),
+            "message": result.get("message"),
+        })
+        if result.get("success"):
+            updated_total += int(result.get("updated_customers", 0) or 0)
+        else:
+            failed_batches.append(batches[-1])
+
+    return {
+        "success": not failed_batches,
+        "requested_customers": len(customer_ids),
+        "updated_customers": int(updated_total),
+        "batch_size": safe_batch_size,
+        "batches": batches,
+        "failed_batches": failed_batches,
+    }
 
 
 def score_changed_customers(

@@ -626,6 +626,10 @@ def reset_user_live_tables(
 @router.post("/seed-from-user-artifacts")
 def seed_from_user_artifacts(
     reset: bool = True,
+    rescore_after_seed: bool = True,
+    refresh_actions_after_rescore: bool = True,
+    rescore_batch_size: int = 2000,
+    action_threshold: float = 0.50,
     settings: ApiSettings = Depends(get_settings),
 ):
     """
@@ -650,6 +654,11 @@ def seed_from_user_artifacts(
         data_dir="data/raw_user",
         feature_store_dir="data/feature_store_user",
         result_dir="results_user",
+        model_dir="models_user",
+        rescore_after_seed=rescore_after_seed,
+        refresh_actions_after_rescore=refresh_actions_after_rescore,
+        rescore_batch_size=int(rescore_batch_size),
+        action_threshold=float(action_threshold),
     )
 
     if not result.get("success"):
