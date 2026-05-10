@@ -208,6 +208,13 @@ def fetch_user_live_seed_status() -> Dict[str, Any]:
     """user mode live table seed 상태 조회."""
     return _request_json('/api/v1/user-live/seed-status')
 
+def seed_user_live_from_artifacts(reset: bool = True) -> Dict[str, Any]:
+    """현재 user 산출물을 PostgreSQL user-live serving table에 자동 적재."""
+    return _request_json(
+        "/api/v1/user-live/seed-from-user-artifacts",
+        {"reset": str(bool(reset)).lower()},
+        method="POST",
+    )
 
 def fetch_user_live_scores(
     limit: int | None = None,
