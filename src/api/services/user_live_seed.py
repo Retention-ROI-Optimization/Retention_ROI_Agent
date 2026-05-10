@@ -758,6 +758,13 @@ def seed_user_live_from_artifacts(
     data_dir: str = "data/raw_user",
     feature_store_dir: str = "data/feature_store_user",
     result_dir: str = "results_user",
+    model_dir: str = "models_user",
+    rescore_after_seed: bool = True,
+    refresh_actions_after_rescore: bool = True,
+    rescore_batch_size: int = 2000,
+    action_threshold: float = 0.50,
+    min_expected_roi: float = 0.0,
+    min_expected_profit: float = 0.0,
 ) -> dict[str, Any]:
     """
     3단계 핵심 함수.
@@ -846,6 +853,47 @@ def seed_user_live_from_artifacts(
             """)
         ).mappings().first()
 
+    rescore_result: dict[str, Any] | None = None
+    action_refresh_result: dict[str, Any] | None = None
+
+    if rescore_after_seed and feature_count > 0:
+        # Import lazily to avoid a module import cycle.
+        from src.api.services.user_live_scoring import score_all_customers
+
+        rescore_result = score_all_customers(
+            db_url=db_url,
+            model_dir=root / model_dir,
+            batch_size=int(rescore_batch_size),
+        )
+
+        if refresh_actions_after_rescore and rescore_result.get("success"):
+            from src.api.services.user_live_actions import update_live_actions_for_customers
+
+            customer_ids = _normalize_customer_id_column(feature_df)["customer_id"].astype(int).tolist()
+            action_refresh_result = update_live_actions_for_customers(
+                db_url=db_url,
+                customer_ids=customer_ids,
+                threshold=float(action_threshold),
+                min_expected_roi=float(min_expected_roi),
+                min_expected_profit=float(min_expected_profit),
+            )
+
+    with user_live_session(db_url) as conn:
+        final_summary = conn.execute(
+            text("""
+            SELECT
+                (SELECT COUNT(*) FROM customer_feature_state) AS feature_state_count,
+                (SELECT COUNT(*) FROM customer_scores) AS score_count,
+                (SELECT COUNT(*) FROM recommendation_candidates) AS recommendation_count,
+                (SELECT COUNT(*) FROM action_queue) AS action_queue_count,
+                (SELECT AVG(churn_score) FROM customer_scores) AS avg_churn_score,
+                (SELECT COUNT(*) FROM customer_scores WHERE churn_score >= 0.5) AS high_risk_customers,
+                (SELECT MIN(churn_score) FROM customer_scores) AS min_churn_score,
+                (SELECT MAX(churn_score) FROM customer_scores) AS max_churn_score,
+                (SELECT MAX(scored_at) FROM customer_scores) AS latest_scored_at
+            """)
+        ).mappings().first()
+
     return {
         "success": True,
         "reset": reset,
@@ -855,13 +903,19 @@ def seed_user_live_from_artifacts(
             "recommendation_candidates": recommendation_count,
             "action_queue": action_queue_count,
         },
+        "rescore_after_seed": bool(rescore_after_seed),
+        "rescore": rescore_result,
+        "action_refresh_after_rescore": bool(refresh_actions_after_rescore),
+        "action_refresh": action_refresh_result,
         "db_counts": dict(summary or {}),
+        "final_db_counts": dict(final_summary or {}),
         "sources": {
             "feature_source": feature_source,
             "customer_summary_source": customer_summary_source,
             "uplift_source": uplift_source,
             "selected_source": selected_source,
             "recommendation_source": recommendation_source,
+            "model_dir": str(root / model_dir),
         },
     }
 
