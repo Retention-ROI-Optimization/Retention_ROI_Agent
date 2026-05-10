@@ -49,11 +49,6 @@ from dashboard.services.insight_service import (
     build_realtime_monitor_overview,
     load_dashboard_insight_bundle,
 )
-from dashboard.services.decision_engine_service import (
-    aggregate_enhanced_segment_allocation,
-    get_baseline_budget_result,
-    get_decision_engine_factor_table,
-)
 from dashboard.services.llm_service import (
     DEFAULT_MODEL_NAME,
     answer_dashboard_question,
@@ -81,28 +76,26 @@ DASHBOARD_VIEW_ITEMS: tuple[tuple[str, str], ...] = (
     ("3", "Uplift·CLV 세그먼트 분석"),
     ("4", "예산 최적화 및 리텐션 타겟"),
     ("5", "개인화 추천"),
-    ("6", "의사결정 엔진 비교"),
 
     # 운영·리스크
-    ("7", "실시간 운영 모니터"),
-    ("8", "할인·쿠폰 운영 리스크"),
+    ("6", "실시간 운영 모니터"),
+    ("7", "할인·쿠폰 운영 리스크"),
 
     # 모델 검증·진단
-    ("9", "학습 결과 아티팩트"),
-    ("10", "이탈 시점 예측 (Survival Analysis)"),
-    ("11", "증분 성과 / A-B 실험"),
-    ("12", "설명가능성 / 고객별 개입 이유"),
-    ("13", "데이터 진단 / 시뮬레이터 충실도"),
+    ("8", "학습 결과 아티팩트"),
+    ("9", "이탈 시점 예측 (Survival Analysis)"),
+    ("10", "증분 성과 / A-B 실험"),
+    ("11", "설명가능성 / 고객별 개입 이유"),
+    ("12", "데이터 진단 / 시뮬레이터 충실도"),
 )
-
 DASHBOARD_VIEW_OPTIONS: tuple[str, ...] = tuple(f"{n}. {t}" for n, t in DASHBOARD_VIEW_ITEMS)
 VIEW_OPTION_BY_NUM: dict[str, str] = {num: f"{num}. {title}" for num, title in DASHBOARD_VIEW_ITEMS}
 
 DASHBOARD_VIEW_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("고객 현황", ("1", "2")),
-    ("타겟팅·예산", ("3", "4", "5", "6")),
-    ("운영·리스크", ("7", "8")),
-    ("모델 검증·진단", ("9", "10", "11", "12", "13")),
+    ("타겟팅·예산", ("3", "4", "5")),
+    ("운영·리스크", ("6", "7")),
+    ("모델 검증·진단", ("8", "9", "10", "11", "12")),
 )
 
 GROUP_TO_VIEW_OPTIONS: dict[str, tuple[str, ...]] = {
@@ -118,45 +111,53 @@ VIEW_TO_GROUP: dict[str, str] = {
 
 LEGACY_VIEW_REDIRECTS: dict[str, str] = {
     # 병합/삭제 전 메뉴명
+    "6. 의사결정 엔진 비교": "4. 예산 최적화 및 리텐션 타겟",
     "3. Uplift + CLV 상위 고객": "3. Uplift·CLV 세그먼트 분석",
     "4. 예산 배분 결과": "4. 예산 최적화 및 리텐션 타겟",
     "5. 예상 최적화 ROI": "4. 예산 최적화 및 리텐션 타겟",
     "6. 리텐션 대상 고객 목록": "4. 예산 최적화 및 리텐션 타겟",
-    "7. 학습 결과 아티팩트": "9. 학습 결과 아티팩트",
+    "7. 학습 결과 아티팩트": "8. 학습 결과 아티팩트",
     "8. Uplift/최적화 결과": "3. Uplift·CLV 세그먼트 분석",
     "8. Uplift/최적화 결과 (실시간)": "3. Uplift·CLV 세그먼트 분석",
     "9. 개인화 추천": "5. 개인화 추천",
-    "10. 실시간 운영 모니터": "7. 실시간 운영 모니터",
-    "10. 실시간 위험 스코어링 / 운영 모니터": "7. 실시간 운영 모니터",
-    "11. 이탈 시점 예측 (Survival Analysis)": "10. 이탈 시점 예측 (Survival Analysis)",
-    "12. 의사결정 엔진 비교": "6. 의사결정 엔진 비교",
-    "13. 운영 한눈에 보기": "7. 실시간 운영 모니터",
-    "14. 증분 성과 / A-B 실험": "11. 증분 성과 / A-B 실험",
-    "15. 설명가능성 / 고객별 개입 이유": "12. 설명가능성 / 고객별 개입 이유",
-    "16. 데이터 진단 / 시뮬레이터 충실도": "13. 데이터 진단 / 시뮬레이터 충실도",
-    "17. 할인·쿠폰 운영 리스크": "8. 할인·쿠폰 운영 리스크",
+    "10. 실시간 운영 모니터": "6. 실시간 운영 모니터",
+    "10. 실시간 위험 스코어링 / 운영 모니터": "6. 실시간 운영 모니터",
+    "11. 이탈 시점 예측 (Survival Analysis)": "9. 이탈 시점 예측 (Survival Analysis)",
+    "12. 의사결정 엔진 비교": "4. 예산 최적화 및 리텐션 타겟",
+    "13. 운영 한눈에 보기": "6. 실시간 운영 모니터",
+    "14. 증분 성과 / A-B 실험": "10. 증분 성과 / A-B 실험",
+    "15. 설명가능성 / 고객별 개입 이유": "11. 설명가능성 / 고객별 개입 이유",
+    "16. 데이터 진단 / 시뮬레이터 충실도": "12. 데이터 진단 / 시뮬레이터 충실도",
+    "17. 할인·쿠폰 운영 리스크": "7. 할인·쿠폰 운영 리스크",
 
-    # 직전 13개 구조에서 새 번호로 이동
-    "5. 학습 결과 아티팩트": "9. 학습 결과 아티팩트",
+    # 의사결정 엔진 비교 삭제 직후 13개 구조에서 새 번호로 이동
+    "7. 실시간 운영 모니터": "6. 실시간 운영 모니터",
+    "8. 할인·쿠폰 운영 리스크": "7. 할인·쿠폰 운영 리스크",
+    "9. 학습 결과 아티팩트": "8. 학습 결과 아티팩트",
+    "10. 이탈 시점 예측 (Survival Analysis)": "9. 이탈 시점 예측 (Survival Analysis)",
+    "11. 증분 성과 / A-B 실험": "10. 증분 성과 / A-B 실험",
+    "12. 설명가능성 / 고객별 개입 이유": "11. 설명가능성 / 고객별 개입 이유",
+    "13. 데이터 진단 / 시뮬레이터 충실도": "12. 데이터 진단 / 시뮬레이터 충실도",
+
+    # 더 오래된 user-mode 메뉴명
     "6. 개인화 추천": "5. 개인화 추천",
-    "8. 이탈 시점 예측 (Survival Analysis)": "10. 이탈 시점 예측 (Survival Analysis)",
-    "9. 의사결정 엔진 비교": "6. 의사결정 엔진 비교",
-    "10. 증분 성과 / A-B 실험": "11. 증분 성과 / A-B 실험",
-    "11. 설명가능성 / 고객별 개입 이유": "12. 설명가능성 / 고객별 개입 이유",
-    "12. 데이터 진단 / 시뮬레이터 충실도": "13. 데이터 진단 / 시뮬레이터 충실도",
-    "13. 할인·쿠폰 운영 리스크": "8. 할인·쿠폰 운영 리스크",
+    "8. 이탈 시점 예측 (Survival Analysis)": "9. 이탈 시점 예측 (Survival Analysis)",
+    "9. 의사결정 엔진 비교": "4. 예산 최적화 및 리텐션 타겟",
+    "10. 증분 성과 / A-B 실험": "10. 증분 성과 / A-B 실험",
+    "11. 설명가능성 / 고객별 개입 이유": "11. 설명가능성 / 고객별 개입 이유",
+    "12. 데이터 진단 / 시뮬레이터 충실도": "12. 데이터 진단 / 시뮬레이터 충실도",
+    "13. 할인·쿠폰 운영 리스크": "7. 할인·쿠폰 운영 리스크",
 }
-
 REALTIME_REFRESH_VIEWS: set[str] = {
-    "7. 실시간 운영 모니터",
+    "6. 실시간 운영 모니터",
 }
 
 INSIGHT_HEAVY_VIEWS: set[str] = {
-    "7. 실시간 운영 모니터",
-    "8. 할인·쿠폰 운영 리스크",
-    "11. 증분 성과 / A-B 실험",
-    "12. 설명가능성 / 고객별 개입 이유",
-    "13. 데이터 진단 / 시뮬레이터 충실도",
+    "6. 실시간 운영 모니터",
+    "7. 할인·쿠폰 운영 리스크",
+    "10. 증분 성과 / A-B 실험",
+    "11. 설명가능성 / 고객별 개입 이유",
+    "12. 데이터 진단 / 시뮬레이터 충실도",
 }
 
 def parse_unlimited_nonnegative_int(raw_value: str, default: int = 0) -> int:
@@ -665,24 +666,255 @@ def _merge_live_score_dimensions(actions_df: pd.DataFrame, scores_df: pd.DataFra
     return merged
 
 
+
+def _build_score_based_live_budget_payload(
+    scores_df: pd.DataFrame | None,
+    *,
+    budget: int,
+    threshold: float,
+    max_customers: int | None,
+) -> tuple[pd.DataFrame, dict[str, Any], pd.DataFrame]:
+    """action_queue 행이 현재 필터에 걸리지 않을 때 score table로 예산 타겟을 재계산한다.
+
+    user-live action_queue에는 과거 조건으로 생성된 action만 들어 있을 수 있고,
+    일부 row는 churn/profit/cost 컬럼이 비어 있을 수 있다. 이 경우 action_queue만
+    기준으로 필터링하면 고객 score는 존재하는데 최종 타겟이 0명으로 떨어져
+    개인화 추천 화면까지 비는 문제가 생긴다. score table을 고객 후보 풀로 삼아
+    기존 예산 최적화 로직을 한 번 더 태워 화면 컨트롤과 일관된 타겟을 만든다.
+    """
+    if scores_df is None or scores_df.empty or budget <= 0:
+        return pd.DataFrame(), {}, pd.DataFrame()
+
+    score_customers = _rename_live_score_columns(scores_df).copy()
+    if score_customers.empty or "customer_id" not in score_customers.columns:
+        return pd.DataFrame(), {}, pd.DataFrame()
+
+    if "churn_probability" not in score_customers.columns and "churn_score" in score_customers.columns:
+        score_customers["churn_probability"] = score_customers["churn_score"]
+    if "churn_probability" in score_customers.columns:
+        score_customers["churn_probability"] = pd.to_numeric(score_customers["churn_probability"], errors="coerce").fillna(0.0)
+
+    # 필수 표시/최적화 컬럼이 없으면 보수적인 기본값을 둔다. 실제 비용/수익 산식은
+    # get_budget_result 내부의 build_intensity_action_candidates에서 다시 계산된다.
+    defaults: dict[str, Any] = {
+        "persona": "live_user",
+        "uplift_segment": "live",
+        "risk_segment": "live",
+        "uplift_score": 0.12,
+        "clv": 0.0,
+        "coupon_cost": 0.0,
+        "expected_incremental_profit": 0.0,
+        "expected_roi": 0.0,
+    }
+    for col, default in defaults.items():
+        if col not in score_customers.columns:
+            score_customers[col] = default
+    for col in ["uplift_score", "clv", "coupon_cost", "expected_incremental_profit", "expected_roi"]:
+        score_customers[col] = pd.to_numeric(score_customers[col], errors="coerce").fillna(float(defaults.get(col, 0.0)))
+
+    selected, summary, allocation = get_budget_result(
+        score_customers,
+        budget=int(budget),
+        threshold=float(threshold),
+        max_customers=max_customers,
+    )
+    if not selected.empty:
+        summary = dict(summary or {})
+        summary["source"] = "postgresql_user_live_score_fallback_reoptimized"
+        summary["fallback_reason"] = "action_queue 후보가 현재 예산/임계값 조건에서 비어 score table로 재계산"
+    return selected, summary or {}, allocation
+
 def _build_live_optimize_payload(
     actions_df: pd.DataFrame,
     budget: int,
+    threshold: float = 0.50,
+    max_customers: int | None = None,
     scores_df: pd.DataFrame | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any], pd.DataFrame]:
-    """user live action_queue를 4번 화면의 selected_customers/summary/segment_allocation 형태로 변환한다."""
-    enriched_actions = _merge_live_score_dimensions(actions_df, scores_df if scores_df is not None else pd.DataFrame())
-    targets = _normalize_live_actions_df(enriched_actions)
+    """user live action_queue를 현재 분석 컨트롤에 맞춰 재선정한다.
 
-    spent = float(pd.to_numeric(targets.get("coupon_cost", pd.Series(dtype=float)), errors="coerce").fillna(0.0).sum()) if not targets.empty else 0.0
-    expected_profit = float(pd.to_numeric(targets.get("expected_incremental_profit", targets.get("expected_profit", pd.Series(dtype=float))), errors="coerce").fillna(0.0).sum()) if not targets.empty else 0.0
+    기존 구현은 live action_queue에 저장된 모든 추천을 그대로 합산했기 때문에
+    사이드바의 예산/이탈 임계값/최대 고객 수를 바꿔도 집행 예산과 추천 대상이
+    고정되어 보였다. 여기서는 action_queue를 후보 풀로만 사용하고, 현재 컨트롤
+    값으로 다시 필터링·정렬·예산 컷을 적용한다.
+    """
+    budget = max(int(budget or 0), 0)
+    threshold = float(threshold or 0.0)
+    max_customers = int(max_customers) if max_customers is not None else None
+    if max_customers is not None:
+        max_customers = max(max_customers, 0)
+
+    empty_summary = {
+        "budget": int(budget),
+        "spent": 0.0,
+        "remaining": float(budget),
+        "num_targeted": 0,
+        "expected_incremental_profit": 0.0,
+        "overall_roi": 0.0,
+        "candidate_segment_counts": {},
+        "eligible_actions": 0,
+        "eligible_customers": 0,
+        "threshold": threshold,
+        "max_customers_cap": max_customers,
+        "source": "postgresql_user_live_action_queue_reoptimized",
+    }
+    if actions_df is None or actions_df.empty or budget <= 0 or max_customers == 0:
+        return pd.DataFrame(), empty_summary, pd.DataFrame()
+
+    enriched_actions = _merge_live_score_dimensions(actions_df, scores_df if scores_df is not None else pd.DataFrame())
+    candidates = _normalize_live_actions_df(enriched_actions)
+    if candidates.empty:
+        return pd.DataFrame(), empty_summary, pd.DataFrame()
+
+    for col in [
+        "coupon_cost",
+        "expected_incremental_profit",
+        "expected_profit",
+        "expected_roi",
+        "priority_score",
+        "selection_score",
+        "churn_probability",
+        "clv",
+        "uplift_score",
+    ]:
+        if col in candidates.columns:
+            candidates[col] = pd.to_numeric(candidates[col], errors="coerce")
+
+    if "expected_incremental_profit" not in candidates.columns:
+        candidates["expected_incremental_profit"] = pd.to_numeric(
+            candidates.get("expected_profit", pd.Series(0.0, index=candidates.index)),
+            errors="coerce",
+        ).fillna(0.0)
+    else:
+        candidates["expected_incremental_profit"] = candidates["expected_incremental_profit"].fillna(
+            pd.to_numeric(candidates.get("expected_profit", pd.Series(0.0, index=candidates.index)), errors="coerce")
+        ).fillna(0.0)
+
+    if "coupon_cost" not in candidates.columns:
+        candidates["coupon_cost"] = 0.0
+    candidates["coupon_cost"] = candidates["coupon_cost"].fillna(0.0)
+
+    if "churn_probability" not in candidates.columns:
+        candidates["churn_probability"] = pd.to_numeric(
+            candidates.get("churn_score", pd.Series(0.0, index=candidates.index)),
+            errors="coerce",
+        ).fillna(0.0)
+    else:
+        candidates["churn_probability"] = candidates["churn_probability"].fillna(
+            pd.to_numeric(candidates.get("churn_score", pd.Series(0.0, index=candidates.index)), errors="coerce")
+        ).fillna(0.0)
+
+    if "expected_roi" not in candidates.columns:
+        candidates["expected_roi"] = np.where(
+            candidates["coupon_cost"] > 0,
+            candidates["expected_incremental_profit"] / candidates["coupon_cost"],
+            0.0,
+        )
+    candidates["expected_roi"] = pd.to_numeric(candidates["expected_roi"], errors="coerce").replace([np.inf, -np.inf], np.nan).fillna(0.0)
+
+    if "selection_score" not in candidates.columns:
+        candidates["selection_score"] = (
+            candidates["expected_incremental_profit"].rank(pct=True).fillna(0.0) * 0.50
+            + candidates["expected_roi"].rank(pct=True).fillna(0.0) * 0.25
+            + candidates["churn_probability"].rank(pct=True).fillna(0.0) * 0.25
+        )
+    if "priority_score" not in candidates.columns:
+        candidates["priority_score"] = candidates["selection_score"]
+
+    eligible = candidates[
+        (candidates["churn_probability"] >= threshold)
+        & (candidates["coupon_cost"] > 0)
+        & (candidates["expected_incremental_profit"] > 0)
+    ].copy()
+    if eligible.empty:
+        fallback_selected, fallback_summary, fallback_allocation = _build_score_based_live_budget_payload(
+            scores_df,
+            budget=budget,
+            threshold=threshold,
+            max_customers=max_customers,
+        )
+        if not fallback_selected.empty:
+            fallback_summary = dict(fallback_summary or {})
+            fallback_summary.update({
+                "candidate_actions": int(len(candidates)),
+                "candidate_customers": int(candidates["customer_id"].nunique()) if "customer_id" in candidates.columns else 0,
+                "action_queue_eligible_actions": 0,
+            })
+            return fallback_selected, fallback_summary, fallback_allocation
+
+        summary = empty_summary.copy()
+        summary.update({
+            "candidate_actions": int(len(candidates)),
+            "candidate_customers": int(candidates["customer_id"].nunique()) if "customer_id" in candidates.columns else 0,
+        })
+        return pd.DataFrame(), summary, pd.DataFrame()
+
+    sort_cols = [
+        col for col in [
+            "selection_score",
+            "priority_score",
+            "expected_incremental_profit",
+            "expected_roi",
+            "churn_probability",
+        ] if col in eligible.columns
+    ]
+    eligible = eligible.sort_values(
+        sort_cols + (["coupon_cost"] if "coupon_cost" in eligible.columns else []),
+        ascending=[False] * len(sort_cols) + ([True] if "coupon_cost" in eligible.columns else []),
+        kind="mergesort",
+    )
+
+    selected_rows: list[pd.Series] = []
+    seen_customers: set[Any] = set()
+    spent = 0.0
+    for _, row in eligible.iterrows():
+        customer_id = row.get("customer_id")
+        if customer_id in seen_customers:
+            continue
+        cost = float(row.get("coupon_cost", 0.0) or 0.0)
+        if cost <= 0 or spent + cost > budget:
+            continue
+        selected_rows.append(row)
+        seen_customers.add(customer_id)
+        spent += cost
+        if max_customers is not None and len(selected_rows) >= max_customers:
+            break
+
+    if not selected_rows:
+        fallback_selected, fallback_summary, fallback_allocation = _build_score_based_live_budget_payload(
+            scores_df,
+            budget=budget,
+            threshold=threshold,
+            max_customers=max_customers,
+        )
+        if not fallback_selected.empty:
+            fallback_summary = dict(fallback_summary or {})
+            fallback_summary.update({
+                "candidate_actions": int(len(candidates)),
+                "candidate_customers": int(candidates["customer_id"].nunique()) if "customer_id" in candidates.columns else 0,
+                "action_queue_eligible_actions": int(len(eligible)),
+                "action_queue_eligible_customers": int(eligible["customer_id"].nunique()) if "customer_id" in eligible.columns else 0,
+            })
+            return fallback_selected, fallback_summary, fallback_allocation
+
+        summary = empty_summary.copy()
+        summary.update({
+            "candidate_actions": int(len(candidates)),
+            "candidate_customers": int(candidates["customer_id"].nunique()) if "customer_id" in candidates.columns else 0,
+            "eligible_actions": int(len(eligible)),
+            "eligible_customers": int(eligible["customer_id"].nunique()) if "customer_id" in eligible.columns else 0,
+        })
+        return pd.DataFrame(), summary, pd.DataFrame()
+
+    targets = pd.DataFrame(selected_rows).reset_index(drop=True)
+    expected_profit = float(pd.to_numeric(targets["expected_incremental_profit"], errors="coerce").fillna(0.0).sum())
+    spent = float(pd.to_numeric(targets["coupon_cost"], errors="coerce").fillna(0.0).sum())
     overall_roi = expected_profit / spent if spent > 0 else 0.0
 
-    # 예산 배분 그래프는 액션 카테고리(recommended_category)가 아니라 Uplift 세그먼트 기준으로 보여준다.
     segment_col = "uplift_segment"
     candidate_segment_counts = (
-        targets[segment_col].fillna("unknown_segment").replace({"live": "unknown_segment"}).value_counts().to_dict()
-        if not targets.empty and segment_col in targets.columns
+        eligible[segment_col].fillna("unknown_segment").replace({"live": "unknown_segment"}).value_counts().to_dict()
+        if segment_col in eligible.columns
         else {}
     )
     optimize_summary = {
@@ -693,16 +925,22 @@ def _build_live_optimize_payload(
         "expected_incremental_profit": expected_profit,
         "overall_roi": overall_roi,
         "candidate_segment_counts": candidate_segment_counts,
-        "source": "postgresql_user_live_action_queue",
+        "candidate_actions": int(len(candidates)),
+        "candidate_customers": int(candidates["customer_id"].nunique()) if "customer_id" in candidates.columns else 0,
+        "eligible_actions": int(len(eligible)),
+        "eligible_customers": int(eligible["customer_id"].nunique()) if "customer_id" in eligible.columns else 0,
+        "threshold": threshold,
+        "max_customers_cap": max_customers,
+        "source": "postgresql_user_live_action_queue_reoptimized",
     }
 
-    if targets.empty or segment_col not in targets.columns:
+    if segment_col not in targets.columns:
         segment_allocation = pd.DataFrame()
     else:
         segment_allocation = (
             targets.groupby(segment_col, as_index=False)
             .agg(
-                customer_count=("customer_id", "count"),
+                customer_count=("customer_id", "nunique"),
                 allocated_budget=("coupon_cost", "sum"),
                 expected_profit=("expected_incremental_profit", "sum"),
             )
@@ -717,6 +955,162 @@ def _build_live_optimize_payload(
             segment_allocation["intervention_intensity"] = intensity
 
     return targets, optimize_summary, segment_allocation
+
+
+
+def _normalize_live_recommendations_for_display(df: pd.DataFrame, per_customer: int) -> pd.DataFrame:
+    """DB 저장 추천 후보를 5번 화면이 기대하는 컬럼명과 고객당 추천 수로 정리한다."""
+    if df is None or df.empty:
+        return pd.DataFrame()
+    fixed = df.copy()
+    if "recommended_category" not in fixed.columns:
+        for alias in ["category", "product_category", "recommended_action", "action", "item_category"]:
+            if alias in fixed.columns:
+                fixed["recommended_category"] = fixed[alias]
+                break
+        else:
+            fixed["recommended_category"] = "retention_action"
+    if "recommendation_score" not in fixed.columns:
+        for alias in ["score", "priority_score", "selection_score", "recommendation_priority"]:
+            if alias in fixed.columns:
+                fixed["recommendation_score"] = pd.to_numeric(fixed[alias], errors="coerce").fillna(0.0)
+                break
+        else:
+            fixed["recommendation_score"] = 0.0
+    if "customer_id" in fixed.columns:
+        fixed["recommendation_score"] = pd.to_numeric(fixed["recommendation_score"], errors="coerce").fillna(0.0)
+        fixed = fixed.sort_values(["customer_id", "recommendation_score"], ascending=[True, False], kind="mergesort")
+        fixed["recommendation_rank"] = fixed.groupby("customer_id").cumcount() + 1
+        fixed = fixed[fixed["recommendation_rank"] <= max(1, int(per_customer))].reset_index(drop=True)
+    elif "recommendation_rank" not in fixed.columns:
+        fixed["recommendation_rank"] = range(1, len(fixed) + 1)
+    return fixed
+
+
+def _fallback_existing_live_recommendations(
+    *,
+    per_customer: int,
+    max_customers: int,
+    optimize_summary: dict[str, Any] | None,
+    reason: str,
+) -> tuple[dict[str, Any], pd.DataFrame]:
+    """현재 타겟 재생성이 실패해도 저장된 live 추천 후보를 화면에 계속 보여준다."""
+    limit = max(100, int(max_customers or 0) * max(1, int(per_customer)))
+    try:
+        live_summary, live_df = fetch_user_live_recommendations(limit=limit)
+    except Exception as exc:
+        return {
+            "rows": 0,
+            "customers_covered": 0,
+            "per_customer": int(per_customer),
+            "candidate_limit": int(max_customers or 0),
+            "budget_context": dict(optimize_summary or {}),
+            "error": f"{reason} 저장된 live 추천 후보 조회도 실패했습니다: {exc}",
+        }, pd.DataFrame()
+
+    live_df = _normalize_live_recommendations_for_display(live_df, per_customer=per_customer)
+    if live_df.empty:
+        return {
+            "rows": 0,
+            "customers_covered": 0,
+            "per_customer": int(per_customer),
+            "candidate_limit": int(max_customers or 0),
+            "budget_context": dict(optimize_summary or {}),
+            "error": reason,
+        }, pd.DataFrame()
+
+    summary = dict(live_summary or {})
+    summary.update({
+        "rows": int(len(live_df)),
+        "customers_covered": int(live_df["customer_id"].nunique()) if "customer_id" in live_df.columns else 0,
+        "per_customer": int(per_customer),
+        "candidate_limit": int(max_customers or 0),
+        "budget_context": dict(optimize_summary or {}),
+        "source": "postgresql_user_live_saved_recommendation_fallback",
+        "warning": reason + " 저장된 live 추천 후보를 대신 표시합니다.",
+    })
+    return summary, live_df
+
+def _build_dynamic_user_recommendations(
+    selected_customers: pd.DataFrame,
+    optimize_summary: dict[str, Any],
+    *,
+    per_customer: int,
+    budget: int,
+    threshold: float,
+    max_customers: int,
+) -> tuple[dict[str, Any], pd.DataFrame]:
+    """현재 최적화 결과를 기준으로 user mode 개인화 추천을 즉시 재생성한다."""
+    if selected_customers is None or selected_customers.empty:
+        return _fallback_existing_live_recommendations(
+            per_customer=per_customer,
+            max_customers=max_customers,
+            optimize_summary=optimize_summary,
+            reason="현재 예산/임계값 조건에서 새 추천을 만들 최종 타겟 고객이 없습니다.",
+        )
+
+    data_dir = Path("data/raw_user")
+    result_dir = Path("results_user")
+    required_files = [data_dir / "customer_summary.csv", data_dir / "orders.csv", data_dir / "events.csv"]
+    missing_files = [str(path) for path in required_files if not path.exists()]
+    if missing_files:
+        fallback_path = result_dir / "personalized_recommendations.csv"
+        fallback_df = pd.read_csv(fallback_path) if fallback_path.exists() else pd.DataFrame()
+        summary = {
+            "rows": int(len(fallback_df)),
+            "customers_covered": int(fallback_df["customer_id"].nunique()) if not fallback_df.empty and "customer_id" in fallback_df.columns else 0,
+            "per_customer": int(per_customer),
+            "candidate_limit": int(max_customers),
+            "budget_context": dict(optimize_summary or {}),
+            "error": "user raw data 파일이 없어 저장된 추천 결과만 표시합니다: " + ", ".join(missing_files),
+        }
+        return summary, fallback_df
+
+    try:
+        from src.recommendations.modeling import run_personalized_recommendation_pipeline
+
+        candidate_limit = max(1, min(int(max_customers), int(len(selected_customers))))
+        target_df = selected_customers.copy().head(candidate_limit)
+        artifacts = run_personalized_recommendation_pipeline(
+            data_dir=data_dir,
+            result_dir=result_dir,
+            per_customer=max(1, int(per_customer)),
+            candidate_limit=candidate_limit,
+            target_customers=target_df,
+            target_source="current_budget_threshold_targets",
+        )
+        rec_df = pd.read_csv(artifacts.recommendations_path) if Path(artifacts.recommendations_path).exists() else pd.DataFrame()
+        summary = dict(artifacts.summary)
+    except Exception as exc:
+        return _fallback_existing_live_recommendations(
+            per_customer=per_customer,
+            max_customers=max_customers,
+            optimize_summary=optimize_summary,
+            reason=f"새 추천 재생성에 실패했습니다({exc}).",
+        )
+
+    budget_context = dict(optimize_summary or {})
+    budget_context.update({
+        "budget": int(budget),
+        "threshold": float(threshold),
+        "max_customers_cap": int(max_customers),
+    })
+    summary.update({
+        "rows": int(len(rec_df)),
+        "customers_covered": int(rec_df["customer_id"].nunique()) if not rec_df.empty and "customer_id" in rec_df.columns else 0,
+        "per_customer": int(per_customer),
+        "candidate_limit": int(max_customers),
+        "eligible_target_customers": int(len(selected_customers)),
+        "budget_context": budget_context,
+    })
+    try:
+        (result_dir / "personalized_recommendations_summary.json").write_text(
+            json.dumps(summary, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
+    return summary, rec_df
 
 
 def _load_user_live_tables(*, top_n: int, target_cap: int) -> dict[str, Any]:
@@ -3276,7 +3670,7 @@ with st.sidebar:
 
     # 모든 세부 화면에서 같은 widget key를 항상 렌더링한다.
     # 이렇게 해야 1번에서 바꾼 threshold/예산이 3번으로 가도 유지되고,
-    # 3번에서 다시 바꾼 값도 4번·6번 등 다른 화면에서 그대로 이어진다.
+    # 3번에서 다시 바꾼 값도 4번·5번 등 다른 화면에서 그대로 이어진다.
     threshold = st.slider(
         "이탈 Threshold",
         min_value=0.10,
@@ -3434,6 +3828,8 @@ if _is_user_live_mode() and not live_payload.get("actions", pd.DataFrame()).empt
     selected_customers, optimize_summary, segment_allocation = _build_live_optimize_payload(
         live_payload["actions"],
         budget=budget,
+        threshold=threshold,
+        max_customers=target_cap,
         scores_df=live_payload.get("scores", pd.DataFrame()),
     )
 else:
@@ -3448,22 +3844,20 @@ else:
 # 모든 downstream 화면이 같은 스키마를 보도록 즉시 보정한다.
 selected_customers = _ensure_retention_target_schema(selected_customers)
 
-if view == "6. 의사결정 엔진 비교":
-    baseline_selected_customers, baseline_optimize_summary, baseline_segment_allocation = get_baseline_budget_result(
-        customers,
-        budget=budget,
-        threshold=threshold,
-        max_customers=target_cap,
-    )
-else:
-    baseline_selected_customers, baseline_optimize_summary, baseline_segment_allocation = pd.DataFrame(), {}, pd.DataFrame()
+baseline_selected_customers, baseline_optimize_summary, baseline_segment_allocation = pd.DataFrame(), {}, pd.DataFrame()
 
 retention_targets = get_retention_targets(customers, threshold)
 
 if view == "5. 개인화 추천":
     if _is_user_live_mode():
-        recommendation_summary = live_payload.get("recommendation_summary", {}) or {}
-        personalized_recommendations = live_payload.get("recommendations", pd.DataFrame()).copy()
+        recommendation_summary, personalized_recommendations = _build_dynamic_user_recommendations(
+            selected_customers,
+            optimize_summary,
+            per_customer=recommendation_per_customer,
+            budget=budget,
+            threshold=threshold,
+            max_customers=max(int(target_cap), 1),
+        )
         recommendation_error = recommendation_summary.get("error") if isinstance(recommendation_summary, dict) else None
     else:
         try:
@@ -3485,7 +3879,7 @@ else:
     recommendation_summary, personalized_recommendations = {}, pd.DataFrame()
     recommendation_error = None
 
-if view == "7. 실시간 운영 모니터":
+if view == "6. 실시간 운영 모니터":
     if _is_user_live_mode():
         realtime_scores = _live_scores_to_realtime_df(
             live_payload.get("scores", pd.DataFrame()),
@@ -3502,7 +3896,7 @@ if view == "7. 실시간 운영 모니터":
             "action_queue_size": int(action_summary.get("queued_actions") or 0),
             "queued_actions_total": int(action_summary.get("queued_actions") or 0),
             "processed_events": int(health_summary.get("processed_event_count", health_summary.get("event_count", 0)) or 0),
-            "closed_loop_budget_spent": float(pd.to_numeric(live_payload.get("actions", pd.DataFrame()).get("coupon_cost", pd.Series(dtype=float)), errors="coerce").fillna(0.0).sum()) if not live_payload.get("actions", pd.DataFrame()).empty else 0.0,
+            "closed_loop_budget_spent": float(optimize_summary.get("spent", 0.0) or 0.0),
             "daily_channel_allocated": int(action_summary.get("queued_actions") or 0),
             "daily_channel_capacity": max(int(target_cap), 1),
             "high_priority_queue_size": int(action_summary.get("queued_actions") or 0),
@@ -3520,7 +3914,7 @@ else:
     realtime_summary, realtime_scores = {}, pd.DataFrame()
     realtime_error = None
 
-if view == "10. 이탈 시점 예측 (Survival Analysis)":
+if view == "9. 이탈 시점 예측 (Survival Analysis)":
     if st.session_state.get("data_mode", "simulator") == "user":
         _mode_result_dir = Path(_resolve_result_dir_for_mode("user"))
         _bundle = load_insight_data()
@@ -3564,7 +3958,7 @@ coupon_risk_overview: dict[str, Any] = {}
 data_diagnostics: dict[str, Any] = {}
 customer_explanations = pd.DataFrame()
 
-if view in INSIGHT_HEAVY_VIEWS and not (view == "7. 실시간 운영 모니터" and _is_user_live_mode()):
+if view in INSIGHT_HEAVY_VIEWS and not (view == "6. 실시간 운영 모니터" and _is_user_live_mode()):
     insight_bundle = load_insight_data()
     if recommendation_context_df.empty:
         recommendation_context_df = insight_bundle.personalized_recommendations.copy()
@@ -3573,7 +3967,7 @@ if view in INSIGHT_HEAVY_VIEWS and not (view == "7. 실시간 운영 모니터" 
     if realtime_context_df.empty:
         realtime_context_df = insight_bundle.realtime_scores.copy()
 
-    if view in {"12. 설명가능성 / 고객별 개입 이유"}:
+    if view in {"11. 설명가능성 / 고객별 개입 이유"}:
         operational_overview = build_operational_overview(
             customers=customers,
             selected_customers=selected_customers,
@@ -3584,19 +3978,19 @@ if view in INSIGHT_HEAVY_VIEWS and not (view == "7. 실시간 운영 모니터" 
             insight_bundle=insight_bundle,
         )
 
-    if view == "11. 증분 성과 / A-B 실험":
+    if view == "10. 증분 성과 / A-B 실험":
         experiment_overview = build_experiment_overview(insight_bundle)
 
-    if view == "7. 실시간 운영 모니터":
+    if view == "6. 실시간 운영 모니터":
         realtime_monitor_overview = build_realtime_monitor_overview(insight_bundle, fallback_scores=realtime_context_df)
 
-    if view == "13. 데이터 진단 / 시뮬레이터 충실도":
+    if view == "12. 데이터 진단 / 시뮬레이터 충실도":
         data_diagnostics = build_data_diagnostics(insight_bundle)
 
-    if view == "8. 할인·쿠폰 운영 리스크":
+    if view == "7. 할인·쿠폰 운영 리스크":
         coupon_risk_overview = build_coupon_risk_overview(insight_bundle)
 
-    if view == "12. 설명가능성 / 고객별 개입 이유":
+    if view == "11. 설명가능성 / 고객별 개입 이유":
         global_feature_table = build_global_feature_table(insight_bundle)
         explanation_limit = max(int(len(selected_customers)) if not selected_customers.empty else int(len(insight_bundle.optimization_selected_customers)), int(top_n), 1)
         customer_explanations = build_customer_explanations(
@@ -4150,7 +4544,7 @@ elif view == "4. 예산 최적화 및 리텐션 타겟":
         ),
     }
 
-elif view == "9. 학습 결과 아티팩트":
+elif view == "8. 학습 결과 아티팩트":
     st.subheader("학습 결과 아티팩트")
     st.caption("이 화면은 백엔드 API가 보관 중인 최신 학습 산출물을 읽기 전용으로 표시합니다. 대시보드에서 학습 파라미터를 조정하거나 재학습을 직접 실행하지 않습니다.")
 
@@ -4271,6 +4665,8 @@ elif view == "5. 개인화 추천":
     elif personalized_recommendations.empty:
         st.warning("표시할 추천 결과가 없습니다. 현재 예산/임계값 조건에서 최종 타겟 고객이 없을 수 있습니다.")
     else:
+        if isinstance(recommendation_summary, dict) and recommendation_summary.get("warning"):
+            st.warning(str(recommendation_summary.get("warning")))
         budget_context = recommendation_summary.get('budget_context', {})
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("추천 행 수", f"{recommendation_summary.get('rows', len(personalized_recommendations)):,}")
@@ -4332,7 +4728,7 @@ elif view == "5. 개인화 추천":
         ) if not personalized_recommendations.empty else [],
     }
 
-elif view == "7. 실시간 운영 모니터":
+elif view == "6. 실시간 운영 모니터":
     # user mode에서는 PostgreSQL live DB 화면만 렌더링하고,
     # 기존 Redis Streams 기반 simulator 실시간 블록으로 내려가지 않는다.
     # 그렇지 않으면 user mode에서도 realtime/scores API를 호출해 Redis 안내/오류가 같이 표시된다.
@@ -4593,7 +4989,7 @@ elif view == "7. 실시간 운영 모니터":
         'queue_preview': dataframe_snapshot(realtime_monitor_overview.get("queue_df", pd.DataFrame()), max_rows=20) if realtime_monitor_overview and not realtime_monitor_overview.get("queue_df", pd.DataFrame()).empty else [],
     }
 
-elif view == "10. 이탈 시점 예측 (Survival Analysis)":
+elif view == "9. 이탈 시점 예측 (Survival Analysis)":
     st.subheader("이탈 시점 예측 (Survival Analysis)")
     st.caption('Cox Proportional Hazards 기반으로 landmark 시점 이후 얼마 안에 churn risk 상태로 진입할지를 추정합니다. 분류 모델과 달리 "언제" 위험이 커지는지를 함께 봅니다.')
 
@@ -4668,192 +5064,7 @@ elif view == "10. 이탈 시점 예측 (Survival Analysis)":
         'survival_coefficients': survival_coefficients.head(15).to_dict(orient='records') if not survival_coefficients.empty else [],
     }
 
-elif view == "6. 의사결정 엔진 비교":
-    _engine_has_data = (
-        _nonempty_mapping(optimize_summary)
-        or _nonempty_mapping(baseline_optimize_summary)
-        or (isinstance(segment_allocation, pd.DataFrame) and not segment_allocation.empty)
-        or (isinstance(baseline_segment_allocation, pd.DataFrame) and not baseline_segment_allocation.empty)
-        or (isinstance(selected_customers, pd.DataFrame) and not selected_customers.empty)
-    )
-    if _simulator_mode_unavailable(
-        "의사결정 엔진 비교",
-        _engine_has_data,
-        "기존/현재 엔진 비교에 필요한 최적화 산출물이 없습니다.",
-        "시뮬레이터 데모에서는 python src/main.py --mode optimize 와 --mode recommend 를 실행한 뒤 새로고침하세요.",
-    ):
-        st.stop()
-    st.subheader("의사결정 엔진 비교")
-    st.caption("기존 예산 최적화(이탈·업리프트·ROI 중심)와 현재 의사결정 엔진(이탈 시점 + intervention window + 개입 강도)을 같은 예산 조건에서 비교합니다.")
-
-    enhanced_segment_summary = aggregate_enhanced_segment_allocation(segment_allocation)
-    factor_table = get_decision_engine_factor_table()
-
-    baseline_profit = float(baseline_optimize_summary.get("expected_incremental_profit", 0.0))
-    enhanced_profit = float(optimize_summary.get("expected_incremental_profit", 0.0))
-    baseline_roi = float(baseline_optimize_summary.get("overall_roi", 0.0))
-    enhanced_roi = float(optimize_summary.get("overall_roi", 0.0))
-    baseline_targeted = int(baseline_optimize_summary.get("num_targeted", 0))
-    enhanced_targeted = int(optimize_summary.get("num_targeted", 0))
-    enhanced_window = float(optimize_summary.get("avg_intervention_window_days", 0.0) or 0.0)
-    enhanced_urgency = float(optimize_summary.get("avg_timing_urgency_score", 0.0) or 0.0)
-
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric(
-        "예상 증분 이익 변화",
-        money(enhanced_profit),
-        delta=money(enhanced_profit - baseline_profit),
-    )
-    m2.metric(
-        "ROI 변화",
-        pct(enhanced_roi),
-        delta=f"{(enhanced_roi - baseline_roi) * 100:.2f}%p",
-    )
-    m3.metric(
-        "선정 고객 수 변화",
-        f"{enhanced_targeted:,}",
-        delta=f"{enhanced_targeted - baseline_targeted:+d}명",
-    )
-    m4.metric(
-        "평균 개입 윈도우",
-        f"{enhanced_window:.1f}일",
-        delta=f"긴급도 {enhanced_urgency:.3f}",
-    )
-
-    st.info(
-        "현재 엔진은 '누가 위험한가'뿐 아니라 '얼마나 빨리 떠날 것 같은가'와 '어느 강도의 개입이 더 맞는가'까지 함께 고려합니다. "
-        "그래서 같은 예산이어도 단순 고ROI 고객 모음이 아니라, 더 시급한 고객에게 적절한 강도로 예산이 재배분됩니다."
-    )
-
-    comparison_rows = pd.DataFrame([
-        {
-            "비교 항목": "선정 고객 수",
-            "기존 엔진": baseline_targeted,
-            "현재 엔진": enhanced_targeted,
-            "변화": enhanced_targeted - baseline_targeted,
-        },
-        {
-            "비교 항목": "집행 예산",
-            "기존 엔진": baseline_optimize_summary.get("spent", 0),
-            "현재 엔진": optimize_summary.get("spent", 0),
-            "변화": int(optimize_summary.get("spent", 0)) - int(baseline_optimize_summary.get("spent", 0)),
-        },
-        {
-            "비교 항목": "예상 증분 이익",
-            "기존 엔진": baseline_profit,
-            "현재 엔진": enhanced_profit,
-            "변화": enhanced_profit - baseline_profit,
-        },
-        {
-            "비교 항목": "예상 ROI",
-            "기존 엔진": baseline_roi,
-            "현재 엔진": enhanced_roi,
-            "변화": enhanced_roi - baseline_roi,
-        },
-    ])
-
-    display_compare = comparison_rows.copy()
-    currency_rows = {"집행 예산", "예상 증분 이익"}
-    ratio_rows = {"예상 ROI"}
-    for idx, row in display_compare.iterrows():
-        metric_name = row["비교 항목"]
-        if metric_name in currency_rows:
-            display_compare.loc[idx, "기존 엔진"] = money(row["기존 엔진"])
-            display_compare.loc[idx, "현재 엔진"] = money(row["현재 엔진"])
-            display_compare.loc[idx, "변화"] = money(row["변화"])
-        elif metric_name in ratio_rows:
-            display_compare.loc[idx, "기존 엔진"] = pct(row["기존 엔진"])
-            display_compare.loc[idx, "현재 엔진"] = pct(row["현재 엔진"])
-            display_compare.loc[idx, "변화"] = f"{row['변화'] * 100:.2f}%p"
-        else:
-            display_compare.loc[idx, "기존 엔진"] = f"{int(row['기존 엔진']):,}"
-            display_compare.loc[idx, "현재 엔진"] = f"{int(row['현재 엔진']):,}"
-            display_compare.loc[idx, "변화"] = f"{int(row['변화']):+d}"
-
-    st.markdown("### 엔진이 고려하는 요소")
-    _render_dataframe_with_count(factor_table, label="의사결정 요소 비교")
-
-    st.markdown("### 결과가 어떻게 달라졌는가")
-    _render_dataframe_with_count(display_compare, label="기존 엔진 vs 현재 엔진")
-
-    compare_chart_df = pd.DataFrame([
-        {"engine": "기존 엔진", "metric": "예상 증분 이익", "value": baseline_profit},
-        {"engine": "현재 엔진", "metric": "예상 증분 이익", "value": enhanced_profit},
-        {"engine": "기존 엔진", "metric": "집행 예산", "value": float(baseline_optimize_summary.get("spent", 0))},
-        {"engine": "현재 엔진", "metric": "집행 예산", "value": float(optimize_summary.get("spent", 0))},
-    ])
-    compare_fig = px.bar(
-        compare_chart_df,
-        x="metric",
-        y="value",
-        color="engine",
-        barmode="group",
-        title="핵심 수치 비교",
-    )
-    st.plotly_chart(compare_fig, use_container_width=True)
-
-    baseline_segment_chart = baseline_segment_allocation.copy()
-    baseline_segment_chart["engine"] = "기존 엔진"
-    enhanced_segment_chart = enhanced_segment_summary.copy()
-    enhanced_segment_chart["engine"] = "현재 엔진"
-    segment_compare_df = pd.concat([baseline_segment_chart, enhanced_segment_chart], ignore_index=True)
-
-    if not segment_compare_df.empty:
-        segment_fig = px.bar(
-            segment_compare_df,
-            x="uplift_segment",
-            y="allocated_budget",
-            color="engine",
-            barmode="group",
-            hover_data=["customer_count", "expected_profit"],
-            title="세그먼트별 예산 재배분 비교",
-        )
-        st.plotly_chart(segment_fig, use_container_width=True)
-
-    left_col, right_col = st.columns(2)
-
-    with left_col:
-        if not selected_customers.empty and "timing_priority_bucket" in selected_customers.columns:
-            timing_df = (
-                selected_customers.groupby("timing_priority_bucket", as_index=False)
-                .agg(customer_count=("customer_id", "nunique"))
-                .sort_values("customer_count", ascending=False)
-            )
-            timing_fig = px.bar(
-                timing_df,
-                x="timing_priority_bucket",
-                y="customer_count",
-                text="customer_count",
-                title="현재 엔진이 잡아낸 개입 시점 분포",
-            )
-            st.plotly_chart(timing_fig, use_container_width=True)
-
-    with right_col:
-        intensity_counts = optimize_summary.get("selected_intensity_counts", {}) if optimize_summary else {}
-        if intensity_counts:
-            intensity_df = pd.DataFrame({
-                "intervention_intensity": list(intensity_counts.keys()),
-                "customer_count": list(intensity_counts.values()),
-            })
-            intensity_fig = px.bar(
-                intensity_df,
-                x="intervention_intensity",
-                y="customer_count",
-                text="customer_count",
-                title="현재 엔진의 개입 강도 선택 결과",
-            )
-            st.plotly_chart(intensity_fig, use_container_width=True)
-
-    st.caption("고객별 상세 명단은 4번 '예산 최적화 및 리텐션 타겟' 화면에서만 관리합니다. 이 화면은 엔진 간 정책 차이만 비교합니다.")
-
-    llm_payload = {
-        "decision_engine_factors": factor_table.to_dict(orient="records"),
-        "baseline_summary": baseline_optimize_summary,
-        "enhanced_summary": optimize_summary,
-        "enhanced_segment_summary": enhanced_segment_summary.to_dict(orient="records") if not enhanced_segment_summary.empty else [],
-    }
-
-elif view == "11. 증분 성과 / A-B 실험":
+elif view == "10. 증분 성과 / A-B 실험":
     if _user_mode_unavailable("증분 성과 / A-B 실험 분석", "A/B 테스트 분석은 Treatment/Control 그룹 분리 데이터가 필수이며, 외부 데이터에는 해당 정보가 없습니다."):
         st.stop()
     st.subheader("증분 성과 / A-B 실험")
@@ -4934,7 +5145,7 @@ elif view == "11. 증분 성과 / A-B 실험":
         "persuadables": experiment_overview.get("persuadables", {}),
     }
 
-elif view == "12. 설명가능성 / 고객별 개입 이유":
+elif view == "11. 설명가능성 / 고객별 개입 이유":
     st.subheader("설명가능성 / 고객별 개입 이유")
     st.caption("왜 이 고객이 위험군인지, 왜 개입 후보로 뽑혔는지, 무엇을 조심해야 하는지를 운영 언어로 풀어 보여줍니다.")
 
@@ -4993,7 +5204,7 @@ elif view == "12. 설명가능성 / 고객별 개입 이유":
         "customer_explanations": customer_explanations.head(20).to_dict(orient="records") if not customer_explanations.empty else [],
     }
 
-elif view == "13. 데이터 진단 / 시뮬레이터 충실도":
+elif view == "12. 데이터 진단 / 시뮬레이터 충실도":
     st.subheader("데이터 진단 / 시뮬레이터 충실도")
     st.caption("시뮬레이터가 만든 원천 데이터와 파생 산출물이 운영형 분석에 쓰기 적절한지, 기본적인 정합성과 분포를 함께 점검합니다.")
 
@@ -5054,7 +5265,7 @@ elif view == "13. 데이터 진단 / 시뮬레이터 충실도":
         "distribution": distribution_df.head(30).to_dict(orient="records") if not distribution_df.empty else [],
     }
 
-elif view == "8. 할인·쿠폰 운영 리스크":
+elif view == "7. 할인·쿠폰 운영 리스크":
     _coupon_has_data = False
     if isinstance(coupon_risk_overview, dict):
         _coupon_has_data = bool(
