@@ -165,6 +165,31 @@ def init_user_live_tables(db_url: str) -> None:
         """))
 
         conn.execute(text("""
+        ALTER TABLE customer_feature_state
+        ADD COLUMN IF NOT EXISTS is_new_customer BOOLEAN DEFAULT FALSE
+        """))
+
+        conn.execute(text("""
+        ALTER TABLE customer_feature_state
+        ADD COLUMN IF NOT EXISTS first_seen_at TIMESTAMPTZ
+        """))
+
+        conn.execute(text("""
+        ALTER TABLE customer_feature_state
+        ADD COLUMN IF NOT EXISTS event_count_total INT DEFAULT 0
+        """))
+
+        conn.execute(text("""
+        ALTER TABLE customer_feature_state
+        ADD COLUMN IF NOT EXISTS persona TEXT
+        """))
+
+        conn.execute(text("""
+        ALTER TABLE customer_feature_state
+        ADD COLUMN IF NOT EXISTS acquisition_channel TEXT
+        """))
+
+        conn.execute(text("""
         CREATE INDEX IF NOT EXISTS idx_customer_feature_state_updated
         ON customer_feature_state (updated_at DESC)
         """))
