@@ -1039,6 +1039,9 @@ def _generate_state_snapshots(
     customer_summary: pd.DataFrame,
     rng: np.random.Generator,
     inactivity_threshold_days: int = 30,
+    events_df: Optional[pd.DataFrame] = None,
+    orders_df: Optional[pd.DataFrame] = None,
+    snapshot_frequency_days: int = 7,
 ) -> pd.DataFrame:
 
     n = len(customer_summary)
@@ -1049,6 +1052,18 @@ def _generate_state_snapshots(
             "current_status", "recent_visit_score", "recent_purchase_score",
             "recent_exposure_score", "coupon_fatigue_score", "discount_dependency_score",
         ])
+
+    activity_snapshots = _generate_activity_state_snapshots(
+        customer_summary,
+        events_df=events_df,
+        orders_df=orders_df,
+        rng=rng,
+        inactivity_threshold_days=inactivity_threshold_days,
+        snapshot_frequency_days=snapshot_frequency_days,
+    )
+    if not activity_snapshots.empty:
+        activity_snapshots.attrs["state_snapshot_strategy"] = "activity_history_sparse_7d"
+        return activity_snapshots
 
     months = 12
     cs = customer_summary
@@ -1086,7 +1101,7 @@ def _generate_state_snapshots(
     )
 
     total = n * months
-    return pd.DataFrame({
+    fallback = pd.DataFrame({
         "customer_id": cid_rep,
         "snapshot_date": snapshot_dates,
         "last_visit_date": last_visit_dates,
@@ -1102,6 +1117,167 @@ def _generate_state_snapshots(
         "coupon_fatigue_score": rng.uniform(0, 2, size=total),
         "discount_dependency_score": rng.uniform(0, 1, size=total),
     })
+    fallback.attrs["state_snapshot_strategy"] = "customer_summary_repeated_30d"
+    return fallback
+
+
+def _generate_activity_state_snapshots(
+    customer_summary: pd.DataFrame,
+    *,
+    events_df: Optional[pd.DataFrame],
+    orders_df: Optional[pd.DataFrame],
+    rng: np.random.Generator,
+    inactivity_threshold_days: int,
+    snapshot_frequency_days: int,
+) -> pd.DataFrame:
+    """Build sparse state snapshots from uploaded activity history when available."""
+    pieces: List[pd.DataFrame] = []
+    if events_df is not None and not events_df.empty and {"customer_id", "timestamp"}.issubset(events_df.columns):
+        cols = ["customer_id", "timestamp"] + (["event_type"] if "event_type" in events_df.columns else [])
+        events = events_df[cols].copy()
+        events["activity_time"] = pd.to_datetime(events["timestamp"], errors="coerce")
+        if "event_type" in events.columns:
+            events["activity_kind"] = events["event_type"].astype(str).str.lower()
+            if events["activity_kind"].isin(["visit", "purchase"]).any():
+                events = events[events["activity_kind"].isin(["visit", "purchase"])]
+        else:
+            events["activity_kind"] = "activity"
+        pieces.append(events[["customer_id", "activity_time", "activity_kind"]])
+    if orders_df is not None and not orders_df.empty and {"customer_id", "order_time"}.issubset(orders_df.columns):
+        orders = orders_df[["customer_id", "order_time"]].copy()
+        orders["activity_time"] = pd.to_datetime(orders["order_time"], errors="coerce")
+        orders["activity_kind"] = "purchase"
+        pieces.append(orders[["customer_id", "activity_time", "activity_kind"]])
+
+    if not pieces:
+        return pd.DataFrame()
+
+    activity = pd.concat(pieces, ignore_index=True).dropna(subset=["customer_id", "activity_time"])
+    if activity.empty:
+        return pd.DataFrame()
+    activity["customer_id"] = pd.to_numeric(activity["customer_id"], errors="coerce")
+    activity = activity.dropna(subset=["customer_id"])
+    if activity.empty:
+        return pd.DataFrame()
+    activity["customer_id"] = activity["customer_id"].astype(int)
+    activity = activity.sort_values(["customer_id", "activity_time"])
+
+    cs = customer_summary.copy()
+    cs["customer_id"] = pd.to_numeric(cs["customer_id"], errors="coerce")
+    cs = cs.dropna(subset=["customer_id"])
+    if cs.empty:
+        return pd.DataFrame()
+    cs["customer_id"] = cs["customer_id"].astype(int)
+    cs["signup_date"] = pd.to_datetime(cs.get("signup_date", pd.Timestamp("2025-01-01")), errors="coerce")
+
+    first_activity = activity.groupby("customer_id")["activity_time"].min()
+    last_activity = activity.groupby("customer_id")["activity_time"].max()
+    global_end = activity["activity_time"].max().floor("D")
+    if pd.isna(global_end):
+        return pd.DataFrame()
+
+    freq_days = max(int(snapshot_frequency_days), 1)
+    grid_parts: List[pd.DataFrame] = []
+    for row in cs[["customer_id", "signup_date"]].itertuples(index=False):
+        cid = int(row.customer_id)
+        signup = pd.Timestamp(row.signup_date) if pd.notna(row.signup_date) else first_activity.get(cid, global_end)
+        start = min(pd.Timestamp(signup), pd.Timestamp(first_activity.get(cid, signup))).floor("D")
+        end = max(pd.Timestamp(last_activity.get(cid, start)), global_end).floor("D")
+        if end < start:
+            end = start
+        dates = pd.date_range(start=start, end=end, freq=f"{freq_days}D")
+        if dates.empty or dates[-1] != end:
+            dates = dates.append(pd.DatetimeIndex([end]))
+        grid_parts.append(pd.DataFrame({"customer_id": cid, "snapshot_date": dates}))
+    if not grid_parts:
+        return pd.DataFrame()
+
+    grid = pd.concat(grid_parts, ignore_index=True).sort_values(["snapshot_date", "customer_id"])
+    activity_for_asof = activity[["customer_id", "activity_time"]].rename(columns={"activity_time": "last_visit_date"})
+    grid = pd.merge_asof(
+        grid,
+        activity_for_asof.sort_values(["last_visit_date", "customer_id"]),
+        left_on="snapshot_date",
+        right_on="last_visit_date",
+        by="customer_id",
+        direction="backward",
+    )
+    purchases = activity.loc[activity["activity_kind"].eq("purchase"), ["customer_id", "activity_time"]].rename(
+        columns={"activity_time": "last_purchase_date"}
+    )
+    if purchases.empty:
+        grid["last_purchase_date"] = pd.NaT
+    else:
+        grid = pd.merge_asof(
+            grid.sort_values(["snapshot_date", "customer_id"]),
+            purchases.sort_values(["last_purchase_date", "customer_id"]),
+            left_on="snapshot_date",
+            right_on="last_purchase_date",
+            by="customer_id",
+            direction="backward",
+        )
+
+    signup_lookup = cs.set_index("customer_id")["signup_date"]
+    fallback_last = grid["customer_id"].map(signup_lookup)
+    grid["last_visit_date"] = pd.to_datetime(grid["last_visit_date"]).fillna(fallback_last)
+    grid["inactivity_days"] = (grid["snapshot_date"] - grid["last_visit_date"]).dt.days.clip(lower=0).fillna(0).astype(int)
+    grid["last_purchase_date"] = pd.to_datetime(grid["last_purchase_date"]).fillna(grid["last_visit_date"])
+
+    churn_risk_days = max(int(inactivity_threshold_days), 1)
+    dormant_days = max(int(round(churn_risk_days / 2)), 1)
+    grid["current_status"] = np.where(
+        grid["inactivity_days"] >= churn_risk_days,
+        "churn_risk",
+        np.where(grid["inactivity_days"] >= dormant_days, "dormant", "active"),
+    )
+
+    activity["activity_date"] = activity["activity_time"].dt.floor("D")
+    visits = activity[activity["activity_kind"].eq("visit")].groupby(["customer_id", "activity_date"]).size().rename("visits")
+    purchases_daily = activity[activity["activity_kind"].eq("purchase")].groupby(["customer_id", "activity_date"]).size().rename("purchases")
+    daily = pd.concat([visits, purchases_daily], axis=1).fillna(0).reset_index()
+    if daily.empty:
+        grid["visits_total"] = 0
+        grid["purchases_total"] = 0
+    else:
+        daily = daily.sort_values(["customer_id", "activity_date"])
+        daily["visits_total"] = daily.groupby("customer_id")["visits"].cumsum().astype(int)
+        daily["purchases_total"] = daily.groupby("customer_id")["purchases"].cumsum().astype(int)
+        grid = pd.merge_asof(
+            grid.sort_values(["snapshot_date", "customer_id"]),
+            daily[["customer_id", "activity_date", "visits_total", "purchases_total"]].sort_values(["activity_date", "customer_id"]),
+            left_on="snapshot_date",
+            right_on="activity_date",
+            by="customer_id",
+            direction="backward",
+        )
+        grid[["visits_total", "purchases_total"]] = grid[["visits_total", "purchases_total"]].fillna(0).astype(int)
+        grid = grid.drop(columns=["activity_date"])
+
+    grid = grid.sort_values(["customer_id", "snapshot_date"])
+    monetary_lookup = _safe_numeric(cs.get("monetary", pd.Series(0.0, index=cs.index)), 0.0)
+    freq_lookup = _safe_numeric(cs.get("frequency", pd.Series(0, index=cs.index)), 0).replace(0, np.nan)
+    per_purchase_amount = pd.Series(_safe_divide(monetary_lookup, freq_lookup, default=0.0), index=cs.index)
+    amount_by_customer = per_purchase_amount.groupby(cs["customer_id"]).first()
+    grid["monetary_total"] = grid["purchases_total"] * grid["customer_id"].map(amount_by_customer).fillna(0.0)
+    grid["recent_visit_score"] = np.minimum(grid.groupby("customer_id")["visits_total"].diff().fillna(grid["visits_total"]), 2.0)
+    grid["recent_purchase_score"] = np.minimum(
+        grid.groupby("customer_id")["purchases_total"].diff().fillna(grid["purchases_total"]), 2.0
+    )
+    grid["recent_exposure_score"] = 0.0
+    grid["coupon_fatigue_score"] = rng.uniform(0, 0.5, size=len(grid))
+    grid["discount_dependency_score"] = _safe_numeric(
+        grid["customer_id"].map(cs.set_index("customer_id").get("discount_dependency_score", pd.Series(dtype=float))),
+        0.0,
+    )
+
+    return grid[
+        [
+            "customer_id", "snapshot_date", "last_visit_date", "last_purchase_date",
+            "visits_total", "purchases_total", "monetary_total", "inactivity_days",
+            "current_status", "recent_visit_score", "recent_purchase_score",
+            "recent_exposure_score", "coupon_fatigue_score", "discount_dependency_score",
+        ]
+    ]
 
 
 def _generate_campaign_exposures(treatment_assignments: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame:
@@ -1509,6 +1685,12 @@ def preprocess_uploaded_data(
         customer_summary,
         rng,
         inactivity_threshold_days=churn_inactivity_days,
+        events_df=events_df if metadata.get("events_source") == "user_upload" else None,
+        orders_df=orders_df if metadata.get("events_source") == "user_upload" else None,
+    )
+    metadata["state_snapshot_strategy"] = (
+        state_snapshots.attrs.get("state_snapshot_strategy", "customer_summary_repeated_30d")
+        if not state_snapshots.empty else "empty"
     )
     cohort_retention = _build_cohort_retention(customer_summary, events_df=events_df, orders_df=orders_df)
 
