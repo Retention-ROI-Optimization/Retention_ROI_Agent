@@ -52,7 +52,7 @@ class StateTracker:
 
             self.recent_visit_score[active_mask] *= 0.86
             self.recent_purchase_score[active_mask] *= 0.91
-            self.recent_exposure_score[active_mask] *= 0.68
+            self.recent_exposure_score[active_mask] *= 0.90
             self.recent_cart_abandon_score[active_mask] *= 0.88
             self.coupon_fatigue_score[active_mask] *= self.coupon_fatigue_decay
             self.discount_dependency_score[active_mask] *= 0.96

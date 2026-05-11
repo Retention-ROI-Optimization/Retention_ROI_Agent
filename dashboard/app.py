@@ -5201,7 +5201,13 @@ elif view == "10. 증분 성과 / A-B 실험":
             m4.metric("CPIC", "측정 불가", help="추가 유지 고객 수가 0 이하라 분모가 정의되지 않습니다. 효과 검출 실패 — 표본 확대 후 재측정 필요.")
         else:
             m4.metric("CPIC", "-")
-        m5.metric("Z-test p-value", f"{float(exp_metrics.get('p_value', np.nan)):.6f}" if pd.notna(exp_metrics.get('p_value', np.nan)) else "-")
+        _p_val_raw = exp_metrics.get('p_value', np.nan)
+        if pd.notna(_p_val_raw):
+            _p_val_float = float(_p_val_raw)
+            _p_display = "< 0.000001" if _p_val_float < 1e-6 else f"{_p_val_float:.6f}"
+        else:
+            _p_display = "-"
+        m5.metric("Z-test p-value", _p_display)
 
         tab1, tab2, tab3 = st.tabs(["A/B 해석", "개입 강도 효과", "Persuadables 프로필"])
 
