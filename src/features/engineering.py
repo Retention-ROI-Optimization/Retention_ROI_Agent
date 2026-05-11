@@ -139,17 +139,37 @@ def _resolve_horizon_days(data_dir: Path, horizon_days: int | None) -> int:
     if horizon_days is not None:
         return int(horizon_days)
 
-    metadata_path = data_dir / 'preprocessing_metadata.json'
-    if metadata_path.exists():
-        try:
-            metadata = json.loads(metadata_path.read_text(encoding='utf-8'))
-            threshold = metadata.get('churn_inactivity_threshold_days')
-            if threshold is not None:
-                return int(threshold)
-        except (OSError, ValueError, TypeError, json.JSONDecodeError):
-            pass
+    metadata = _load_preprocessing_metadata(data_dir)
+    threshold = metadata.get('churn_inactivity_threshold_days')
+    if threshold is not None:
+        return int(threshold)
 
     return 45
+
+
+def _load_preprocessing_metadata(data_dir: Path) -> Dict:
+    metadata_path = data_dir / 'preprocessing_metadata.json'
+    if not metadata_path.exists():
+        return {}
+    try:
+        return json.loads(metadata_path.read_text(encoding='utf-8'))
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return {}
+
+
+def _latest_activity_date(events: pd.DataFrame, orders: pd.DataFrame) -> pd.Timestamp | None:
+    candidates: list[pd.Timestamp] = []
+    if not events.empty and 'timestamp' in events.columns:
+        event_max = pd.to_datetime(events['timestamp'], errors='coerce').max()
+        if pd.notna(event_max):
+            candidates.append(pd.Timestamp(event_max))
+    if not orders.empty and 'order_time' in orders.columns:
+        order_max = pd.to_datetime(orders['order_time'], errors='coerce').max()
+        if pd.notna(order_max):
+            candidates.append(pd.Timestamp(order_max))
+    if not candidates:
+        return None
+    return max(candidates).floor('D')
 
 
 def _merge_summary_enrichment(base: pd.DataFrame, customer_summary: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
@@ -441,17 +461,19 @@ def build_feature_dataset(data_dir: str | Path, feature_store_dir: str | Path = 
     snapshots = raw['snapshots'].copy()
     exposures = raw['exposures'].copy()
     treatment = raw['treatment'].copy()
+    preprocessing_metadata = _load_preprocessing_metadata(data_dir)
     if customers.empty:
         raise ValueError(f'No customers.csv found or the file is empty under {data_dir}')
     if treatment.empty:
         treatment = pd.DataFrame({'customer_id': customers['customer_id'], 'treatment_group': 'auto_control'})
     if as_of_date is None:
-        if not snapshots.empty and 'snapshot_date' in snapshots.columns and snapshots['snapshot_date'].notna().any():
+        activity_max = _latest_activity_date(events, orders)
+        if preprocessing_metadata.get('source') == 'user_upload' and activity_max is not None:
+            as_of_date = activity_max - pd.Timedelta(days=horizon_days)
+        elif not snapshots.empty and 'snapshot_date' in snapshots.columns and snapshots['snapshot_date'].notna().any():
             as_of_date = snapshots['snapshot_date'].max() - pd.Timedelta(days=horizon_days)
-        elif not events.empty and 'timestamp' in events.columns and events['timestamp'].notna().any():
-            as_of_date = events['timestamp'].max() - pd.Timedelta(days=horizon_days)
-        elif not orders.empty and 'order_time' in orders.columns and orders['order_time'].notna().any():
-            as_of_date = orders['order_time'].max() - pd.Timedelta(days=horizon_days)
+        elif activity_max is not None:
+            as_of_date = activity_max - pd.Timedelta(days=horizon_days)
         else:
             as_of_date = pd.Timestamp.today().floor('D')
     as_of_date = pd.Timestamp(as_of_date).floor('D')
@@ -538,6 +560,12 @@ def build_feature_dataset(data_dir: str | Path, feature_store_dir: str | Path = 
         'row_count': int(len(base)),
         'positive_rate': positive_rate,
         'label_source': label_source,
+        'as_of_date_source': (
+            'latest_uploaded_activity_minus_horizon'
+            if preprocessing_metadata.get('source') == 'user_upload'
+            and _latest_activity_date(events, orders) is not None
+            else 'state_snapshots_or_activity_fallback'
+        ),
         'summary_enrichment_columns': summary_enrichment_cols,
         'external_feature_columns': generated_external_cols,
         'feature_count': int(len([c for c in base.columns if c not in {'customer_id', 'label'}])),

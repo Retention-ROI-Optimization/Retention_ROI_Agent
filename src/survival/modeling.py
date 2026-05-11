@@ -66,6 +66,134 @@ def _ensure_dir(path: str | Path) -> Path:
     return resolved
 
 
+def _load_preprocessing_metadata(data_dir: Path) -> Dict[str, Any]:
+    metadata_path = data_dir / 'preprocessing_metadata.json'
+    if not metadata_path.exists():
+        return {}
+    try:
+        return json.loads(metadata_path.read_text(encoding='utf-8'))
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return {}
+
+
+def _load_activity_times(data_dir: Path) -> pd.DataFrame:
+    pieces: list[pd.DataFrame] = []
+    events_path = data_dir / 'events.csv'
+    if events_path.exists():
+        events = pd.read_csv(events_path, low_memory=False)
+        if {'customer_id', 'timestamp'}.issubset(events.columns):
+            cols = ['customer_id', 'timestamp'] + (['event_type'] if 'event_type' in events.columns else [])
+            events = events[cols].copy()
+            events['activity_time'] = pd.to_datetime(events['timestamp'], errors='coerce')
+            if 'event_type' in events.columns:
+                events['activity_kind'] = events['event_type'].astype(str).str.lower()
+                if events['activity_kind'].isin(['visit', 'purchase']).any():
+                    events = events[events['activity_kind'].isin(['visit', 'purchase'])]
+            pieces.append(events[['customer_id', 'activity_time']])
+    orders_path = data_dir / 'orders.csv'
+    if orders_path.exists():
+        orders = pd.read_csv(orders_path, low_memory=False)
+        if {'customer_id', 'order_time'}.issubset(orders.columns):
+            orders = orders[['customer_id', 'order_time']].copy()
+            orders['activity_time'] = pd.to_datetime(orders['order_time'], errors='coerce')
+            pieces.append(orders[['customer_id', 'activity_time']])
+    if not pieces:
+        return pd.DataFrame(columns=['customer_id', 'activity_time'])
+    activity = pd.concat(pieces, ignore_index=True).dropna(subset=['customer_id', 'activity_time'])
+    if activity.empty:
+        return pd.DataFrame(columns=['customer_id', 'activity_time'])
+    activity['customer_id'] = pd.to_numeric(activity['customer_id'], errors='coerce')
+    activity = activity.dropna(subset=['customer_id'])
+    activity['customer_id'] = activity['customer_id'].astype(int)
+    return activity.drop_duplicates().sort_values(['customer_id', 'activity_time'])
+
+
+def _load_customer_signup_dates(data_dir: Path) -> pd.Series:
+    customers_path = data_dir / 'customers.csv'
+    if not customers_path.exists():
+        return pd.Series(dtype='datetime64[ns]')
+    customers = pd.read_csv(customers_path, low_memory=False)
+    if not {'customer_id', 'signup_date'}.issubset(customers.columns):
+        return pd.Series(dtype='datetime64[ns]')
+    customers['customer_id'] = pd.to_numeric(customers['customer_id'], errors='coerce')
+    customers = customers.dropna(subset=['customer_id'])
+    customers['customer_id'] = customers['customer_id'].astype(int)
+    customers['signup_date'] = pd.to_datetime(customers['signup_date'], errors='coerce')
+    return customers.drop_duplicates('customer_id', keep='last').set_index('customer_id')['signup_date']
+
+
+def _activity_gap_events(
+    data_dir: Path,
+    customer_ids: pd.Series,
+    landmark_date: pd.Timestamp,
+    horizon_days: int,
+) -> tuple[pd.DataFrame | None, pd.Index | None, Dict[str, Any]]:
+    preprocessing_metadata = _load_preprocessing_metadata(data_dir)
+    if preprocessing_metadata.get('source') != 'user_upload':
+        return None, None, {'survival_event_source': 'state_snapshots_status'}
+
+    activity = _load_activity_times(data_dir)
+    if activity.empty:
+        return None, None, {'survival_event_source': 'state_snapshots_status', 'activity_rows': 0}
+
+    threshold_days = int(preprocessing_metadata.get('churn_inactivity_threshold_days') or 30)
+    threshold = pd.Timedelta(days=max(threshold_days, 1))
+    horizon_end = landmark_date + pd.Timedelta(days=int(horizon_days))
+    min_event_date = landmark_date + pd.Timedelta(days=1)
+    signup_dates = _load_customer_signup_dates(data_dir)
+    activity_by_customer = {
+        int(customer_id): group['activity_time'].sort_values().tolist()
+        for customer_id, group in activity.groupby('customer_id', sort=False)
+    }
+
+    rows: list[Dict[str, Any]] = []
+    eligible_customer_ids: list[int] = []
+    prevalent_event_count = 0
+    for raw_customer_id in customer_ids:
+        customer_id = int(raw_customer_id)
+        times = activity_by_customer.get(customer_id, [])
+        signup_date = pd.Timestamp(signup_dates.get(customer_id, landmark_date))
+        if pd.isna(signup_date):
+            signup_date = landmark_date
+
+        historical = [ts for ts in times if ts <= landmark_date]
+        if historical:
+            last_activity = pd.Timestamp(historical[-1])
+        elif signup_date <= landmark_date:
+            last_activity = signup_date
+        else:
+            last_activity = landmark_date
+
+        event_date: pd.Timestamp | None = None
+        if last_activity + threshold <= landmark_date:
+            prevalent_event_count += 1
+            continue
+        else:
+            eligible_customer_ids.append(customer_id)
+            future_times = [pd.Timestamp(ts) for ts in times if landmark_date < ts <= horizon_end]
+            for next_activity in future_times:
+                gap_event_date = last_activity + threshold
+                if gap_event_date < next_activity and gap_event_date <= horizon_end:
+                    event_date = max(gap_event_date, min_event_date)
+                    break
+                last_activity = next_activity
+            if event_date is None:
+                gap_event_date = last_activity + threshold
+                if gap_event_date <= horizon_end:
+                    event_date = max(gap_event_date, min_event_date)
+
+        if event_date is not None:
+            rows.append({'customer_id': customer_id, 'event_date': event_date})
+
+    return pd.DataFrame(rows, columns=['customer_id', 'event_date']), pd.Index(eligible_customer_ids, dtype='int64'), {
+        'survival_event_source': 'activity_gap_rule',
+        'activity_rows': int(len(activity)),
+        'churn_inactivity_threshold_days': int(threshold_days),
+        'excluded_prevalent_churn_rows': int(prevalent_event_count),
+        'landmark_at_risk_rows': int(len(eligible_customer_ids)),
+    }
+
+
 def _build_landmark_dataset(
     data_dir: Path,
     feature_store_dir: Path,
@@ -83,19 +211,35 @@ def _build_landmark_dataset(
     metadata = dict(built.metadata)
     landmark_date = pd.Timestamp(metadata['as_of_date'])
 
-    snapshots = pd.read_csv(
-        data_dir / 'state_snapshots.csv',
-        parse_dates=['snapshot_date', 'last_visit_date', 'last_purchase_date'],
+    first_event, eligible_customer_ids, event_metadata = _activity_gap_events(
+        data_dir,
+        features['customer_id'],
+        landmark_date,
+        int(horizon_days),
     )
-    future = snapshots.loc[
-        (snapshots['snapshot_date'] > landmark_date)
-        & (snapshots['snapshot_date'] <= landmark_date + pd.Timedelta(days=horizon_days))
-        & (snapshots['current_status'].astype(str).isin(['churn_risk', 'churned'])),
-        ['customer_id', 'snapshot_date'],
-    ].copy()
-    first_event = future.groupby('customer_id', as_index=False)['snapshot_date'].min().rename(
-        columns={'snapshot_date': 'event_date'}
-    )
+    if eligible_customer_ids is not None:
+        features = features[features['customer_id'].astype(int).isin(eligible_customer_ids)].copy()
+        if features.empty:
+            raise SurvivalModelError(
+                '기준일 시점에 이미 이탈 조건을 충족한 고객을 제외한 뒤 생존분석 대상 고객이 없습니다. '
+                'as_of_date를 더 이른 날짜로 지정하거나 이탈 기준일 수를 늘려주세요.'
+            )
+    if first_event is None:
+        snapshots = pd.read_csv(
+            data_dir / 'state_snapshots.csv',
+            parse_dates=['snapshot_date', 'last_visit_date', 'last_purchase_date'],
+        )
+        future = snapshots.loc[
+            (snapshots['snapshot_date'] > landmark_date)
+            & (snapshots['snapshot_date'] <= landmark_date + pd.Timedelta(days=horizon_days))
+            & (snapshots['current_status'].astype(str).isin(['churn_risk', 'churned'])),
+            ['customer_id', 'snapshot_date'],
+        ].copy()
+        first_event = future.groupby('customer_id', as_index=False)['snapshot_date'].min().rename(
+            columns={'snapshot_date': 'event_date'}
+        )
+        event_metadata = {'survival_event_source': 'state_snapshots_status'}
+    metadata.update(event_metadata)
     features = features.merge(first_event, on='customer_id', how='left')
     duration = np.where(
         features['event_date'].notna(),
