@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable
@@ -132,6 +133,23 @@ def _load_csvs(data_dir: Path) -> Dict[str, pd.DataFrame]:
         'exposures': _read_csv_if_exists(data_dir / 'campaign_exposures.csv', parse_dates=['exposure_time']),
         'treatment': _read_csv_if_exists(data_dir / 'treatment_assignments.csv', parse_dates=['assigned_at']),
     }
+
+
+def _resolve_horizon_days(data_dir: Path, horizon_days: int | None) -> int:
+    if horizon_days is not None:
+        return int(horizon_days)
+
+    metadata_path = data_dir / 'preprocessing_metadata.json'
+    if metadata_path.exists():
+        try:
+            metadata = json.loads(metadata_path.read_text(encoding='utf-8'))
+            threshold = metadata.get('churn_inactivity_threshold_days')
+            if threshold is not None:
+                return int(threshold)
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            pass
+
+    return 45
 
 
 def _merge_summary_enrichment(base: pd.DataFrame, customer_summary: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
@@ -412,8 +430,9 @@ def _winsorize_and_impute(features: pd.DataFrame) -> tuple[pd.DataFrame, Dict[st
     return out, summary
 
 
-def build_feature_dataset(data_dir: str | Path, feature_store_dir: str | Path = 'data/feature_store', as_of_date: str | pd.Timestamp | None = None, horizon_days: int = 45, n_recent_events: int = 5, n_clusters: int = 6) -> FeatureBuildResult:
+def build_feature_dataset(data_dir: str | Path, feature_store_dir: str | Path = 'data/feature_store', as_of_date: str | pd.Timestamp | None = None, horizon_days: int | None = None, n_recent_events: int = 5, n_clusters: int = 6) -> FeatureBuildResult:
     data_dir = Path(data_dir)
+    horizon_days = _resolve_horizon_days(data_dir, horizon_days)
     raw = _load_csvs(data_dir)
     customers = raw['customers'].copy()
     customer_summary = raw.get('customer_summary', pd.DataFrame()).copy()
