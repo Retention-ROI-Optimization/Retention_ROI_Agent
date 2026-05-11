@@ -434,6 +434,124 @@ def _coalesce_known_external_columns(customer_summary: pd.DataFrame, df: pd.Data
         if points is not None:
             out["point_used_total"] = out["customer_id"].map(points).fillna(0)
 
+    # [PATCH] uploaded coupon exposure/redeem fields
+    # 업로드 CSV의 coupon_exposure / coupon_used / campaign_id / discount_amount를
+    # 할인·쿠폰 운영 리스크 화면이 사용하는 고객 단위 표준 컬럼으로 집계한다.
+    exposure_col = _first_existing_column(
+        df,
+        [
+            "coupon_exposure",
+            "coupon_exposed",
+            "coupon_sent",
+            "coupon_offer",
+            "promotion_exposure",
+            "campaign_exposure",
+        ],
+    )
+    redeem_col = _first_existing_column(
+        df,
+        [
+            "coupon_used",
+            "coupon_use",
+            "coupon_redeemed",
+            "coupon_redemption",
+            "redeemed_coupon",
+        ],
+    )
+    campaign_col = _first_existing_column(
+        df,
+        [
+            "campaign_id",
+            "campaign",
+            "campaign_name",
+            "promotion_id",
+            "coupon_id",
+        ],
+    )
+
+    def _customer_flag_sum(src_col: Optional[str], *, nonblank: bool = False) -> Optional[pd.Series]:
+        if not src_col or src_col not in df.columns:
+            return None
+
+        tmp = df[["customer_id", src_col]].copy()
+        raw = tmp[src_col]
+
+        if nonblank:
+            flag = raw.notna() & raw.astype(str).str.strip().ne("")
+        else:
+            numeric = pd.to_numeric(raw, errors="coerce")
+            truthy = raw.fillna("").astype(str).str.strip().str.lower().isin(
+                ["1", "true", "t", "y", "yes", "used", "redeemed", "open", "opened", "exposed"]
+            )
+            flag = pd.Series(
+                np.where(numeric.notna(), numeric > 0, truthy),
+                index=tmp.index,
+            )
+
+        tmp["_flag"] = flag.astype(int)
+        return tmp.groupby("customer_id")["_flag"].sum()
+
+    exposure_sum = _customer_flag_sum(exposure_col)
+    if exposure_sum is None and campaign_col:
+        exposure_sum = _customer_flag_sum(campaign_col, nonblank=True)
+
+    redeem_sum = _customer_flag_sum(redeem_col)
+    if redeem_sum is None and discount_col:
+        redeem_sum = _customer_flag_sum(discount_col)
+
+    if exposure_sum is not None:
+        out["coupon_exposure_count"] = (
+            out["customer_id"].map(exposure_sum).fillna(0).clip(lower=0).astype(int)
+        )
+
+    if redeem_sum is not None:
+        out["coupon_redeem_count"] = (
+            out["customer_id"].map(redeem_sum).fillna(0).clip(lower=0).astype(int)
+        )
+
+    if "coupon_exposure_count" in out.columns and "coupon_redeem_count" in out.columns:
+        out["coupon_exposure_count"] = np.maximum(
+            pd.to_numeric(out["coupon_exposure_count"], errors="coerce").fillna(0),
+            pd.to_numeric(out["coupon_redeem_count"], errors="coerce").fillna(0),
+        ).astype(int)
+
+    if "coupon_exposure_count" in out.columns:
+        exposure_count = pd.to_numeric(out["coupon_exposure_count"], errors="coerce").fillna(0)
+        out["coupon_fatigue_score"] = np.clip(exposure_count / 3.0, 0, 2)
+
+    if "coupon_redeem_count" in out.columns:
+        redeem_count = pd.to_numeric(out["coupon_redeem_count"], errors="coerce").fillna(0)
+        exposure_count = pd.to_numeric(
+            out.get("coupon_exposure_count", redeem_count),
+            errors="coerce",
+        ).fillna(0)
+        out["coupon_redeem_rate_uploaded"] = _safe_divide(
+            redeem_count,
+            np.maximum(exposure_count, 1.0),
+            default=0.0,
+        )
+
+    discount_risk = pd.to_numeric(
+        out.get("discount_dependency_score", pd.Series(0.0, index=out.index)),
+        errors="coerce",
+    ).fillna(0).clip(0, 1)
+
+    fatigue_risk = pd.to_numeric(
+        out.get("coupon_fatigue_score", pd.Series(0.0, index=out.index)),
+        errors="coerce",
+    ).fillna(0).clip(0, 2) / 2.0
+
+    out["discount_pressure_score"] = np.clip(
+        0.65 * discount_risk + 0.35 * fatigue_risk,
+        0,
+        1,
+    )
+    out["discount_effect_penalty"] = np.clip(
+        1.0 - 0.25 * out["discount_pressure_score"],
+        0.50,
+        1.0,
+    )
+
     refund_col = _first_existing_column(df, ["refund_reason", "return_reason", "cancel_reason"])
     if refund_col:
         refund_mode = _customer_mode(refund_col)
