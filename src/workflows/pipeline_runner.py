@@ -241,6 +241,7 @@ def run_feature_engineering_pipeline(
     force_simulation: bool = False,
     simulation_seed: Optional[int] = None,
     randomize_simulation: bool = False,
+    horizon_days: int | None = None,
 ) -> Dict[str, Any]:
     result_dir = ensure_directory(result_dir)
     feature_store_dir = ensure_directory(feature_store_dir or Path('data/feature_store'))
@@ -252,7 +253,11 @@ def run_feature_engineering_pipeline(
         randomize=randomize_simulation,
     )
 
-    built = build_feature_dataset(data_dir=data_dir, feature_store_dir=feature_store_dir)
+    built = build_feature_dataset(
+        data_dir=data_dir,
+        feature_store_dir=feature_store_dir,
+        horizon_days=horizon_days,
+    )
 
     summary_path = result_dir / 'feature_engineering_summary.json'
     summary_path.write_text(
@@ -285,6 +290,7 @@ def run_churn_training_pipeline(
     threshold_tp_value: float = 120000.0,
     threshold_fp_cost: float = 18000.0,
     threshold_fn_cost: float = 60000.0,
+    horizon_days: int | None = None,
 ) -> Dict[str, Any]:
     from src.ml.churn_training import train_churn_models
 
@@ -299,7 +305,11 @@ def run_churn_training_pipeline(
         randomize=randomize_simulation,
     )
 
-    built = build_feature_dataset(data_dir=data_dir, feature_store_dir=feature_store_dir)
+    built = build_feature_dataset(
+        data_dir=data_dir,
+        feature_store_dir=feature_store_dir,
+        horizon_days=horizon_days,
+    )
     artifacts = train_churn_models(
         built.features,
         model_dir=model_dir,
@@ -693,6 +703,7 @@ def run_explainability_pipeline(
     force_simulation: bool = False,
     simulation_seed: Optional[int] = None,
     randomize_simulation: bool = False,
+    horizon_days: int | None = None,
 ) -> Dict[str, Any]:
     result_dir = ensure_directory(result_dir)
     resolved_feature_store_dir = ensure_directory(feature_store_dir or Path('data/feature_store'))
@@ -702,7 +713,11 @@ def run_explainability_pipeline(
         random_seed=simulation_seed,
         randomize=randomize_simulation,
     )
-    build_feature_dataset(data_dir=data_dir, feature_store_dir=resolved_feature_store_dir)
+    build_feature_dataset(
+        data_dir=data_dir,
+        feature_store_dir=resolved_feature_store_dir,
+        horizon_days=horizon_days,
+    )
     artifacts = run_operational_explainability(
         data_dir=data_dir,
         result_dir=result_dir,

@@ -62,6 +62,7 @@ def run_auto_training_pipeline(
     threshold: float = 0.50,
     max_customers: int = 1500,
     skip_realtime: bool = True,
+    churn_inactivity_days: int | None = None,
 ) -> AutoTrainResult:
     """
     Run the complete ML training pipeline on preprocessed data.
@@ -98,6 +99,7 @@ def run_auto_training_pipeline(
         data_dir=data_dir,
         result_dir=result_dir,
         feature_store_dir=feature_store_dir,
+        horizon_days=churn_inactivity_days,
     )
     if fe_result:
         result.artifacts["feature_engineering"] = fe_result
@@ -112,6 +114,7 @@ def run_auto_training_pipeline(
         model_dir=model_dir,
         result_dir=result_dir,
         feature_store_dir=feature_store_dir,
+        horizon_days=churn_inactivity_days,
     )
     if train_result:
         result.artifacts["churn_training"] = train_result
@@ -231,6 +234,7 @@ def run_auto_training_pipeline(
         data_dir=data_dir,
         result_dir=result_dir,
         feature_store_dir=feature_store_dir,
+        horizon_days=churn_inactivity_days,
     )
     if explain_result:
         result.artifacts["explainability"] = explain_result

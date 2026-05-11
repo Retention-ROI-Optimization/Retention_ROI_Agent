@@ -3174,6 +3174,7 @@ with st.sidebar:
         if st.session_state.get("upload_path_cached") != str(upload_path):
             st.session_state["upload_path_cached"] = str(upload_path)
             st.session_state.pop("mapping_preview", None)
+            st.session_state.pop("churn_inactivity_days", None)
 
         # ── Step A: 매핑 미리보기 생성 ──
         if "mapping_preview" not in st.session_state:
@@ -3430,19 +3431,29 @@ with st.sidebar:
                 upload_threshold = st.slider("학습 이탈 Threshold", 0.10, 0.90, 0.50, 0.01, key="upload_threshold")
 
             st.markdown("### 📛 이탈 고객 정의")
+            recommended_churn_days = int(getattr(preview, "recommended_churn_days", None) or 30)
             st.caption(
                 "마지막 활동(이벤트/주문) 이후 며칠 동안 활동이 없으면 \"이탈\"로 분류할지 정합니다. "
                 "업종에 따라 적절한 값이 다릅니다."
             )
+            if getattr(preview, "recommended_churn_days", None):
+                st.info(
+                    f"업로드 데이터의 평균 활동/구매 주기를 기준으로 "
+                    f"**{recommended_churn_days}일**을 추천합니다."
+                )
             churn_inactivity_days = st.slider(
                 "이탈 기준: N일 이상 비활성",
-                min_value=7, max_value=180,
-                value=30, step=1,
+                min_value=7,
+                max_value=180,
+                value=recommended_churn_days,
+                step=1,
                 key="churn_inactivity_days",
                 help=(
-                    "예: 30일 → 이커머스 일반\n"
-                    "    60~90일 → 구독 서비스 (월간/분기 결제)\n"
-                    "    7~14일 → 일일 사용 앱 (게임/소셜)"
+                    "**서비스 성격별 권장 기준:**\n\n"
+                    "- **7\~14일:** 데일리 앱 (게임, SNS)\n"
+                    "- **30일:** 일반 커머스, 라이프스타일\n\n"
+                    "- **60\~90일:** 정기 구독 서비스 (OTT, 멤버십)\n\n"
+                    "설정한 기간 동안 접속 기록이 없으면 '이탈'로 간주합니다."
                 ),
             )
             st.caption(f"현재 설정: **마지막 활동 {churn_inactivity_days}일 후 이탈**로 간주")

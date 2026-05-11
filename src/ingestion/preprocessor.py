@@ -1035,7 +1035,11 @@ def _generate_treatment_assignments(customer_summary: pd.DataFrame, rng: np.rand
     })
 
 
-def _generate_state_snapshots(customer_summary: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame:
+def _generate_state_snapshots(
+    customer_summary: pd.DataFrame,
+    rng: np.random.Generator,
+    inactivity_threshold_days: int = 30,
+) -> pd.DataFrame:
 
     n = len(customer_summary)
     if n == 0:
@@ -1072,10 +1076,13 @@ def _generate_state_snapshots(customer_summary: pd.DataFrame, rng: np.random.Gen
     last_visit_dates = snapshot_dates - pd.to_timedelta(np.maximum(inactivity_rep, 0), unit="D")
     last_purchase_dates = snapshot_dates - pd.to_timedelta(np.maximum(recency_rep, 0), unit="D")
 
+    churn_risk_days = max(int(inactivity_threshold_days), 1)
+    dormant_days = max(int(round(churn_risk_days / 2)), 1)
+
     # status 벡터화
     status = np.where(
-        (inactivity_rep >= 30) | (churn_rep >= 0.7), "churn_risk",
-        np.where((inactivity_rep >= 14) | (churn_rep >= 0.5), "dormant", "active")
+        (inactivity_rep >= churn_risk_days) | (churn_rep >= 0.7), "churn_risk",
+        np.where((inactivity_rep >= dormant_days) | (churn_rep >= 0.5), "dormant", "active")
     )
 
     total = n * months
@@ -1498,7 +1505,11 @@ def preprocess_uploaded_data(
         metadata["events_source"] = "synthetic"
         orders_df = _generate_synthetic_orders(customer_summary, events_df, rng)
     campaign_exposures = _generate_campaign_exposures(treatment_assignments, rng)
-    state_snapshots = _generate_state_snapshots(customer_summary, rng)
+    state_snapshots = _generate_state_snapshots(
+        customer_summary,
+        rng,
+        inactivity_threshold_days=churn_inactivity_days,
+    )
     cohort_retention = _build_cohort_retention(customer_summary, events_df=events_df, orders_df=orders_df)
 
     _customers_cols = [

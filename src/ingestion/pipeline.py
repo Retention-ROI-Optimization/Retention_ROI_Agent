@@ -49,6 +49,69 @@ class MappingPreview:
     sample_rows: pd.DataFrame                   # 미리보기 (5행)
     total_rows: int
     file_path: str
+    recommended_churn_days: Optional[int] = None # 활동/구매 주기 기반 추천 이탈 기준일
+
+
+def _recommend_churn_days_from_activity(
+    df: pd.DataFrame,
+    *,
+    customer_id_col: Optional[str],
+    timestamp_col: Optional[str],
+    event_type_col: Optional[str] = None,
+    event_value_mapping: Optional[Dict[str, str]] = None,
+) -> Optional[int]:
+    """Estimate churn inactivity days from customers' visit/purchase cadence."""
+    if not customer_id_col or not timestamp_col:
+        return None
+    if customer_id_col not in df.columns or timestamp_col not in df.columns or df.empty:
+        return None
+
+    ts = _detect_date_column(df, timestamp_col)
+    work_cols = [customer_id_col]
+    if event_type_col and event_type_col in df.columns:
+        work_cols.append(event_type_col)
+
+    work = df.loc[ts.notna(), work_cols].copy()
+    if work.empty:
+        return None
+    work["_ts"] = ts.loc[work.index]
+    work = work.dropna(subset=[customer_id_col, "_ts"])
+    if work.empty:
+        return None
+
+    candidates: List[pd.DataFrame] = []
+    if event_type_col and event_type_col in work.columns and event_value_mapping:
+        mapped_event = work[event_type_col].astype(str).map(event_value_mapping).fillna("other")
+        purchase_events = work[mapped_event.eq("purchase")]
+        if len(purchase_events) >= 20:
+            candidates.append(purchase_events)
+    candidates.append(work)
+
+    for candidate in candidates:
+        ordered = candidate.sort_values([customer_id_col, "_ts"])
+        intervals = ordered.groupby(customer_id_col)["_ts"].diff().dt.total_seconds().div(86_400)
+        ordered = ordered.assign(_interval_days=intervals)
+        valid_intervals = ordered[
+            (ordered["_interval_days"] > 0)
+            & (ordered["_interval_days"] <= 365)
+        ]
+        if valid_intervals.empty:
+            continue
+
+        customer_cycles = valid_intervals.groupby(customer_id_col)["_interval_days"].mean()
+        customer_cycles = customer_cycles[customer_cycles > 0]
+        if len(customer_cycles) < 3:
+            continue
+
+        average_cycle_days = float(customer_cycles.median())
+        if pd.isna(average_cycle_days) or average_cycle_days <= 0:
+            continue
+
+        # Midpoint of the recommended 1.5x~2.0x activity-cycle range.
+        recommended = int(round(average_cycle_days * 1.75))
+        return max(7, min(180, recommended))
+
+    return None
 
 
 def prepare_mapping_preview(file_path: str | Path) -> MappingPreview:
@@ -60,21 +123,24 @@ def prepare_mapping_preview(file_path: str | Path) -> MappingPreview:
     event_value_mapping: Dict[str, str] = {}
     event_value_counts: Dict[str, int] = {}
     has_event_data = False
+    recommended_churn_days: Optional[int] = None
     coverage_rate = 0.0
     unmapped_values: List[str] = []
     sample_rows = validation.preview if validation.preview is not None else pd.DataFrame()
     total_rows = validation.row_count
 
+    customer_id_col = column_mapping.get("customer_id")
     ev_col = column_mapping.get("event_type")
     ts_col = column_mapping.get("timestamp")
 
     if validation.is_valid and ev_col and ts_col:
         try:
+            usecols = list(dict.fromkeys(col for col in [customer_id_col, ev_col, ts_col] if col))
             for enc in ["utf-8", "cp949", "euc-kr", "latin-1"]:
                 try:
                     df = pd.read_csv(
                         file_path, encoding=enc,
-                        usecols=[ev_col, ts_col],
+                        usecols=usecols,
                         nrows=200_000,
                         low_memory=False,
                     )
@@ -97,6 +163,13 @@ def prepare_mapping_preview(file_path: str | Path) -> MappingPreview:
                     }
                     coverage_rate = report["coverage_rate"]
                     unmapped_values = report["unmapped_values"]
+                    recommended_churn_days = _recommend_churn_days_from_activity(
+                        df,
+                        customer_id_col=customer_id_col,
+                        timestamp_col=ts_col,
+                        event_type_col=ev_col,
+                        event_value_mapping=event_value_mapping,
+                    )
         except Exception:
             pass
 
@@ -106,6 +179,7 @@ def prepare_mapping_preview(file_path: str | Path) -> MappingPreview:
         event_value_mapping=event_value_mapping,
         event_value_counts=event_value_counts,
         has_event_data=has_event_data,
+        recommended_churn_days=recommended_churn_days,
         coverage_rate=coverage_rate,
         unmapped_values=unmapped_values,
         sample_rows=sample_rows,
@@ -224,6 +298,7 @@ def run_ingestion_pipeline(
             budget=budget,
             threshold=threshold,
             max_customers=max_customers,
+            churn_inactivity_days=churn_inactivity_days,
         )
         pipeline_result.training = training_result
         pipeline_result.success = training_result.success
