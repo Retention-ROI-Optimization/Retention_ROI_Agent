@@ -2229,7 +2229,7 @@ def _result_data_token() -> str:
 
 
 @st.cache_data(show_spinner=False)
-def _load_app_bundle_cached(_token: str, data_dir: str = "data/raw"):
+def _load_app_bundle_cached(token: str, data_dir: str = "data/raw"):
     return load_dashboard_bundle(data_dir=data_dir, include_optional=False)
 
 
@@ -2266,7 +2266,7 @@ def _resolve_result_dir_for_mode(mode: str) -> str:
 
 
 @st.cache_data(show_spinner=False)
-def _load_insight_bundle_cached(_raw_token: str, _result_token: str, data_dir: str = "data/raw", result_dir: str = "results"):
+def _load_insight_bundle_cached(raw_token: str, result_token: str, data_dir: str = "data/raw", result_dir: str = "results"):
     return load_dashboard_insight_bundle(data_dir=data_dir, result_dir=result_dir)
 
 
