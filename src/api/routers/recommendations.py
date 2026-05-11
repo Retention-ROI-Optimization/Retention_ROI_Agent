@@ -16,14 +16,24 @@ router = APIRouter(prefix='/recommendations', tags=['recommendations'])
 MAX_RECOMMENDATION_CUSTOMERS = 5000
 
 
-def _should_rebuild(summary: dict, *, limit: int, per_customer: int, budget: int, threshold: float, max_customers: int) -> bool:
+def _should_rebuild(
+    summary: dict,
+    *,
+    limit: int,
+    per_customer: int,
+    budget: int,
+    threshold: float,
+    max_customers: int,
+) -> bool:
     if not summary:
         return True
-    budget_context = summary.get('budget_context', {})
+
+    budget_context = summary.get('budget_context', {}) or {}
+
     return any([
         int(summary.get('per_customer', 0)) != int(per_customer),
         int(summary.get('candidate_limit', 0)) != int(limit),
-        str(summary.get('target_source', '')) != 'optimized_targets',
+        str(summary.get('target_source', '')) not in {'optimized_targets', 'current_budget_threshold_targets'},
         int(budget_context.get('budget', -1)) != int(budget),
         float(budget_context.get('max_customers_cap', -1)) != float(max_customers),
         abs(float(budget_context.get('threshold', threshold)) - float(threshold)) > 1e-12,
@@ -47,7 +57,10 @@ def personalized_recommendations(
 
     summary = {}
     if summary_path.exists():
-        summary = json.loads(summary_path.read_text(encoding='utf-8'))
+        try:
+            summary = json.loads(summary_path.read_text(encoding='utf-8'))
+        except Exception:
+            summary = {}
 
     if rebuild or (not result_path.exists()) or _should_rebuild(
         summary,
@@ -66,9 +79,11 @@ def personalized_recommendations(
             per_customer=per_customer,
             candidate_limit=requested_limit,
         )
-        summary = dict(pipeline_result.get('metadata', {}))
-        budget_context = summary.get('budget_context', {})
+        summary = dict(pipeline_result.get('metadata', {}) or {})
+        budget_context = dict(summary.get('budget_context', {}) or {})
+        budget_context['budget'] = int(budget)
         budget_context['threshold'] = float(threshold)
+        budget_context['max_customers_cap'] = int(max_customers)
         summary['budget_context'] = budget_context
         summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding='utf-8')
 
@@ -80,14 +95,24 @@ def personalized_recommendations(
         return RecommendationResponse(rows=0, summary=summary, records=[])
 
     order_column = 'target_priority_score' if 'target_priority_score' in df.columns else 'recommendation_priority'
-    customer_order = (
-        df.groupby('customer_id')[order_column]
-        .max()
-        .sort_values(ascending=False)
-        .head(requested_limit)
-        .index.tolist()
-    )
-    df = df[df['customer_id'].isin(customer_order)].copy()
-    df['customer_sort'] = df['customer_id'].map({cid: idx for idx, cid in enumerate(customer_order)})
-    df = df.sort_values(['customer_sort', 'recommendation_rank']).drop(columns=['customer_sort'])
+    if order_column not in df.columns:
+        order_column = 'recommendation_score' if 'recommendation_score' in df.columns else None
+
+    if order_column and 'customer_id' in df.columns:
+        customer_order = (
+            df.groupby('customer_id')[order_column]
+            .max()
+            .sort_values(ascending=False)
+            .head(requested_limit)
+            .index.tolist()
+        )
+        df = df[df['customer_id'].isin(customer_order)].copy()
+        df['customer_sort'] = df['customer_id'].map({cid: idx for idx, cid in enumerate(customer_order)})
+        sort_cols = ['customer_sort']
+        if 'recommendation_rank' in df.columns:
+            sort_cols.append('recommendation_rank')
+        df = df.sort_values(sort_cols).drop(columns=['customer_sort'])
+    else:
+        df = df.head(requested_limit * int(per_customer)).copy()
+
     return RecommendationResponse(rows=int(len(df)), summary=summary, records=df.to_dict(orient='records'))
