@@ -2229,7 +2229,7 @@ def _result_data_token() -> str:
 
 
 @st.cache_data(show_spinner=False)
-def _load_app_bundle_cached(token: str, data_dir: str = "data/raw"):
+def _load_app_bundle_cached(_token: str, data_dir: str = "data/raw"):
     return load_dashboard_bundle(data_dir=data_dir, include_optional=False)
 
 
@@ -2266,7 +2266,7 @@ def _resolve_result_dir_for_mode(mode: str) -> str:
 
 
 @st.cache_data(show_spinner=False)
-def _load_insight_bundle_cached(raw_token: str, result_token: str, data_dir: str = "data/raw", result_dir: str = "results"):
+def _load_insight_bundle_cached(_raw_token: str, _result_token: str, data_dir: str = "data/raw", result_dir: str = "results"):
     return load_dashboard_insight_bundle(data_dir=data_dir, result_dir=result_dir)
 
 
@@ -2547,51 +2547,43 @@ def _render_html_table(
     prefer_static: bool = False,
 ) -> None:
     safe_df = _sanitize_display_dataframe(df)
-    st.caption(_describe_table_count(safe_df, label=label))
 
     if safe_df.empty:
+        st.caption(_describe_table_count(safe_df, label=label))
         st.info("표시할 데이터가 없습니다.")
         return
 
     total_rows = int(len(safe_df))
     view_df = safe_df
-    show_controls = (not prefer_static) and total_rows > 40
-    if show_controls:
-        controls = st.columns([1.2, 1.2, 4.6])
-        size_key = _table_widget_key(label, "page_size")
-        page_key = _table_widget_key(label, "page")
-        options = [50, 100, 250, 500, 1000]
-        options = [opt for opt in options if opt < total_rows]
-        options.append(total_rows if total_rows <= 5000 else 1000)
-        options = sorted(set(options))
-        default_page_size = 100 if total_rows >= 100 else total_rows
-        page_size = controls[0].selectbox(
-            "행/페이지",
-            options=options,
-            index=options.index(default_page_size if default_page_size in options else options[-1]),
-            key=size_key,
-        )
-        total_pages = max(1, math.ceil(total_rows / int(page_size)))
-        page = controls[1].number_input(
-            "페이지",
-            min_value=1,
-            max_value=total_pages,
-            value=min(st.session_state.get(page_key, 1), total_pages),
-            step=1,
-            key=page_key,
-        )
-        start = (int(page) - 1) * int(page_size)
-        end = min(start + int(page_size), total_rows)
-        controls[2].markdown(
-            f"<div class='oai-table-controls'>전체 <b>{total_rows:,}</b>행 중 <b>{start + 1:,}</b>–<b>{end:,}</b>행 표시</div>",
-            unsafe_allow_html=True,
-        )
-        view_df = safe_df.iloc[start:end].copy()
+    _search_active = False
 
-    html_table = view_df.to_html(index=not hide_index, classes=["oai-data-table"], border=0, escape=True)
-    st.markdown(
-        f"<div class='oai-table-wrapper' style='max-height:{max(220, int(max_height))}px'>{html_table}</div>",
-        unsafe_allow_html=True,
+    if total_rows > 20:
+        search_key = _table_widget_key(label, "search")
+        _q = st.text_input(
+            f"{label} 검색",
+            placeholder="고객 ID, 세그먼트 등 검색...",
+            key=search_key,
+            label_visibility="collapsed",
+        )
+        if _q.strip():
+            _search_active = True
+            _ql = _q.strip().lower()
+            mask = safe_df.apply(
+                lambda row, q=_ql: any(q in str(v).lower() for v in row),
+                axis=1,
+            )
+            view_df = safe_df[mask].reset_index(drop=True)
+
+    if _search_active:
+        st.caption(f"{label}: 전체 {total_rows:,}건 중 {len(view_df):,}건 일치")
+    else:
+        st.caption(_describe_table_count(safe_df, label=label))
+
+    st.dataframe(
+        view_df,
+        use_container_width=True,
+        hide_index=hide_index,
+        height=max(280, int(max_height)),
     )
 
 
