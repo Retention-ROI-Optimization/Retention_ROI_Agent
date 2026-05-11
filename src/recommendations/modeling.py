@@ -17,6 +17,15 @@ class RecommendationArtifacts:
 
 TARGET_META_COLUMNS = [
     'customer_id',
+    # Current budget/live-model score columns.  These must override stale
+    # customer_summary values when recommendations are generated for the
+    # dashboard's current target set.
+    'churn_probability',
+    'churn_score',
+    'risk_segment',
+    'clv',
+    'uplift_score',
+    'coupon_affinity',
     'priority_score',
     'expected_incremental_profit',
     'expected_roi',
@@ -85,16 +94,91 @@ def _global_popularity(orders: pd.DataFrame) -> pd.DataFrame:
     return out[['item_category', 'global_popularity']]
 
 
+def _rank01(series: pd.Series) -> pd.Series:
+    numeric = pd.to_numeric(series, errors='coerce').replace([np.inf, -np.inf], np.nan).fillna(0.0)
+    if numeric.nunique(dropna=True) <= 1:
+        return pd.Series(np.zeros(len(numeric)), index=numeric.index, dtype=float)
+    return numeric.rank(method='average', pct=True).astype(float).clip(0.0, 1.0)
+
+
+
+
+def _safe_numeric_column(df: pd.DataFrame, column: str, default: float = 0.0) -> pd.Series:
+    """Return a numeric Series even when the column is missing.
+
+    pandas.to_numeric(0.0) returns a scalar float, so calling .fillna() on it
+    raises: 'float' object has no attribute 'fillna'.  This helper keeps all
+    optional target/customer columns as Series aligned to df.index.
+    """
+    if column in df.columns:
+        return pd.to_numeric(df[column], errors='coerce').replace([np.inf, -np.inf], np.nan).fillna(float(default))
+    return pd.Series(float(default), index=df.index, dtype='float64')
+
+
+def _coalesce_target_columns(candidates: pd.DataFrame) -> pd.DataFrame:
+    """Let current dashboard/live-target values override stale customer_summary values.
+
+    The user-mode dashboard first chooses final targets from PostgreSQL live scores
+    and action candidates.  Those rows contain the freshly rescored model output.
+    customer_summary may still contain preprocessing proxy columns, so any *_target
+    values produced by the merge must win.
+    """
+    out = candidates.copy()
+
+    for col in [
+        'churn_probability',
+        'churn_score',
+        'risk_segment',
+        'clv',
+        'uplift_score',
+        'coupon_affinity',
+        'priority_score',
+        'selection_score',
+        'expected_incremental_profit',
+        'expected_roi',
+        'coupon_cost',
+        'persona',
+        'uplift_segment',
+        'predicted_median_time_to_churn_days',
+        'timing_urgency_score',
+        'intervention_window_days',
+        'recommended_intervention_window',
+        'timing_priority_bucket',
+        'short_term_churn_probability',
+        'intervention_intensity',
+        'intervention_intensity_label',
+        'recommended_action',
+    ]:
+        target_col = f'{col}_target'
+        if target_col not in out.columns:
+            continue
+        if col not in out.columns:
+            out[col] = out[target_col]
+        else:
+            out[col] = out[target_col].where(out[target_col].notna(), out[col])
+
+    if 'churn_score' in out.columns:
+        model_score = pd.to_numeric(out['churn_score'], errors='coerce')
+        if 'churn_probability' not in out.columns:
+            out['churn_probability'] = model_score
+        else:
+            out['churn_probability'] = model_score.where(model_score.notna(), pd.to_numeric(out['churn_probability'], errors='coerce'))
+
+    return out
+
+
 def _build_candidate_customers(customer_summary: pd.DataFrame) -> pd.DataFrame:
     df = customer_summary.copy()
-    df['churn_probability'] = pd.to_numeric(df.get('churn_probability', 0.0), errors='coerce').fillna(0.0)
-    df['uplift_score'] = pd.to_numeric(df.get('uplift_score', 0.0), errors='coerce').fillna(0.0)
-    df['clv'] = pd.to_numeric(df.get('clv', 0.0), errors='coerce').fillna(0.0)
-    df['coupon_affinity'] = pd.to_numeric(df.get('coupon_affinity', 0.0), errors='coerce').fillna(0.0)
+    if 'churn_probability' not in df.columns and 'churn_score' in df.columns:
+        df['churn_probability'] = df['churn_score']
+    df['churn_probability'] = _safe_numeric_column(df, 'churn_probability', 0.0)
+    df['uplift_score'] = _safe_numeric_column(df, 'uplift_score', 0.0)
+    df['clv'] = _safe_numeric_column(df, 'clv', 0.0)
+    df['coupon_affinity'] = _safe_numeric_column(df, 'coupon_affinity', 0.0)
     df['recommendation_priority'] = (
-        0.45 * df['churn_probability']
-        + 0.25 * df['uplift_score']
-        + 0.30 * (df['clv'] / max(float(df['clv'].max()), 1.0))
+        0.45 * df['churn_probability'].clip(0.0, 1.0)
+        + 0.25 * _rank01(df['uplift_score'])
+        + 0.30 * _rank01(df['clv'])
     )
     df['target_priority_score'] = df['recommendation_priority']
     return df[df['churn_probability'] >= 0.45].sort_values(
@@ -126,35 +210,31 @@ def _prepare_target_customers(
     if candidates.empty:
         return candidates, 'optimized_targets'
 
+    candidates = _coalesce_target_columns(candidates)
+
     for col in ['churn_probability', 'uplift_score', 'clv', 'coupon_affinity']:
-        candidates[col] = pd.to_numeric(candidates.get(col, 0.0), errors='coerce').fillna(0.0)
+        candidates[col] = _safe_numeric_column(candidates, col, 0.0)
 
-    if 'persona_target' in candidates.columns:
-        candidates['persona'] = candidates['persona_target'].fillna(candidates.get('persona'))
-    if 'uplift_segment_target' in candidates.columns:
-        candidates['uplift_segment'] = candidates['uplift_segment_target'].fillna(candidates.get('uplift_segment'))
+    candidates['priority_score'] = _safe_numeric_column(candidates, 'priority_score', 0.0)
+    candidates['expected_incremental_profit'] = _safe_numeric_column(candidates, 'expected_incremental_profit', 0.0)
+    candidates['expected_roi'] = _safe_numeric_column(candidates, 'expected_roi', 0.0)
+    candidates['coupon_cost'] = _safe_numeric_column(candidates, 'coupon_cost', 0.0)
 
-    candidates['priority_score'] = pd.to_numeric(candidates.get('priority_score', 0.0), errors='coerce').fillna(0.0)
-    candidates['expected_incremental_profit'] = pd.to_numeric(
-        candidates.get('expected_incremental_profit', 0.0),
-        errors='coerce',
-    ).fillna(0.0)
-    candidates['expected_roi'] = pd.to_numeric(candidates.get('expected_roi', 0.0), errors='coerce').fillna(0.0)
-    candidates['coupon_cost'] = pd.to_numeric(candidates.get('coupon_cost', 0.0), errors='coerce').fillna(0.0)
-
-    candidates['predicted_median_time_to_churn_days'] = pd.to_numeric(candidates.get('predicted_median_time_to_churn_days', 90.0), errors='coerce').fillna(90.0)
-    candidates['timing_urgency_score'] = pd.to_numeric(candidates.get('timing_urgency_score', 0.0), errors='coerce').fillna(0.0)
-    candidates['intervention_window_days'] = pd.to_numeric(candidates.get('intervention_window_days', candidates['predicted_median_time_to_churn_days']), errors='coerce').fillna(candidates['predicted_median_time_to_churn_days'])
-    candidates['short_term_churn_probability'] = pd.to_numeric(candidates.get('short_term_churn_probability', 0.0), errors='coerce').fillna(0.0)
-    max_clv = max(float(candidates['clv'].max()), 1.0)
+    candidates['predicted_median_time_to_churn_days'] = _numeric_column(candidates, 'predicted_median_time_to_churn_days', 90.0)
+    candidates['timing_urgency_score'] = _numeric_column(candidates, 'timing_urgency_score', 0.0)
+    if 'intervention_window_days' in candidates.columns:
+        candidates['intervention_window_days'] = pd.to_numeric(candidates['intervention_window_days'], errors='coerce').fillna(candidates['predicted_median_time_to_churn_days'])
+    else:
+        candidates['intervention_window_days'] = candidates['predicted_median_time_to_churn_days']
+    candidates['short_term_churn_probability'] = _numeric_column(candidates, 'short_term_churn_probability', 0.0)
     candidates['recommendation_priority'] = (
-        0.32 * candidates['priority_score']
-        + 0.18 * candidates['churn_probability']
-        + 0.12 * candidates['uplift_score']
-        + 0.14 * (candidates['clv'] / max_clv)
-        + 0.10 * candidates['expected_roi'].clip(lower=0.0)
-        + 0.14 * candidates['timing_urgency_score']
-    )
+        0.30 * _rank01(candidates['priority_score'])
+        + 0.22 * candidates['churn_probability'].clip(0.0, 1.0)
+        + 0.14 * _rank01(candidates['uplift_score'])
+        + 0.14 * _rank01(candidates['clv'])
+        + 0.10 * _rank01(candidates['expected_roi'].clip(lower=0.0))
+        + 0.10 * candidates['timing_urgency_score'].clip(0.0, 1.0)
+    ).clip(0.0, 1.0)
     candidates['target_priority_score'] = candidates['priority_score']
 
     candidates = candidates.sort_values(
@@ -196,6 +276,12 @@ def _normalize(series: pd.Series) -> pd.Series:
     if series.max() - series.min() < 1e-9:
         return pd.Series(np.zeros(len(series)), index=series.index)
     return (series - series.min()) / (series.max() - series.min())
+
+
+def _numeric_column(df: pd.DataFrame, column: str, default: float = 0.0) -> pd.Series:
+    if column in df.columns:
+        return pd.to_numeric(df[column], errors='coerce').fillna(float(default))
+    return pd.Series(float(default), index=df.index, dtype=float)
 
 
 def run_personalized_recommendation_pipeline(
@@ -296,12 +382,15 @@ def run_personalized_recommendation_pipeline(
                 )
 
     rec_df = pd.DataFrame(rows)
+    customers_covered = int(rec_df['customer_id'].nunique()) if not rec_df.empty else 0
     summary = {
         'rows': int(len(rec_df)),
-        'customers_covered': int(rec_df['customer_id'].nunique()) if not rec_df.empty else 0,
+        'customers_covered': customers_covered,
         'per_customer': int(per_customer),
+        'actual_per_customer': round(float(len(rec_df) / customers_covered), 3) if customers_covered else 0.0,
         'candidate_limit': int(candidate_limit),
         'target_source': resolved_target_source,
+        'target_candidates_received': int(len(candidates)),
         'top_categories': rec_df['recommended_category'].value_counts().head(10).to_dict() if not rec_df.empty else {},
     }
     recommendations_path = result_dir / 'personalized_recommendations.csv'

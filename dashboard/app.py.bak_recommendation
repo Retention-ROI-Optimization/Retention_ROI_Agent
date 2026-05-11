@@ -543,34 +543,6 @@ def _normalize_live_actions_df(df: pd.DataFrame) -> pd.DataFrame:
         if numeric_col in fixed.columns:
             fixed[numeric_col] = pd.to_numeric(fixed[numeric_col], errors="coerce").fillna(0.0)
 
-    # action_queue can contain expected_profit/expected_roi while coupon_cost is missing or 0.
-    # If coupon_cost stays 0, the budget-target filter drops otherwise valid rows.
-    if "coupon_cost" not in fixed.columns:
-        fixed["coupon_cost"] = 0.0
-
-    _profit_for_cost = pd.to_numeric(
-        fixed.get(
-            "expected_incremental_profit",
-            fixed.get("expected_profit", pd.Series(0.0, index=fixed.index)),
-        ),
-        errors="coerce",
-    ).replace([np.inf, -np.inf], np.nan).fillna(0.0)
-
-    _roi_for_cost = pd.to_numeric(
-        fixed.get("expected_roi", pd.Series(0.0, index=fixed.index)),
-        errors="coerce",
-    ).replace([np.inf, -np.inf], np.nan).fillna(0.0)
-
-    _cost_current = pd.to_numeric(
-        fixed.get("coupon_cost", pd.Series(0.0, index=fixed.index)),
-        errors="coerce",
-    ).replace([np.inf, -np.inf], np.nan).fillna(0.0)
-
-    _derived_cost = (_profit_for_cost / _roi_for_cost.replace(0, np.nan)).replace([np.inf, -np.inf], np.nan).fillna(0.0)
-    _cost_missing = (_cost_current <= 0) & (_profit_for_cost > 0) & (_roi_for_cost > 0)
-    fixed.loc[_cost_missing, "coupon_cost"] = _derived_cost.loc[_cost_missing]
-    fixed["coupon_cost"] = pd.to_numeric(fixed["coupon_cost"], errors="coerce").replace([np.inf, -np.inf], np.nan).fillna(0.0)
-
     heavy_cols = [col for col in ["score_payload", "feature_payload", "source_payload"] if col in fixed.columns]
     normalized = _ensure_retention_target_schema(fixed)
     if heavy_cols:
@@ -679,18 +651,7 @@ def _merge_live_score_dimensions(actions_df: pd.DataFrame, scores_df: pd.DataFra
         score_col = f"{col}_score"
         if score_col not in merged.columns:
             continue
-        # score table is authoritative for numeric score fields.
-        # action_queue rows may have been normalized earlier with churn_probability=0.0.
-        # If we treat that temporary 0.0 as a real value, every candidate fails
-        # the dashboard threshold filter and final targets become 0.
-        if col in {"churn_probability", "churn_score", "clv", "uplift_score"}:
-            score_values = pd.to_numeric(merged[score_col], errors="coerce")
-            if col not in merged.columns:
-                merged[col] = score_values
-            else:
-                current_values = pd.to_numeric(merged[col], errors="coerce")
-                merged[col] = score_values.where(score_values.notna(), current_values).fillna(0.0)
-        elif col not in merged.columns:
+        if col not in merged.columns:
             merged[col] = merged[score_col]
         else:
             missing_mask = merged[col].map(_is_placeholder_segment)
@@ -1054,16 +1015,13 @@ def _fallback_existing_live_recommendations(
         }, pd.DataFrame()
 
     summary = dict(live_summary or {})
-    covered = int(live_df["customer_id"].nunique()) if "customer_id" in live_df.columns else 0
     summary.update({
         "rows": int(len(live_df)),
-        "customers_covered": covered,
+        "customers_covered": int(live_df["customer_id"].nunique()) if "customer_id" in live_df.columns else 0,
         "per_customer": int(per_customer),
-        "actual_per_customer": round(float(len(live_df) / covered), 3) if covered else 0.0,
         "candidate_limit": int(max_customers or 0),
         "budget_context": dict(optimize_summary or {}),
         "source": "postgresql_user_live_saved_recommendation_fallback",
-        "is_fallback": True,
         "warning": reason + " 저장된 live 추천 후보를 대신 표시합니다.",
     })
     return summary, live_df
@@ -1079,53 +1037,29 @@ def _build_dynamic_user_recommendations(
 ) -> tuple[dict[str, Any], pd.DataFrame]:
     """현재 최적화 결과를 기준으로 user mode 개인화 추천을 즉시 재생성한다."""
     if selected_customers is None or selected_customers.empty:
-        budget_context = dict(optimize_summary or {})
-        budget_context.update({
-            "budget": int(budget),
-            "threshold": float(threshold),
-            "max_customers_cap": int(max_customers),
-            "num_targeted": int(budget_context.get("num_targeted", 0) or 0),
-        })
-        return {
-            "rows": 0,
-            "customers_covered": 0,
-            "per_customer": int(per_customer),
-            "actual_per_customer": 0.0,
-            "candidate_limit": int(max_customers),
-            "eligible_target_customers": 0,
-            "budget_context": budget_context,
-            "source": "current_budget_threshold_targets",
-            "warning": (
-                "현재 예산/임계값 조건에서 최종 타겟 고객이 없어 새 개인화 추천을 생성하지 않았습니다. "
-                "저장된 과거 후보와 현재 조건 결과가 섞이지 않도록 추천 테이블을 비워 둡니다."
-            ),
-        }, pd.DataFrame()
+        return _fallback_existing_live_recommendations(
+            per_customer=per_customer,
+            max_customers=max_customers,
+            optimize_summary=optimize_summary,
+            reason="현재 예산/임계값 조건에서 새 추천을 만들 최종 타겟 고객이 없습니다.",
+        )
 
     data_dir = Path("data/raw_user")
     result_dir = Path("results_user")
     required_files = [data_dir / "customer_summary.csv", data_dir / "orders.csv", data_dir / "events.csv"]
     missing_files = [str(path) for path in required_files if not path.exists()]
     if missing_files:
-        budget_context = dict(optimize_summary or {})
-        budget_context.update({
-            "budget": int(budget),
-            "threshold": float(threshold),
-            "max_customers_cap": int(max_customers),
-            "num_targeted": int(len(selected_customers)),
-        })
+        fallback_path = result_dir / "personalized_recommendations.csv"
+        fallback_df = pd.read_csv(fallback_path) if fallback_path.exists() else pd.DataFrame()
         summary = {
-            "rows": 0,
-            "customers_covered": 0,
+            "rows": int(len(fallback_df)),
+            "customers_covered": int(fallback_df["customer_id"].nunique()) if not fallback_df.empty and "customer_id" in fallback_df.columns else 0,
             "per_customer": int(per_customer),
-            "actual_per_customer": 0.0,
             "candidate_limit": int(max_customers),
-            "eligible_target_customers": int(len(selected_customers)),
-            "budget_context": budget_context,
-            "source": "current_budget_threshold_targets",
-            "error": "user raw data 파일이 없어 새 추천을 생성하지 못했습니다: " + ", ".join(missing_files),
-            "warning": "필수 user raw data가 없어 저장된 과거 추천 후보를 현재 추천처럼 표시하지 않습니다.",
+            "budget_context": dict(optimize_summary or {}),
+            "error": "user raw data 파일이 없어 저장된 추천 결과만 표시합니다: " + ", ".join(missing_files),
         }
-        return summary, pd.DataFrame()
+        return summary, fallback_df
 
     try:
         from src.recommendations.modeling import run_personalized_recommendation_pipeline
@@ -1141,32 +1075,14 @@ def _build_dynamic_user_recommendations(
             target_source="current_budget_threshold_targets",
         )
         rec_df = pd.read_csv(artifacts.recommendations_path) if Path(artifacts.recommendations_path).exists() else pd.DataFrame()
-        if hasattr(artifacts, "summary") and isinstance(getattr(artifacts, "summary"), dict):
-            summary = dict(artifacts.summary)
-        elif hasattr(artifacts, "summary_path") and Path(artifacts.summary_path).exists():
-            summary = json.loads(Path(artifacts.summary_path).read_text(encoding="utf-8"))
-        else:
-            summary = {}
+        summary = dict(artifacts.summary)
     except Exception as exc:
-        budget_context = dict(optimize_summary or {})
-        budget_context.update({
-            "budget": int(budget),
-            "threshold": float(threshold),
-            "max_customers_cap": int(max_customers),
-            "num_targeted": int(len(selected_customers)),
-        })
-        return {
-            "rows": 0,
-            "customers_covered": 0,
-            "per_customer": int(per_customer),
-            "actual_per_customer": 0.0,
-            "candidate_limit": int(max_customers),
-            "eligible_target_customers": int(len(selected_customers)),
-            "budget_context": budget_context,
-            "source": "current_budget_threshold_targets",
-            "error": f"새 추천 재생성에 실패했습니다({exc}).",
-            "warning": "새 추천 재생성에 실패하여 저장된 과거 추천 후보를 현재 추천처럼 표시하지 않습니다.",
-        }, pd.DataFrame()
+        return _fallback_existing_live_recommendations(
+            per_customer=per_customer,
+            max_customers=max_customers,
+            optimize_summary=optimize_summary,
+            reason=f"새 추천 재생성에 실패했습니다({exc}).",
+        )
 
     budget_context = dict(optimize_summary or {})
     budget_context.update({
@@ -1174,16 +1090,13 @@ def _build_dynamic_user_recommendations(
         "threshold": float(threshold),
         "max_customers_cap": int(max_customers),
     })
-    covered = int(rec_df["customer_id"].nunique()) if not rec_df.empty and "customer_id" in rec_df.columns else 0
     summary.update({
         "rows": int(len(rec_df)),
-        "customers_covered": covered,
+        "customers_covered": int(rec_df["customer_id"].nunique()) if not rec_df.empty and "customer_id" in rec_df.columns else 0,
         "per_customer": int(per_customer),
-        "actual_per_customer": round(float(len(rec_df) / covered), 3) if covered else 0.0,
         "candidate_limit": int(max_customers),
         "eligible_target_customers": int(len(selected_customers)),
         "budget_context": budget_context,
-        "source": summary.get("target_source", "current_budget_threshold_targets"),
     })
     try:
         (result_dir / "personalized_recommendations_summary.json").write_text(
@@ -1217,7 +1130,7 @@ def _load_user_live_tables(*, top_n: int, target_cap: int) -> dict[str, Any]:
     if not payload["enabled"]:
         return payload
 
-    safe_limit = max(int(top_n), int(target_cap) * 10, 10000)
+    safe_limit = max(int(top_n), int(target_cap), 100)
     try:
         payload["health"] = fetch_user_live_health()
     except Exception as exc:
@@ -1273,11 +1186,10 @@ def _render_user_live_status(live_payload: dict[str, Any]) -> None:
     status = seed_status.get("status", {}) if isinstance(seed_status, dict) else {}
     if status:
         st.caption(
-            "Live DB 상태 · "
+            "Live seed 상태 · "
             f"scores={int(status.get('score_count') or 0):,}, "
-            f"저장 추천후보={int(status.get('recommendation_count') or 0):,}, "
-            f"queued actions={int(status.get('action_queue_count') or 0):,} "
-            "(5번 화면은 저장 후보를 그대로 쓰지 않고 현재 예산·임계값 타겟 기준으로 새 추천을 만듭니다.)"
+            f"recommendations={int(status.get('recommendation_count') or 0):,}, "
+            f"actions={int(status.get('action_queue_count') or 0):,}"
         )
 # ============================================================
 # [/PATCH]
@@ -2317,7 +2229,7 @@ def _result_data_token() -> str:
 
 
 @st.cache_data(show_spinner=False)
-def _load_app_bundle_cached(_token: str, data_dir: str = "data/raw"):
+def _load_app_bundle_cached(token: str, data_dir: str = "data/raw"):
     return load_dashboard_bundle(data_dir=data_dir, include_optional=False)
 
 
@@ -2354,7 +2266,7 @@ def _resolve_result_dir_for_mode(mode: str) -> str:
 
 
 @st.cache_data(show_spinner=False)
-def _load_insight_bundle_cached(_raw_token: str, _result_token: str, data_dir: str = "data/raw", result_dir: str = "results"):
+def _load_insight_bundle_cached(raw_token: str, result_token: str, data_dir: str = "data/raw", result_dir: str = "results"):
     return load_dashboard_insight_bundle(data_dir=data_dir, result_dir=result_dir)
 
 
@@ -2635,43 +2547,51 @@ def _render_html_table(
     prefer_static: bool = False,
 ) -> None:
     safe_df = _sanitize_display_dataframe(df)
+    st.caption(_describe_table_count(safe_df, label=label))
 
     if safe_df.empty:
-        st.caption(_describe_table_count(safe_df, label=label))
         st.info("표시할 데이터가 없습니다.")
         return
 
     total_rows = int(len(safe_df))
     view_df = safe_df
-    _search_active = False
-
-    if total_rows > 20:
-        search_key = _table_widget_key(label, "search")
-        _q = st.text_input(
-            f"{label} 검색",
-            placeholder="고객 ID, 세그먼트 등 검색...",
-            key=search_key,
-            label_visibility="collapsed",
+    show_controls = (not prefer_static) and total_rows > 40
+    if show_controls:
+        controls = st.columns([1.2, 1.2, 4.6])
+        size_key = _table_widget_key(label, "page_size")
+        page_key = _table_widget_key(label, "page")
+        options = [50, 100, 250, 500, 1000]
+        options = [opt for opt in options if opt < total_rows]
+        options.append(total_rows if total_rows <= 5000 else 1000)
+        options = sorted(set(options))
+        default_page_size = 100 if total_rows >= 100 else total_rows
+        page_size = controls[0].selectbox(
+            "행/페이지",
+            options=options,
+            index=options.index(default_page_size if default_page_size in options else options[-1]),
+            key=size_key,
         )
-        if _q.strip():
-            _search_active = True
-            _ql = _q.strip().lower()
-            mask = safe_df.apply(
-                lambda row, q=_ql: any(q in str(v).lower() for v in row),
-                axis=1,
-            )
-            view_df = safe_df[mask].reset_index(drop=True)
+        total_pages = max(1, math.ceil(total_rows / int(page_size)))
+        page = controls[1].number_input(
+            "페이지",
+            min_value=1,
+            max_value=total_pages,
+            value=min(st.session_state.get(page_key, 1), total_pages),
+            step=1,
+            key=page_key,
+        )
+        start = (int(page) - 1) * int(page_size)
+        end = min(start + int(page_size), total_rows)
+        controls[2].markdown(
+            f"<div class='oai-table-controls'>전체 <b>{total_rows:,}</b>행 중 <b>{start + 1:,}</b>–<b>{end:,}</b>행 표시</div>",
+            unsafe_allow_html=True,
+        )
+        view_df = safe_df.iloc[start:end].copy()
 
-    if _search_active:
-        st.caption(f"{label}: 전체 {total_rows:,}건 중 {len(view_df):,}건 일치")
-    else:
-        st.caption(_describe_table_count(safe_df, label=label))
-
-    st.dataframe(
-        view_df,
-        use_container_width=True,
-        hide_index=hide_index,
-        height=max(280, int(max_height)),
+    html_table = view_df.to_html(index=not hide_index, classes=["oai-data-table"], border=0, escape=True)
+    st.markdown(
+        f"<div class='oai-table-wrapper' style='max-height:{max(220, int(max_height))}px'>{html_table}</div>",
+        unsafe_allow_html=True,
     )
 
 
@@ -3254,7 +3174,6 @@ with st.sidebar:
         if st.session_state.get("upload_path_cached") != str(upload_path):
             st.session_state["upload_path_cached"] = str(upload_path)
             st.session_state.pop("mapping_preview", None)
-            st.session_state.pop("churn_inactivity_days", None)
 
         # ── Step A: 매핑 미리보기 생성 ──
         if "mapping_preview" not in st.session_state:
@@ -3511,29 +3430,19 @@ with st.sidebar:
                 upload_threshold = st.slider("학습 이탈 Threshold", 0.10, 0.90, 0.50, 0.01, key="upload_threshold")
 
             st.markdown("### 📛 이탈 고객 정의")
-            recommended_churn_days = int(getattr(preview, "recommended_churn_days", None) or 30)
             st.caption(
                 "마지막 활동(이벤트/주문) 이후 며칠 동안 활동이 없으면 \"이탈\"로 분류할지 정합니다. "
                 "업종에 따라 적절한 값이 다릅니다."
             )
-            if getattr(preview, "recommended_churn_days", None):
-                st.info(
-                    f"업로드 데이터의 평균 활동/구매 주기를 기준으로 "
-                    f"**{recommended_churn_days}일**을 추천합니다."
-                )
             churn_inactivity_days = st.slider(
                 "이탈 기준: N일 이상 비활성",
-                min_value=7,
-                max_value=180,
-                value=recommended_churn_days,
-                step=1,
+                min_value=7, max_value=180,
+                value=30, step=1,
                 key="churn_inactivity_days",
                 help=(
-                    "**서비스 성격별 권장 기준:**\n\n"
-                    "- **7\~14일:** 데일리 앱 (게임, SNS)\n"
-                    "- **30일:** 일반 커머스, 라이프스타일\n\n"
-                    "- **60\~90일:** 정기 구독 서비스 (OTT, 멤버십)\n\n"
-                    "설정한 기간 동안 접속 기록이 없으면 '이탈'로 간주합니다."
+                    "예: 30일 → 이커머스 일반\n"
+                    "    60~90일 → 구독 서비스 (월간/분기 결제)\n"
+                    "    7~14일 → 일일 사용 앱 (게임/소셜)"
                 ),
             )
             st.caption(f"현재 설정: **마지막 활동 {churn_inactivity_days}일 후 이탈**로 간주")
@@ -3783,28 +3692,14 @@ with st.sidebar:
         st.warning("총 마케팅 예산은 0 이상의 정수로 입력해야 합니다.")
         budget = int(st.session_state.get("control_budget", 5_000_000))
     
-    if "control_target_cap_text" not in st.session_state:
-        st.session_state["control_target_cap_text"] = str(
-            int(st.session_state.get("control_target_cap", 1500))
-        )
-
-    target_cap_raw = st.text_input(
+    target_cap = st.slider(
         "최대 타겟 고객 수",
-        key="control_target_cap_text",
-        help="상한 없이 입력 가능합니다. 1 이상의 정수만 입력하세요.",
+        min_value=100,
+        max_value=5000,
+        step=100,
+        key="control_target_cap",
+        help="예산이 충분하더라도 이 수를 넘겨 타겟팅하지 않습니다. 모든 화면에서 동일하게 유지됩니다.",
     )
-
-    try:
-        target_cap = parse_unlimited_nonnegative_int(
-            target_cap_raw,
-            default=int(st.session_state.get("control_target_cap", 1500)),
-        )
-        if target_cap <= 0:
-            raise ValueError("최대 타겟 고객 수는 1 이상의 정수여야 합니다.")
-        st.session_state["control_target_cap"] = target_cap
-    except ValueError:
-        st.warning("최대 타겟 고객 수는 1 이상의 정수로 입력해야 합니다.")
-        target_cap = int(st.session_state.get("control_target_cap", 1500))
 
     # top_n은 실시간/설명가능성/리스크 화면에서 주로 쓰지만,
     # 화면 이동 시 값이 사라지지 않도록 항상 렌더링한다.
@@ -4752,48 +4647,21 @@ elif view == "5. 개인화 추천":
     ):
         st.stop()
     st.subheader("최종 타겟 고객 대상 개인화 추천")
-    st.caption("현재 예산·이탈 임계값으로 선별된 최종 타겟 고객에게만 새 추천을 생성합니다. 추천 점수는 고객 구매 이력, 최근 관심, 세그먼트 인기, 전역 인기를 혼합해 계산합니다.")
-
-    budget_context = recommendation_summary.get('budget_context', {}) if isinstance(recommendation_summary, dict) else {}
-    current_target_count = int(
-        budget_context.get(
-            'num_targeted',
-            recommendation_summary.get('eligible_target_customers', 0) if isinstance(recommendation_summary, dict) else 0,
-        ) or 0
-    )
-
-    if isinstance(recommendation_summary, dict) and recommendation_summary.get("warning"):
-        st.warning(str(recommendation_summary.get("warning")))
-
-    if isinstance(recommendation_summary, dict):
-        st.caption(
-            f"추천 기준: 예산 {money(budget_context.get('budget', budget))}, "
-            f"이탈 임계값 {float(budget_context.get('threshold', threshold)):.2f}, "
-            f"최대 타겟 {int(budget_context.get('max_customers_cap', target_cap) or 0):,}명"
-        )
+    st.caption("예산/임계값으로 선별된 최종 리텐션 타겟 고객에게만 추천을 생성합니다. 추천 점수는 구매 이력 + 최근 관심 + 세그먼트 인기 + 전역 인기를 혼합해 계산합니다.")
 
     if recommendation_error:
         st.error(f"추천 API 호출 실패: {recommendation_error}")
     elif personalized_recommendations.empty:
-        st.info(
-            "현재 조건에서 생성된 추천이 없습니다. 최종 타겟 고객 수가 0명이면 예산을 늘리거나 "
-            "이탈 임계값을 낮춰야 합니다. 저장된 과거 후보를 현재 추천처럼 표시하지 않습니다."
-        )
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("표시 추천 행 수", "0")
-        m2.metric("추천 대상 고객 수", "0")
-        m3.metric("평균 추천 수/고객", "0.00")
-        m4.metric("현재 최종 타겟 고객 수", f"{current_target_count:,}")
+        st.warning("표시할 추천 결과가 없습니다. 현재 예산/임계값 조건에서 최종 타겟 고객이 없을 수 있습니다.")
     else:
-        covered_customers = int(recommendation_summary.get('customers_covered', personalized_recommendations['customer_id'].nunique()))
-        displayed_rows = int(recommendation_summary.get('rows', len(personalized_recommendations)))
-        actual_per_customer = float(recommendation_summary.get('actual_per_customer', displayed_rows / max(covered_customers, 1)))
-
+        if isinstance(recommendation_summary, dict) and recommendation_summary.get("warning"):
+            st.warning(str(recommendation_summary.get("warning")))
+        budget_context = recommendation_summary.get('budget_context', {})
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric("표시 추천 행 수", f"{displayed_rows:,}")
-        m2.metric("추천 대상 고객 수", f"{covered_customers:,}")
-        m3.metric("평균 추천 수/고객", f"{actual_per_customer:.2f}")
-        m4.metric("현재 최종 타겟 고객 수", f"{current_target_count:,}")
+        m1.metric("추천 행 수", f"{recommendation_summary.get('rows', len(personalized_recommendations)):,}")
+        m2.metric("커버 고객 수", f"{recommendation_summary.get('customers_covered', personalized_recommendations['customer_id'].nunique()):,}")
+        m3.metric("고객당 추천 수", str(recommendation_summary.get('per_customer', recommendation_per_customer)))
+        m4.metric("최종 타겟 고객 수", f"{budget_context.get('num_targeted', recommendation_summary.get('customers_covered', 0)):,}")
 
         category_counts = (
             personalized_recommendations.groupby('recommended_category', as_index=False)
@@ -5330,13 +5198,7 @@ elif view == "10. 증분 성과 / A-B 실험":
             m4.metric("CPIC", "측정 불가", help="추가 유지 고객 수가 0 이하라 분모가 정의되지 않습니다. 효과 검출 실패 — 표본 확대 후 재측정 필요.")
         else:
             m4.metric("CPIC", "-")
-        _p_val_raw = exp_metrics.get('p_value', np.nan)
-        if pd.notna(_p_val_raw):
-            _p_val_float = float(_p_val_raw)
-            _p_display = "< 0.000001" if _p_val_float < 1e-6 else f"{_p_val_float:.6f}"
-        else:
-            _p_display = "-"
-        m5.metric("Z-test p-value", _p_display)
+        m5.metric("Z-test p-value", f"{float(exp_metrics.get('p_value', np.nan)):.6f}" if pd.notna(exp_metrics.get('p_value', np.nan)) else "-")
 
         tab1, tab2, tab3 = st.tabs(["A/B 해석", "개입 강도 효과", "Persuadables 프로필"])
 
