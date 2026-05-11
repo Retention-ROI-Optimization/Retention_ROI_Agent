@@ -5160,7 +5160,24 @@ elif view == "10. 증분 성과 / A-B 실험":
         st.stop()
     st.subheader("증분 성과 / A-B 실험")
     st.caption("정확도보다 더 중요한 운영 지표인 증분 리텐션, 추가 유지 고객 수, 비용 대비 유지 성과, dose-response 결과를 함께 봅니다.")
-
+    # ── Power Analysis 기반 표본 충분성 경고 (개선안 1) ──
+    _ab_test_meta = experiment_overview.get("ab_test", {}) or {}
+    _power_meta = _ab_test_meta.get("power_analysis", {}) or {}
+    _achieved_power = _power_meta.get("achieved_power_with_current_sample", _power_meta.get("achieved_power"))
+    _required_n_per_group = _power_meta.get("required_sample_size_per_group", _power_meta.get("required_n_per_group"))
+    _current_min_n = _power_meta.get("current_min_group_size", _power_meta.get("min_group_size"))
+    if _achieved_power is not None and float(_achieved_power) < 0.80:
+        _ratio_text = ""
+        if _required_n_per_group and _current_min_n:
+            _ratio = float(_current_min_n) / float(_required_n_per_group) * 100
+            _ratio_text = f" (필요 표본의 {_ratio:.1f}%)"
+        st.error(
+            f"⚠️ **검출력 부족 — 결과를 효과 유무의 근거로 사용할 수 없습니다.**\n\n"
+            f"현재 표본은 효과 검출에 필요한 수의 일부에 불과합니다{_ratio_text}. "
+            f"Achieved power **{float(_achieved_power)*100:.1f}%** (목표 80%). "
+            f"아래 수치(증분 리텐션, ROI 등)는 통계적 노이즈일 가능성이 매우 높으며, "
+            f"**'효과가 없다'가 아니라 '효과를 측정할 수 없었다'로 해석해야 합니다.**"
+        )
     exp_metrics = experiment_overview.get("metrics", {})
     _dose_df_for_check = experiment_overview.get("dose_df", pd.DataFrame())
     _ab_has_data = bool(
@@ -5181,7 +5198,13 @@ elif view == "10. 증분 성과 / A-B 실험":
         m2.metric("추가 유지 고객 수", f"{int(round(float(exp_metrics.get('incremental_retained_customers', 0.0)))):,}명")
         m3.metric("쿠폰 집행 총액", money(float(exp_metrics.get('coupon_spend_total', 0.0))))
         cpic_val = exp_metrics.get('incremental_cpic', np.nan)
-        m4.metric("CPIC", money(float(cpic_val)) if pd.notna(cpic_val) else "-")
+        _incremental_n = float(exp_metrics.get('incremental_retained_customers', 0.0))
+        if pd.notna(cpic_val):
+            m4.metric("CPIC", money(float(cpic_val)))
+        elif _incremental_n <= 0:
+            m4.metric("CPIC", "측정 불가", help="추가 유지 고객 수가 0 이하라 분모가 정의되지 않습니다. 효과 검출 실패 — 표본 확대 후 재측정 필요.")
+        else:
+            m4.metric("CPIC", "-")
         m5.metric("Z-test p-value", f"{float(exp_metrics.get('p_value', np.nan)):.6f}" if pd.notna(exp_metrics.get('p_value', np.nan)) else "-")
 
         tab1, tab2, tab3 = st.tabs(["A/B 해석", "개입 강도 효과", "Persuadables 프로필"])
@@ -5189,6 +5212,21 @@ elif view == "10. 증분 성과 / A-B 실험":
         with tab1:
             ab_test = experiment_overview.get("ab_test", {})
             if ab_test:
+                # ── p-value 의미 해석 박스 (개선안 2) ──
+                _p_val = exp_metrics.get('p_value', np.nan)
+                if pd.notna(_p_val):
+                    _p_float = float(_p_val)
+                    if _p_float >= 0.05:
+                        st.info(
+                            f"📊 **p = {_p_float:.4f} 의 의미**\n\n"
+                            f"이 수치는 'Treatment와 Control 사이에 차이가 없다'는 가설이 매우 그럴듯하다는 뜻입니다. "
+                            f"즉 관측된 증분 리텐션은 **캠페인 실패의 증거가 아니라, 효과를 측정할 수 없었다는 증거**입니다. "
+                            f"통계적으로 유의한 결론을 도출하려면 표본 확대 또는 효과 크기 증가가 필요합니다."
+                        )
+                    else:
+                        st.success(
+                            f"📊 **p = {_p_float:.4f}** — 두 그룹 간 차이가 통계적으로 유의합니다 (α=0.05 기준)."
+                        )
                 report_md = ab_test.get("report_markdown", "")
                 if report_md:
                     st.markdown(report_md)
@@ -5218,6 +5256,48 @@ elif view == "10. 증분 성과 / A-B 실험":
             else:
                 st.warning("dose-response 요약을 찾지 못했습니다.")
 
+        # ── What-if 시나리오 카드 (개선안 3) ──
+        st.markdown("---")
+        st.markdown("### 💡 What-if: 충분한 표본/효과 크기 시 예상 성과")
+        st.caption("현재 표본의 검출력 한계를 보완하기 위해, 효과 크기 가정별 운영 시나리오를 계산합니다. 실제 운영 데이터 누적 후 본 시스템이 동일 분석을 자동 수행합니다.")
+
+        _sample_sizes = _ab_test_meta.get("sample_sizes", {}) or {}
+        _business = _ab_test_meta.get("business_metrics", {}) or {}
+        _treat_n = float(_sample_sizes.get("treatment", 0)) or float(_current_min_n or 0)
+        _coupon_total = float(_business.get("treatment_coupon_cost_total", 0.0)) or float(exp_metrics.get('coupon_spend_total', 0.0))
+        # 1인당 매출 추정: 증분 매출 총액 / Treatment 표본 수. 음수면 절댓값으로 추정한 평균 매출 사용.
+        _inc_revenue_per_treated = abs(float(_business.get("incremental_revenue_per_treated_customer", 0.0)))
+        # 추정 평균 매출 = 1%p 증분당 1명당 매출 환산. 데이터 없으면 100,000원 기본값.
+        _avg_revenue_per_retained = _inc_revenue_per_treated * 100 if _inc_revenue_per_treated > 0 else 100000
+        _scenarios = [
+            ("보수적 (+1%p)", 0.01),
+            ("중간 (+2%p)", 0.02),
+            ("낙관적 (+5%p)", 0.05),
+        ]
+        _whatif_rows = []
+        for _label, _lift in _scenarios:
+            _additional_retained = _treat_n * _lift
+            _additional_revenue = _additional_retained * _avg_revenue_per_retained
+            _net_profit = _additional_revenue - _coupon_total
+            _roi = (_net_profit / _coupon_total) if _coupon_total > 0 else 0.0
+            _cpic = (_coupon_total / _additional_retained) if _additional_retained > 0 else 0.0
+            _whatif_rows.append({
+                "시나리오": _label,
+                "증분 리텐션": f"+{_lift*100:.1f}%p",
+                "추가 유지 고객": f"{_additional_retained:,.0f}명",
+                "추가 매출": money(_additional_revenue),
+                "쿠폰비 반영 ROI": f"{_roi*100:+.1f}%",
+                "CPIC": money(_cpic) if _additional_retained > 0 else "-",
+            })
+        _whatif_df = pd.DataFrame(_whatif_rows)
+        _render_dataframe_with_count(_whatif_df, label="효과 크기 가정별 시뮬레이션", prefer_static=True)
+
+        st.caption(
+            "※ 본 표는 동일 표본·쿠폰비 조건에서 효과 크기만 가정해 산출한 추정치입니다. "
+            "현재 시뮬레이터 표본으로는 실제 효과 크기를 신뢰성 있게 검출할 수 없으므로, "
+            "운영 데이터가 누적되면 본 시스템이 동일 방식으로 실효 ROI를 자동 산출하도록 설계되어 있습니다."
+        )
+        
         with tab3:
             persuadables = experiment_overview.get("persuadables", {})
             st.metric("Persuadables 비중", pct(float(persuadables.get('persuadables_share', 0.0))))
