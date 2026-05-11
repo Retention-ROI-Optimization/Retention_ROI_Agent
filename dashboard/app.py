@@ -2765,6 +2765,7 @@ def render_llm_summary(
     st.caption("추가 질문은 사이드바의 AI 챗봇 버튼을 눌러 이어서 대화할 수 있습니다.")
 
 
+@st.fragment
 def render_sidebar_chatbot_launcher(
     view_key: str,
     view_title: str,
@@ -2791,7 +2792,7 @@ def render_sidebar_chatbot_launcher(
     ):
         st.session_state["llm_chat_open"] = not is_open
         st.session_state["llm_chat_view_key"] = view_key
-        st.rerun()
+        st.rerun(scope="fragment")
 
     if not llm_enabled:
         st.caption("⚠️ LLM 기능이 꺼져 있어 챗봇을 열 수 없습니다.")
@@ -2832,7 +2833,7 @@ def _render_sidebar_chatbot_inline(
     # 대화 지우기 버튼
     if st.button("🗑 대화 지우기", key=f"clear_sidebar_chat_{view_key}", use_container_width=True):
         st.session_state[history_key] = []
-        st.rerun()
+        st.rerun(scope="fragment")
 
     history = st.session_state[history_key]
 
@@ -2883,7 +2884,7 @@ def _render_sidebar_chatbot_inline(
 
         history.append({"role": "assistant", "content": answer})
         st.session_state[history_key] = history
-        st.rerun()
+        st.rerun(scope="fragment")
 
 
 @st.dialog("AI 분석 챗봇")
@@ -3796,14 +3797,6 @@ with st.sidebar:
     env_key_configured = bool(os.getenv("OPENAI_API_KEY"))
     if env_key_configured and not llm_api_key:
         st.caption("현재 OPENAI_API_KEY 환경변수를 사용하도록 설정되어 있습니다.")
-
-    render_sidebar_chatbot_launcher(
-        view_key=view.split(".")[0],
-        view_title=view,
-        llm_enabled=llm_enabled,
-        api_key=llm_api_key.strip() if llm_api_key else None,
-    )
-
 
 live_payload = _load_user_live_tables(
     top_n=int(top_n),
@@ -5439,10 +5432,10 @@ elif view == "7. 할인·쿠폰 운영 리스크":
         "intensity_mix": coupon_risk_overview.get("intensity_mix", pd.DataFrame()).to_dict(orient="records") if not coupon_risk_overview.get("intensity_mix", pd.DataFrame()).empty else [],
     }
 
-if llm_enabled:
-    current_view_key = view.split(".")[0]
-    current_model_name = llm_model.strip() or DEFAULT_MODEL_NAME
+current_view_key = view.split(".")[0]
+current_model_name = llm_model.strip() or DEFAULT_MODEL_NAME
 
+if llm_enabled:
     render_llm_summary(
         view_key=current_view_key,
         view_title=llm_view_title,
@@ -5451,18 +5444,12 @@ if llm_enabled:
         model_name=current_model_name,
     )
 
-    # 사이드바에 챗봇 inline 채팅창 렌더 — 별도 dialog 창 대신 사이드바 안에 직접 표시
-    if (
-        st.session_state.get("llm_chat_open", False)
-        and st.session_state.get("llm_chat_view_key") == current_view_key
-    ):
-        with st.sidebar:
-            st.divider()
-            st.markdown("##### 💬 채팅창")
-            _render_sidebar_chatbot_inline(
-                view_key=current_view_key,
-                view_title=llm_view_title,
-                payload=llm_payload,
-                api_key=llm_api_key_value,
-                model_name=current_model_name,
-            )
+with st.sidebar:
+    render_sidebar_chatbot_launcher(
+        view_key=current_view_key,
+        view_title=llm_view_title,
+        llm_enabled=llm_enabled,
+        api_key=llm_api_key_value,
+        payload=llm_payload,
+        model_name=current_model_name,
+    )
