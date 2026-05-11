@@ -516,50 +516,63 @@ def score_changed_customers(
             customer_ids=unique_customer_ids,
         )
 
+        cold_mask = feature_df.get("is_new_customer", pd.Series(False, index=feature_df.index)).fillna(False).astype(bool)
+        cold_df = feature_df[cold_mask]
+        warm_df = feature_df[~cold_mask]
+
         churn_predictions: dict[int, float] = {}
         clv_predictions: dict[int, float] = {}
         uplift_predictions: dict[int, float] = {}
 
-        if churn_model is not None:
-            churn_features = _get_model_feature_columns(churn_model, churn_meta, feature_df)
+        for _, row in cold_df.iterrows():
+            cid = int(row["customer_id"])
+            event_count = max(int(row.get("event_count_total") or 1), 1)
+            revenue = _safe_float(row.get("revenue_30d"), 0.0) or 0.0
+
+            churn_predictions[cid] = float(np.clip(0.60 - 0.06 * event_count, 0.15, 0.70))
+            clv_predictions[cid] = revenue * 6.0 if revenue > 0 else 50000.0
+            uplift_predictions[cid] = 0.12
+
+            if event_count >= 5:
+                conn.execute(
+                    text("UPDATE customer_feature_state SET is_new_customer = FALSE WHERE customer_id = :cid"),
+                    {"cid": cid},
+                )
+
+        if not warm_df.empty and churn_model is not None:
+            churn_features = _get_model_feature_columns(churn_model, churn_meta, warm_df)
             churn_values = _predict_model(
                 model=churn_model,
-                feature_frame=feature_df,
+                feature_frame=warm_df,
                 feature_columns=churn_features,
                 proba=True,
             )
-
-            for customer_id, pred in zip(feature_df["customer_id"].tolist(), churn_values):
+            for customer_id, pred in zip(warm_df["customer_id"].tolist(), churn_values):
                 churn_predictions[int(customer_id)] = float(np.clip(pred, 0.0, 1.0))
-
             churn_meta["used_feature_count"] = len(churn_features)
 
-        if clv_model is not None:
-            clv_features = _get_model_feature_columns(clv_model, clv_meta, feature_df)
+        if not warm_df.empty and clv_model is not None:
+            clv_features = _get_model_feature_columns(clv_model, clv_meta, warm_df)
             clv_values = _predict_model(
                 model=clv_model,
-                feature_frame=feature_df,
+                feature_frame=warm_df,
                 feature_columns=clv_features,
                 proba=False,
             )
-
-            for customer_id, pred in zip(feature_df["customer_id"].tolist(), clv_values):
+            for customer_id, pred in zip(warm_df["customer_id"].tolist(), clv_values):
                 clv_predictions[int(customer_id)] = max(float(pred), 0.0)
-
             clv_meta["used_feature_count"] = len(clv_features)
 
-        if uplift_model is not None:
-            uplift_features = _get_model_feature_columns(uplift_model, uplift_meta, feature_df)
+        if not warm_df.empty and uplift_model is not None:
+            uplift_features = _get_model_feature_columns(uplift_model, uplift_meta, warm_df)
             uplift_values = _predict_model(
                 model=uplift_model,
-                feature_frame=feature_df,
+                feature_frame=warm_df,
                 feature_columns=uplift_features,
                 proba=False,
             )
-
-            for customer_id, pred in zip(feature_df["customer_id"].tolist(), uplift_values):
+            for customer_id, pred in zip(warm_df["customer_id"].tolist(), uplift_values):
                 uplift_predictions[int(customer_id)] = float(pred)
-
             uplift_meta["used_feature_count"] = len(uplift_features)
 
         updated_count = 0
@@ -578,7 +591,6 @@ def score_changed_customers(
             churn_score = churn_predictions.get(customer_id, old_churn)
             clv = clv_predictions.get(customer_id, old_clv)
             uplift_score = uplift_predictions.get(customer_id, old_uplift)
-
             # ROI/expected profit fallback 정책:
             # 1. clv와 uplift가 있으면 expected_incremental_profit = clv * uplift
             # 2. expected_profit이 계산되면 expected_roi도 간단히 갱신
@@ -588,13 +600,13 @@ def score_changed_customers(
 
             if clv is not None and uplift_score is not None:
                 expected_incremental_profit = float(clv) * float(uplift_score)
-
                 # 쿠폰 비용이 feature나 기존 payload에 있으면 ROI = profit / cost
                 coupon_cost = _safe_float(feature_row.get("coupon_cost"), None)
                 if coupon_cost is not None and coupon_cost > 0:
                     expected_roi = expected_incremental_profit / coupon_cost
 
-            risk_segment = _risk_segment_from_score(churn_score)
+            is_cold = bool(cold_mask.iloc[feature_df.index.get_loc(feature_row.name)] if feature_row.name in feature_df.index else False)
+            risk_segment = "new" if is_cold else _risk_segment_from_score(churn_score)
 
             score_payload = {
                 "customer_id": customer_id,

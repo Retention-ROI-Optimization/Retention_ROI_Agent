@@ -296,3 +296,38 @@ def refresh_user_live_actions(
         json_body=[int(customer_id) for customer_id in customer_ids],
     )
 
+
+def start_demo_stream(
+    interval_seconds: float = 2.0,
+    new_customer_ratio: float = 0.3,
+    action_threshold: float = 0.30,
+) -> Dict[str, Any]:
+    return _request_json(
+        '/api/v1/user-live/demo/start',
+        {
+            'interval_seconds': interval_seconds,
+            'new_customer_ratio': new_customer_ratio,
+            'action_threshold': action_threshold,
+        },
+        method='POST',
+    )
+
+
+def stop_demo_stream() -> Dict[str, Any]:
+    return _request_json('/api/v1/user-live/demo/stop', method='POST')
+
+
+def reset_demo_stream() -> Dict[str, Any]:
+    return _request_json('/api/v1/user-live/demo/reset', method='POST')
+
+
+def fetch_demo_status() -> Dict[str, Any]:
+    return _request_json('/api/v1/user-live/demo/status')
+
+
+def fetch_new_customers(limit: int = 50) -> tuple[Dict[str, Any], pd.DataFrame]:
+    data = _request_json('/api/v1/user-live/new-customers', {'limit': limit})
+    records = data.get('records', []) or []
+    summary = {'total_new_customers': data.get('total_new_customers', 0)}
+    return summary, pd.DataFrame(records)
+

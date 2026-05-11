@@ -3763,6 +3763,7 @@ with st.sidebar:
 
     st.caption("실시간 화면에서는 새로고침 시 스트림을 조금씩 더 재생해 수치가 변하도록 했습니다. 나머지 화면은 캐시를 비우고 다시 계산합니다.")
 
+    st.divider()
     st.subheader("LLM 설정")
     st.caption("권장: API 키는 코드에 쓰지 말고 환경변수 OPENAI_API_KEY 또는 Streamlit secrets로 관리하세요.")
 
@@ -4731,6 +4732,93 @@ elif view == "6. 실시간 운영 모니터":
         st.subheader("실시간 운영 모니터")
         st.caption("자사 데이터 모드: PostgreSQL live DB 기준 운영 모니터입니다.")
 
+        from dashboard.services.api_client import (
+            fetch_demo_status as _page_fetch_demo_status,
+            start_demo_stream as _page_start_demo,
+            stop_demo_stream as _page_stop_demo,
+            reset_demo_stream as _page_reset_demo,
+        )
+        try:
+            _page_demo = _page_fetch_demo_status()
+        except Exception:
+            _page_demo = {}
+        _page_demo_running = _page_demo.get("running", False)
+
+        st.caption("시연을 시작하면 설정된 간격마다 가상 고객 이벤트(방문, 구매 등)가 자동 생성되고, 이탈 점수 재산정 및 액션 큐가 갱신됩니다.")
+        _demo_bar = st.container()
+        with _demo_bar:
+            if _page_demo_running:
+                _ev = _page_demo.get("total_events_sent", 0)
+                _new = _page_demo.get("new_customers_created", 0)
+                _exist = _page_demo.get("existing_customers_updated", 0)
+                st.success(f"시연 실행 중  |  이벤트 {_ev}건  |  신규 {_new}명  |  기존 {_exist}명")
+                _dc1, _dc2, _dc3 = st.columns(3)
+                with _dc1:
+                    if st.button("시연 중지", use_container_width=True, key="pg_demo_stop"):
+                        _page_stop_demo()
+                        clear_dashboard_caches()
+                        st.rerun()
+                with _dc2:
+                    if st.button("시연 초기화", use_container_width=True, type="secondary", key="pg_demo_reset_running"):
+                        _page_reset_demo()
+                        clear_dashboard_caches()
+                        st.rerun()
+                with _dc3:
+                    st.caption("10초마다 자동 새로고침")
+            else:
+                _dc1, _dc2, _dc3, _dc4 = st.columns([1.5, 1.5, 1, 1])
+                with _dc1:
+                    st.caption("N초마다 이벤트 1건 생성")
+                    _pg_interval = st.number_input("간격(초)", min_value=0.5, max_value=30.0, value=2.0, step=0.5, key="pg_demo_interval")
+                with _dc2:
+                    st.caption("새 고객 vs 기존 고객 비율")
+                    _pg_ratio = st.number_input("신규 비율", min_value=0.0, max_value=1.0, value=0.3, step=0.1, key="pg_demo_ratio")
+                with _dc3:
+                    if st.button("시연 시작", use_container_width=True, type="primary", key="pg_demo_start"):
+                        _page_start_demo(interval_seconds=_pg_interval, new_customer_ratio=_pg_ratio)
+                        clear_dashboard_caches()
+                        st.rerun()
+                with _dc4:
+                    if st.button("시연 초기화", use_container_width=True, type="secondary", key="pg_demo_reset_idle"):
+                        _page_reset_demo()
+                        clear_dashboard_caches()
+                        st.rerun()
+
+            if _page_demo.get("latest_results"):
+                if _page_demo_running:
+                    _prev = st.session_state.get("_demo_last_log", [])
+                    _seen = {(r["customer_id"], r["event_type"], r.get("churn_score")) for r in _prev}
+                    _merged = list(_prev)
+                    for _r in _page_demo["latest_results"]:
+                        _key = (_r["customer_id"], _r["event_type"], _r.get("churn_score"))
+                        if _key not in _seen:
+                            _merged.append(_r)
+                            _seen.add(_key)
+                    st.session_state["_demo_last_log"] = _merged
+                _log_data = st.session_state.get("_demo_last_log", _page_demo.get("latest_results", []))
+                if _log_data:
+                    _log_label = f"이벤트 로그 ({len(_log_data)}건)" if _page_demo_running else f"이벤트 로그 ({len(_log_data)}건, 중지됨)"
+                    with st.expander(_log_label, expanded=True):
+                        _lines = []
+                        for _r in reversed(_log_data):
+                            _label = "NEW" if _r.get("is_new") else "UPD"
+                            _score_str = f"score={_r['churn_score']:.2f}" if _r.get("churn_score") is not None else ""
+                            _action_str = "-> action queued" if _r.get("action_queued") else ""
+                            _lines.append(f"[{_label}] #{_r['customer_id']}  {_r['event_type']}  {_score_str}  {_action_str}")
+                        st.dataframe(pd.DataFrame({"log": _lines}), height=300, use_container_width=True, hide_index=True)
+            elif st.session_state.get("_demo_last_log"):
+                _log_data = st.session_state["_demo_last_log"]
+                with st.expander(f"이벤트 로그 ({len(_log_data)}건, 중지됨)", expanded=False):
+                    _lines = []
+                    for _r in reversed(_log_data):
+                        _label = "NEW" if _r.get("is_new") else "UPD"
+                        _score_str = f"score={_r['churn_score']:.2f}" if _r.get("churn_score") is not None else ""
+                        _action_str = "-> action queued" if _r.get("action_queued") else ""
+                        _lines.append(f"[{_label}] #{_r['customer_id']}  {_r['event_type']}  {_score_str}  {_action_str}")
+                    st.dataframe(pd.DataFrame({"log": _lines}), height=300, use_container_width=True, hide_index=True)
+
+        st.divider()
+
         health = live_payload.get("health", {}) or {}
         score_summary = live_payload.get("score_summary", {}) or {}
         action_summary = live_payload.get("action_summary", {}) or {}
@@ -4837,6 +4925,14 @@ elif view == "6. 실시간 운영 모니터":
                 max_rows=20,
             ) if not actions_df.empty else [],
         }
+
+        if _page_demo_running:
+            import time as _demo_time
+            _placeholder = st.empty()
+            _placeholder.caption("다음 자동 새로고침까지 10초...")
+            _demo_time.sleep(10)
+            clear_dashboard_caches()
+            st.rerun()
 
         st.stop()
 

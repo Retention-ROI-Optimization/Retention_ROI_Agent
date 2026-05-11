@@ -209,37 +209,52 @@ def _insert_event_and_update_feature_state(
                     "duplicate": True,
                     "message": "duplicate source_event_id; ignored",
                 }
-
             # 고객 row가 없으면 생성, 있으면 last_event_time만 최신값으로 갱신
-            conn.execute(
-                text("""
-                INSERT INTO customer_feature_state (
-                    customer_id,
-                    last_event_time,
-                    updated_at
-                )
-                VALUES (
-                    :customer_id,
-                    :event_time,
-                    now()
-                )
-                ON CONFLICT (customer_id)
-                DO UPDATE SET
-                    last_event_time = CASE
-                        WHEN customer_feature_state.last_event_time IS NULL
-                             OR EXCLUDED.last_event_time > customer_feature_state.last_event_time
-                        THEN EXCLUDED.last_event_time
-                        ELSE customer_feature_state.last_event_time
-                    END,
-                    updated_at = now()
-                """),
-                {
-                    "customer_id": event.customer_id,
-                    "event_time": event_time,
-                },
-            )
 
-            # counter_column은 내부 mapping에서만 나오므로 SQL injection 위험 없음
+            existing = conn.execute(
+                text("SELECT customer_id FROM customer_feature_state WHERE customer_id = :cid"),
+                {"cid": event.customer_id},
+            ).scalar_one_or_none()
+
+            is_new = existing is None
+
+            if is_new:
+                conn.execute(
+                    text("""
+                    INSERT INTO customer_feature_state (
+                        customer_id, last_event_time,
+                        is_new_customer, first_seen_at, event_count_total,
+                        persona, acquisition_channel, updated_at
+                    ) VALUES (
+                        :customer_id, :event_time,
+                        TRUE, :event_time, 1,
+                        'new_signup', :channel, now()
+                    )
+                    """),
+                    {
+                        "customer_id": event.customer_id,
+                        "event_time": event_time,
+                        "channel": event.channel or "unknown",
+                    },
+                )
+            else:
+                conn.execute(
+                    text("""
+                    UPDATE customer_feature_state
+                    SET last_event_time = CASE
+                            WHEN last_event_time IS NULL OR :event_time > last_event_time
+                            THEN :event_time ELSE last_event_time
+                        END,
+                        event_count_total = COALESCE(event_count_total, 0) + 1,
+                        updated_at = now()
+                    WHERE customer_id = :customer_id
+                    """),
+                    {
+                        "customer_id": event.customer_id,
+                        "event_time": event_time,
+                    },
+                )
+
             if counter_column:
                 conn.execute(
                     text(f"""
@@ -282,6 +297,7 @@ def _insert_event_and_update_feature_state(
             "customer_id": event.customer_id,
             "event_id": int(inserted["event_id"]),
             "event_type": event.event_type,
+            "is_new_customer": is_new,
             "counter_updated": counter_column,
             "inserted": True,
             "duplicate": False,
@@ -850,3 +866,89 @@ def user_live_jobs_status(
         db_url=settings.user_db_url,
         limit=limit,
     )
+
+
+# ── Demo endpoints ──
+
+from src.api.services.user_live_demo import (
+    DemoConfig,
+    get_demo_status,
+    reset_demo,
+    start_demo,
+    stop_demo,
+)
+
+
+@router.post("/demo/start")
+async def demo_start(
+    interval_seconds: float = Query(default=2.0, ge=0.5, le=30.0),
+    new_customer_ratio: float = Query(default=0.3, ge=0.0, le=1.0),
+    action_threshold: float = Query(default=0.30, ge=0.0, le=1.0),
+    settings: ApiSettings = Depends(get_settings),
+):
+    init_user_live_tables(settings.user_db_url)
+    config = DemoConfig(
+        interval_seconds=interval_seconds,
+        new_customer_ratio=new_customer_ratio,
+        action_threshold=action_threshold,
+    )
+    return start_demo(
+        db_url=settings.user_db_url,
+        model_dir=Path.cwd() / "models_user",
+        config=config,
+    )
+
+
+@router.post("/demo/stop")
+def demo_stop():
+    return stop_demo()
+
+
+@router.post("/demo/reset")
+def demo_reset(settings: ApiSettings = Depends(get_settings)):
+    return reset_demo(db_url=settings.user_db_url)
+
+
+@router.get("/demo/status")
+def demo_status():
+    return get_demo_status()
+
+
+@router.get("/new-customers")
+def get_new_customers(
+    limit: int = Query(default=50, ge=1, le=500),
+    settings: ApiSettings = Depends(get_settings),
+):
+    init_user_live_tables(settings.user_db_url)
+
+    with user_live_session(settings.user_db_url) as conn:
+        rows = conn.execute(
+            text("""
+            SELECT
+                fs.customer_id,
+                fs.first_seen_at,
+                fs.event_count_total,
+                fs.is_new_customer,
+                fs.persona,
+                fs.acquisition_channel,
+                fs.last_event_time,
+                cs.churn_score,
+                cs.risk_segment
+            FROM customer_feature_state fs
+            LEFT JOIN customer_scores cs ON cs.customer_id = fs.customer_id
+            WHERE fs.is_new_customer = TRUE
+            ORDER BY fs.first_seen_at DESC
+            LIMIT :limit
+            """),
+            {"limit": limit},
+        ).mappings().all()
+
+        total_new = conn.execute(
+            text("SELECT COUNT(*) FROM customer_feature_state WHERE is_new_customer = TRUE")
+        ).scalar_one()
+
+    return {
+        "success": True,
+        "total_new_customers": int(total_new),
+        "records": [dict(row) for row in rows],
+    }
