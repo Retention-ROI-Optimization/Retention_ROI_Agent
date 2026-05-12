@@ -2649,7 +2649,7 @@ def _render_html_table(
         search_key = _table_widget_key(label, "search")
         _q = st.text_input(
             f"{label} 검색",
-            placeholder="고객 ID, 세그먼트 등 검색...",
+            placeholder="검색...",
             key=search_key,
             label_visibility="collapsed",
         )
