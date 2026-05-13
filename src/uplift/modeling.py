@@ -188,7 +188,7 @@ def _qini_curve(y: np.ndarray, w: np.ndarray, uplift: np.ndarray) -> pd.DataFram
 def _auuc(curve: pd.DataFrame) -> float:
     if curve.empty:
         return 0.0
-    return float(np.trapz(curve["qini_gain"].to_numpy(), curve["fraction"].to_numpy()))
+    return float(np.trapezoid(curve["qini_gain"].to_numpy(), curve["fraction"].to_numpy()))
 
 
 def _make_segment(uplift_score: float, churn_probability: float) -> str:
