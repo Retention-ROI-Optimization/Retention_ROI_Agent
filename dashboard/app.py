@@ -2649,7 +2649,7 @@ def _render_html_table(
         search_key = _table_widget_key(label, "search")
         _q = st.text_input(
             f"{label} 검색",
-            placeholder="검색...",
+            placeholder="고객 ID, 세그먼트 등 검색...",
             key=search_key,
             label_visibility="collapsed",
         )
@@ -2757,11 +2757,14 @@ def get_session_cached_answer(
 
 
 def get_chat_history_key(view_key: str) -> str:
-    return f"llm_chat_history_{view_key}"
+    # 챗봇은 화면별로 새로 만들지 않고, 세션 전체에서 하나의 대화 기록을 공유한다.
+    # view_key는 기존 호출부 호환을 위해 인자로만 유지한다.
+    return "llm_chat_history"
 
 
 def get_chat_input_key(view_key: str) -> str:
-    return f"llm_chat_input_{view_key}"
+    # 화면 이동 시 chat_input widget key가 바뀌면 입력창/대화 UI가 새 위젯처럼 동작한다.
+    return "llm_chat_input"
 
 
 def resolve_chatbot_image() -> Optional[str]:
@@ -2779,7 +2782,14 @@ def resolve_chatbot_image() -> Optional[str]:
 
 def close_llm_chat_dialog():
     st.session_state["llm_chat_open"] = False
-    st.session_state["llm_chat_view_key"] = None
+    # 닫았다가 다시 열면 그 시점의 현재 화면을 새 컨텍스트로 잡는다.
+    for _key in (
+        "llm_chat_view_key",
+        "llm_chat_view_title",
+        "llm_chat_payload",
+        "llm_chat_model_name",
+    ):
+        st.session_state.pop(_key, None)
 
 
 def build_contextual_chat_question(
@@ -2854,44 +2864,78 @@ def render_sidebar_chatbot_launcher(
     payload: Optional[Dict] = None,
     model_name: str = "gpt-4.1-mini",
 ):
-    """사이드바에 챗봇 UI를 inline으로 렌더링 (별도 dialog 창 없음)."""
+    """사이드바 챗봇을 화면 전환과 독립적으로 유지한다.
+
+    Streamlit은 화면 radio가 바뀌면 전체 스크립트를 다시 실행한다.
+    따라서 챗봇을 "rerun 자체가 안 되게" 만들 수는 없지만,
+    열림 상태/대화 기록/질문 컨텍스트를 session_state에 고정해
+    다른 화면으로 이동해도 챗봇이 초기화되거나 새 화면 데이터로 자동 갱신되지 않게 한다.
+    """
     st.divider()
     st.subheader("🤖 AI 챗봇")
 
     ready, status_message = get_llm_status(api_key)
-    is_open = st.session_state.get("llm_chat_open", False) and \
-              st.session_state.get("llm_chat_view_key") == view_key
+    is_open = bool(st.session_state.get("llm_chat_open", False))
 
-    # 토글 버튼: 닫혀있으면 "열기", 열려있으면 "닫기"
+    # 이미 열려 있는 챗봇은 처음 열었던 화면의 컨텍스트를 계속 사용한다.
+    # 단, 구버전 세션처럼 컨텍스트가 비어 있으면 현재 화면으로 1회 보정한다.
+    if is_open and st.session_state.get("llm_chat_payload") is None and payload is not None:
+        st.session_state["llm_chat_view_key"] = view_key
+        st.session_state["llm_chat_view_title"] = view_title
+        st.session_state["llm_chat_payload"] = payload
+        st.session_state["llm_chat_model_name"] = model_name
+
     btn_label = "❌ 챗봇 닫기" if is_open else "💬 챗봇 열기"
     if st.button(
         btn_label,
-        key=f"toggle_chatbot_{view_key}",
+        key="toggle_chatbot",
         use_container_width=True,
         disabled=(not llm_enabled) or (not ready),
     ):
-        st.session_state["llm_chat_open"] = not is_open
-        st.session_state["llm_chat_view_key"] = view_key
+        if is_open:
+            close_llm_chat_dialog()
+        else:
+            # 챗봇을 여는 순간의 화면/데이터를 고정한다.
+            st.session_state["llm_chat_open"] = True
+            st.session_state["llm_chat_view_key"] = view_key
+            st.session_state["llm_chat_view_title"] = view_title
+            st.session_state["llm_chat_payload"] = payload or {}
+            st.session_state["llm_chat_model_name"] = model_name
         st.rerun(scope="fragment")
 
     if not llm_enabled:
         st.caption("⚠️ LLM 기능이 꺼져 있어 챗봇을 열 수 없습니다.")
-    elif not ready:
+        return
+    if not ready:
         st.caption(f"⚠️ {status_message}")
-    elif not is_open:
+        return
+    if not st.session_state.get("llm_chat_open", False):
         st.caption(f"📍 현재 화면: **{view_title}**")
         st.caption("화면의 표·그래프를 보면서 질문할 수 있습니다.")
+        return
 
-    # ── 챗봇이 열려있을 때 사이드바에 inline 렌더 ──
-    if is_open and ready and llm_enabled and payload is not None:
-        _render_sidebar_chatbot_inline(
-            view_key=view_key,
-            view_title=view_title,
-            payload=payload,
-            api_key=api_key,
-            model_name=model_name,
-        )
+    active_view_key = st.session_state.get("llm_chat_view_key") or view_key
+    active_view_title = st.session_state.get("llm_chat_view_title") or view_title
+    active_payload = st.session_state.get("llm_chat_payload") or payload or {}
+    active_model_name = st.session_state.get("llm_chat_model_name") or model_name
 
+    st.caption(f"📌 고정된 챗봇 컨텍스트: **{active_view_title}**")
+    if active_view_key != view_key:
+        st.caption("화면을 이동해도 챗봇은 처음 열었던 화면의 데이터로 유지됩니다.")
+        if st.button("현재 화면으로 컨텍스트 갱신", key="refresh_chatbot_context", use_container_width=True):
+            st.session_state["llm_chat_view_key"] = view_key
+            st.session_state["llm_chat_view_title"] = view_title
+            st.session_state["llm_chat_payload"] = payload or {}
+            st.session_state["llm_chat_model_name"] = model_name
+            st.rerun(scope="fragment")
+
+    _render_sidebar_chatbot_inline(
+        view_key=active_view_key,
+        view_title=active_view_title,
+        payload=active_payload,
+        api_key=api_key,
+        model_name=active_model_name,
+    )
 
 def _render_sidebar_chatbot_inline(
     view_key: str,
@@ -2937,7 +2981,7 @@ def _render_sidebar_chatbot_inline(
     # 입력창
     prompt = st.chat_input(
         "현재 화면에 대해 질문하세요...",
-        key=f"sidebar_chat_input_{view_key}",
+        key=input_key,
     )
 
     if prompt:
