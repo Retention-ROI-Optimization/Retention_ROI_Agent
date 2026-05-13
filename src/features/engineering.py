@@ -466,18 +466,21 @@ def build_feature_dataset(data_dir: str | Path, feature_store_dir: str | Path = 
         raise ValueError(f'No customers.csv found or the file is empty under {data_dir}')
     if treatment.empty:
         treatment = pd.DataFrame({'customer_id': customers['customer_id'], 'treatment_group': 'auto_control'})
+    is_user_upload = preprocessing_metadata.get('source') == 'user_upload'
     if as_of_date is None:
         activity_max = _latest_activity_date(events, orders)
-        if preprocessing_metadata.get('source') == 'user_upload' and activity_max is not None:
-            as_of_date = activity_max - pd.Timedelta(days=horizon_days)
+        if activity_max is not None:
+            if is_user_upload:
+                as_of_date = activity_max
+            else:
+                as_of_date = activity_max - pd.Timedelta(days=horizon_days)
         elif not snapshots.empty and 'snapshot_date' in snapshots.columns and snapshots['snapshot_date'].notna().any():
             as_of_date = snapshots['snapshot_date'].max() - pd.Timedelta(days=horizon_days)
-        elif activity_max is not None:
-            as_of_date = activity_max - pd.Timedelta(days=horizon_days)
         else:
             as_of_date = pd.Timestamp.today().floor('D')
     as_of_date = pd.Timestamp(as_of_date).floor('D')
-    customers = customers.loc[customers['signup_date'] <= as_of_date].copy()
+    if not is_user_upload:
+        customers = customers.loc[customers['signup_date'] <= as_of_date].copy()
     base = customers.merge(treatment.drop_duplicates('customer_id', keep='last'), on='customer_id', how='left')
     base, summary_enrichment_cols = _merge_summary_enrichment(base, customer_summary)
     base['customer_age_days'] = (as_of_date - base['signup_date']).dt.days.clip(lower=0)
@@ -560,12 +563,7 @@ def build_feature_dataset(data_dir: str | Path, feature_store_dir: str | Path = 
         'row_count': int(len(base)),
         'positive_rate': positive_rate,
         'label_source': label_source,
-        'as_of_date_source': (
-            'latest_uploaded_activity_minus_horizon'
-            if preprocessing_metadata.get('source') == 'user_upload'
-            and _latest_activity_date(events, orders) is not None
-            else 'state_snapshots_or_activity_fallback'
-        ),
+        'as_of_date_source': 'latest_activity_date' if is_user_upload else 'latest_activity_minus_horizon',
         'summary_enrichment_columns': summary_enrichment_cols,
         'external_feature_columns': generated_external_cols,
         'feature_count': int(len([c for c in base.columns if c not in {'customer_id', 'label'}])),
