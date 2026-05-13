@@ -67,10 +67,16 @@ def build_parser() -> argparse.ArgumentParser:
         default=1000,
         help="recommend 모드에서 최종 타겟팅 후보 상한을 지정합니다.",
     )
-    parser.add_argument("--data-dir", default="data/raw")
-    parser.add_argument("--model-dir", default="models")
-    parser.add_argument("--result-dir", default="results")
-    parser.add_argument("--feature-store-dir", default="data/feature_store")
+    parser.add_argument(
+        "--data-mode",
+        choices=["simulator", "user"],
+        default="simulator",
+        help="데이터 모드. simulator는 data/raw_simulator/, results_simulator/, models_simulator/ 등을 사용. user는 자사 데이터 모드 폴더(_user 접미사)를 사용. --data-dir 등을 명시하면 그 값이 우선합니다.",
+    )
+    parser.add_argument("--data-dir", default=None)
+    parser.add_argument("--model-dir", default=None)
+    parser.add_argument("--result-dir", default=None)
+    parser.add_argument("--feature-store-dir", default=None)
     parser.add_argument(
         "--force",
         action="store_true",
@@ -126,6 +132,17 @@ def main() -> int:
 
     if args.seed is not None and args.randomize:
         raise SystemExit("--seed and --randomize cannot be used together.")
+
+    # --data-mode에 따라 기본 경로 자동 결정. 사용자가 --data-dir 등을 명시하면 그 값이 우선.
+    _mode_suffix = args.data_mode
+    if args.data_dir is None:
+        args.data_dir = f"data/raw_{_mode_suffix}"
+    if args.model_dir is None:
+        args.model_dir = f"models_{_mode_suffix}"
+    if args.result_dir is None:
+        args.result_dir = f"results_{_mode_suffix}"
+    if args.feature_store_dir is None:
+        args.feature_store_dir = "data/feature_store" if _mode_suffix == "simulator" else "data/feature_store_user"
 
     data_dir = Path(args.data_dir)
     model_dir = Path(args.model_dir)
