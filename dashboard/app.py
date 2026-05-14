@@ -2667,11 +2667,17 @@ def _render_html_table(
     else:
         st.caption(_describe_table_count(safe_df, label=label))
 
-    st.dataframe(
-        view_df,
-        use_container_width=True,
-        hide_index=hide_index,
-        height=max(280, int(max_height)),
+    # st.dataframe(
+    #     view_df,
+    #     use_container_width=True,
+    #     hide_index=hide_index,
+    #     height=max(280, int(max_height)),
+    # )
+
+    html_table = view_df.to_html(index=not hide_index, classes=["oai-data-table"], border=0, escape=True)
+    st.markdown(
+        f"<div class='oai-table-wrapper' style='max-height:{max(280, int(max_height))}px'>{html_table}</div>",
+        unsafe_allow_html=True,
     )
 
 
@@ -3868,6 +3874,7 @@ with st.sidebar:
             max_value=5,
             step=1,
             key="control_recommendation_per_customer",
+            value=3,
         )
     else:
         recommendation_per_customer = int(st.session_state["control_recommendation_per_customer"])
@@ -5272,7 +5279,7 @@ elif view == "9. 이탈 시점 예측 (Survival Analysis)":
             {'key': 'test_rows', 'value': survival_metrics.get('test_rows')},
             {'key': 'feature_count_before_encoding', 'value': survival_metrics.get('feature_count_before_encoding')},
             {'key': 'feature_count_after_encoding', 'value': survival_metrics.get('feature_count_after_encoding')},
-            {'key': 'penalizer', 'value': survival_metrics.get('penalizer')},
+            {'key': 'penalizer', 'value': survival_metrics.get('fitted_penalizer')},
         ])
         st.markdown("### Survival 메타데이터")
         _render_artifact_table(meta_df, label="Survival 메타데이터")
