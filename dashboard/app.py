@@ -3,6 +3,7 @@ import html
 import json
 import math
 import os
+import re
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -2626,119 +2627,6 @@ def _table_widget_key(label: str, suffix: str) -> str:
     return f"table_{suffix}_{digest}"
 
 
-def _format_static_table_value(value: Any) -> str:
-    """Return a browser-safe string for the static HTML table renderer."""
-    normalized = _normalize_table_cell(value)
-    if normalized in (None, ""):
-        return ""
-    if isinstance(normalized, bool):
-        return "True" if normalized else "False"
-    if isinstance(normalized, float):
-        if math.isnan(normalized) or math.isinf(normalized):
-            return ""
-        return f"{normalized:,.4f}" if abs(normalized) < 1 and normalized != 0 else f"{normalized:,.2f}"
-    if isinstance(normalized, (int, np.integer)):
-        return f"{int(normalized):,}"
-    return str(normalized)
-
-
-def _render_static_html_table(
-    df: pd.DataFrame,
-    *,
-    label: str,
-    hide_index: bool = True,
-    max_height: int = 520,
-) -> None:
-    """
-    Render a read-only table without Streamlit's canvas/grid frontend.
-
-    Streamlit 1.44.0's dataframe frontend can intermittently raise
-    `TypeError: Cannot read properties of undefined (reading 'get')` while
-    mounting small, rerun-heavy tables.  These artifact/metadata tables are
-    read-only, so a static HTML table is safer and does not touch Plotly charts.
-    """
-    static_df = _sanitize_display_dataframe(df)
-    if static_df.empty:
-        st.info("표시할 데이터가 없습니다.")
-        return
-
-    if not hide_index:
-        static_df = static_df.copy()
-        static_df.insert(0, "index", list(static_df.index))
-
-    table_key = hashlib.md5(
-        f"{label}:{list(static_df.columns)}:{len(static_df)}".encode("utf-8")
-    ).hexdigest()[:10]
-    wrapper_class = f"safe-static-table-{table_key}"
-    height_px = max(180, int(max_height or 520))
-
-    header_html = "".join(
-        f"<th>{html.escape(str(col))}</th>" for col in static_df.columns
-    )
-    row_html_parts: list[str] = []
-    for _, row in static_df.iterrows():
-        cells = "".join(
-            f"<td>{html.escape(_format_static_table_value(value))}</td>"
-            for value in row.tolist()
-        )
-        row_html_parts.append(f"<tr>{cells}</tr>")
-    body_html = "".join(row_html_parts)
-
-    st.markdown(
-        f"""
-        <style>
-        .{wrapper_class} {{
-            width: 100%;
-            max-height: {height_px}px;
-            overflow: auto;
-            border: 1px solid rgba(148, 163, 184, 0.28);
-            border-radius: 16px;
-            background: rgba(255, 255, 255, 0.92);
-            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.04);
-        }}
-        .{wrapper_class} table {{
-            width: 100%;
-            border-collapse: separate;
-            border-spacing: 0;
-            font-size: 0.92rem;
-            color: #0f172a;
-        }}
-        .{wrapper_class} thead th {{
-            position: sticky;
-            top: 0;
-            z-index: 1;
-            background: #f8fafc;
-            color: #334155;
-            font-weight: 800;
-            text-align: left;
-            border-bottom: 1px solid rgba(148, 163, 184, 0.34);
-            padding: 0.72rem 0.9rem;
-            white-space: nowrap;
-        }}
-        .{wrapper_class} tbody td {{
-            border-bottom: 1px solid rgba(226, 232, 240, 0.86);
-            padding: 0.68rem 0.9rem;
-            vertical-align: top;
-            white-space: nowrap;
-        }}
-        .{wrapper_class} tbody tr:nth-child(even) td {{
-            background: rgba(248, 250, 252, 0.58);
-        }}
-        .{wrapper_class} tbody tr:last-child td {{
-            border-bottom: 0;
-        }}
-        </style>
-        <div class="{wrapper_class}" role="region" aria-label="{html.escape(label)}">
-            <table>
-                <thead><tr>{header_html}</tr></thead>
-                <tbody>{body_html}</tbody>
-            </table>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
 def _render_html_table(
     df: pd.DataFrame,
     *,
@@ -2780,34 +2668,12 @@ def _render_html_table(
     else:
         st.caption(_describe_table_count(safe_df, label=label))
 
-    # Static renderer is intentionally used for read-only artifact/metadata tables
-    # and small summary tables. It avoids Streamlit's dataframe grid bug without
-    # changing any Plotly bar charts, including the churn-status view.
-    should_render_static = prefer_static or len(view_df) <= 50
-    if should_render_static:
-        _render_static_html_table(
-            view_df,
-            label=label,
-            hide_index=hide_index,
-            max_height=max_height,
-        )
-        return
-
-    try:
-        st.dataframe(
-            view_df,
-            use_container_width=True,
-            hide_index=hide_index,
-            height=max(280, int(max_height)),
-        )
-    except Exception as exc:
-        st.warning(f"대화형 표 렌더링에 실패하여 정적 표로 대체합니다: {exc}")
-        _render_static_html_table(
-            view_df,
-            label=label,
-            hide_index=hide_index,
-            max_height=max_height,
-        )
+    st.dataframe(
+        view_df,
+        use_container_width=True,
+        hide_index=hide_index,
+        height=max(280, int(max_height)),
+    )
 
 
 def _render_dataframe_with_count(
@@ -2850,6 +2716,60 @@ def _render_artifact_table(
 
 
 
+
+
+def sanitize_llm_markdown(text: str) -> str:
+    """Remove Markdown/HTML strikethrough markers from LLM output before Streamlit renders it.
+
+    LLMs often write numeric ranges such as ``3.65~~10.16`` when they mean
+    ``3.65~10.16``. Streamlit interprets ``~~...~~`` as Markdown
+    strikethrough, so we sanitize every LLM-rendered string at display time.
+    """
+    if text is None:
+        return ""
+
+    text = str(text)
+
+    # Unicode combining strikethrough/overlay characters.
+    text = re.sub(r"[\u0335-\u0338]", "", text)
+
+    # HTML strikethrough tags: <s>, <strike>, <del>.
+    text = re.sub(
+        r"</?\s*(?:s|strike|del)\b[^>]*>",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    # Inline style strikethrough spans.
+    text = re.sub(
+        r'<span\b[^>]*text-decoration\s*:\s*line-through[^>]*>(.*?)</span>',
+        r"\1",
+        text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
+    # Numeric ranges: 3.65~~10.16 -> 3.65–10.16.
+    text = re.sub(
+        r"(?P<left>\d[\d,]*(?:\.\d+)?)\s*~{1,2}\s*(?P<right>\d[\d,]*(?:\.\d+)?)",
+        r"\g<left>–\g<right>",
+        text,
+    )
+
+    # Any remaining Markdown strikethrough delimiters are unsafe for this app.
+    text = text.replace("~~", "")
+
+    return text
+
+
+def clear_llm_caches() -> None:
+    """Remove cached LLM summaries/answers so old unsanitized text is not reused."""
+    for key in list(st.session_state.keys()):
+        key_str = str(key)
+        if key_str.startswith("summary::") or key_str.startswith("qa::"):
+            del st.session_state[key]
+
+
 def _payload_hash(*parts: str) -> str:
     joined = "||".join(parts)
     return hashlib.sha256(joined.encode("utf-8")).hexdigest()
@@ -2869,7 +2789,7 @@ def get_session_cached_summary(
             user_api_key=api_key,
             model_name=model_name,
         )
-    return st.session_state[cache_key]
+    return sanitize_llm_markdown(st.session_state[cache_key])
 
 
 def get_session_cached_answer(
@@ -2888,7 +2808,7 @@ def get_session_cached_answer(
             user_api_key=api_key,
             model_name=model_name,
         )
-    return st.session_state[cache_key]
+    return sanitize_llm_markdown(st.session_state[cache_key])
 
 
 def get_chat_history_key(view_key: str) -> str:
@@ -2986,7 +2906,7 @@ def render_llm_summary(
             st.error(f"AI 요약 생성 중 오류가 발생했습니다: {exc}")
             return
 
-    st.markdown(summary)
+    st.markdown(sanitize_llm_markdown(summary))
     st.caption("추가 질문은 사이드바의 AI 챗봇 버튼을 눌러 이어서 대화할 수 있습니다.")
 
 
@@ -3111,7 +3031,7 @@ def _render_sidebar_chatbot_inline(
             role = item.get("role", "assistant")
             avatar = "🧑" if role == "user" else "🤖"
             with st.chat_message(role, avatar=avatar):
-                st.markdown(item.get("content", ""))
+                st.markdown(sanitize_llm_markdown(item.get("content", "")))
 
     # 입력창
     prompt = st.chat_input(
@@ -3210,7 +3130,7 @@ def open_chatbot_dialog(
         role = item.get("role", "assistant")
         avatar = "🧑" if role == "user" else "🤖"
         with st.chat_message(role, avatar=avatar):
-            st.markdown(item.get("content", ""))
+            st.markdown(sanitize_llm_markdown(item.get("content", "")))
 
     prompt = st.chat_input(
         "현재 화면에 대해 질문하세요.",
@@ -3242,7 +3162,7 @@ def open_chatbot_dialog(
                 except Exception as exc:
                     answer = f"AI 답변 생성 중 오류가 발생했습니다: {exc}"
 
-            st.markdown(answer)
+            st.markdown(sanitize_llm_markdown(answer))
 
         history.append({"role": "assistant", "content": answer})
         st.session_state[history_key] = history
@@ -3709,9 +3629,9 @@ with st.sidebar:
                 key="churn_inactivity_days",
                 help=(
                     "**서비스 성격별 권장 기준:**\n\n"
-                    "- **7\~14일:** 데일리 앱 (게임, SNS)\n"
+                    "- **7~14일:** 데일리 앱 (게임, SNS)\n"
                     "- **30일:** 일반 커머스, 라이프스타일\n\n"
-                    "- **60\~90일:** 정기 구독 서비스 (OTT, 멤버십)\n\n"
+                    "- **60~90일:** 정기 구독 서비스 (OTT, 멤버십)\n\n"
                     "설정한 기간 동안 접속 기록이 없으면 '이탈'로 간주합니다."
                 ),
             )
@@ -4040,6 +3960,7 @@ with st.sidebar:
             except Exception as exc:
                 refresh_warning = f"실시간 tick 호출에는 실패했지만 화면 캐시는 새로고침했습니다: {exc}"
         clear_dashboard_caches()
+        clear_llm_caches()
         if refresh_notice:
             st.session_state["dashboard_refresh_notice"] = refresh_notice
         if refresh_warning:
