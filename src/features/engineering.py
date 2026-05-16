@@ -157,6 +157,11 @@ def _load_preprocessing_metadata(data_dir: Path) -> Dict:
         return {}
 
 
+def _has_explicit_uploaded_churn_label(metadata: Dict) -> bool:
+    """Return True only when the upload supplied a real churn target column."""
+    return str(metadata.get('churn_label_source', '')).strip().lower() == 'uploaded_churn_flag'
+
+
 def _latest_activity_date(events: pd.DataFrame, orders: pd.DataFrame) -> pd.Timestamp | None:
     candidates: list[pd.Timestamp] = []
     if not events.empty and 'timestamp' in events.columns:
@@ -421,16 +426,49 @@ def _compute_time_features(events: pd.DataFrame, orders: pd.DataFrame, as_of_dat
 
 
 def _compute_future_label(events: pd.DataFrame, orders: pd.DataFrame, snapshots: pd.DataFrame, customer_ids: pd.Series, as_of_date: pd.Timestamp, horizon_days: int) -> pd.Series:
+    """Build a horizon label using activity after the landmark date.
+
+    The previous implementation counted only future ``visit`` events and future
+    purchases, then additionally required a synthetic future state of
+    ``churn_risk``. That over-labeled customers as churned when their future
+    activity consisted of page views, searches, cart events, support contacts,
+    etc., and it made arbitrary external datasets look like ~50% churn.  Churn
+    for an uploaded event stream should mean no meaningful activity in the
+    future horizon, with a churn-risk snapshot acting as an additional signal.
+    """
     end_date = as_of_date + pd.Timedelta(days=horizon_days)
-    future_visits = events.loc[(events['timestamp'] > as_of_date) & (events['timestamp'] <= end_date) & (events['event_type'] == 'visit')].groupby('customer_id').size()
-    future_purchases = orders.loc[(orders['order_time'] > as_of_date) & (orders['order_time'] <= end_date)].groupby('customer_id').size()
-    future_status = snapshots.loc[(snapshots['snapshot_date'] > as_of_date) & (snapshots['snapshot_date'] <= end_date), ['customer_id', 'snapshot_date', 'current_status']].sort_values(['customer_id', 'snapshot_date'])
-    future_last = future_status.groupby('customer_id').tail(1).set_index('customer_id')['current_status']
-    return (
-        customer_ids.map(future_visits).fillna(0).eq(0)
+    customer_ids = pd.Series(customer_ids).reset_index(drop=True)
+
+    future_activity = pd.Series(dtype=float)
+    if not events.empty and 'timestamp' in events.columns and 'customer_id' in events.columns:
+        evt = events.loc[(events['timestamp'] > as_of_date) & (events['timestamp'] <= end_date)].copy()
+        if 'event_type' in evt.columns:
+            evt = evt[~evt['event_type'].astype(str).str.lower().isin(['ignore', 'other', 'unknown', 'nan'])]
+        future_activity = evt.groupby('customer_id').size()
+
+    future_purchases = pd.Series(dtype=float)
+    if not orders.empty and 'order_time' in orders.columns and 'customer_id' in orders.columns:
+        future_purchases = orders.loc[
+            (orders['order_time'] > as_of_date) & (orders['order_time'] <= end_date)
+        ].groupby('customer_id').size()
+
+    status_positive = pd.Series(False, index=customer_ids.index)
+    if not snapshots.empty and {'snapshot_date', 'customer_id', 'current_status'}.issubset(snapshots.columns):
+        future_status = snapshots.loc[
+            (snapshots['snapshot_date'] > as_of_date) & (snapshots['snapshot_date'] <= end_date),
+            ['customer_id', 'snapshot_date', 'current_status'],
+        ].sort_values(['customer_id', 'snapshot_date'])
+        if not future_status.empty:
+            future_last = future_status.groupby('customer_id').tail(1).set_index('customer_id')['current_status']
+            status_positive = customer_ids.map(future_last).fillna('').astype(str).str.lower().isin(
+                ['churn_risk', 'churned', 'inactive', 'cancelled', 'canceled', 'unsubscribed']
+            )
+
+    no_future_activity = (
+        customer_ids.map(future_activity).fillna(0).eq(0)
         & customer_ids.map(future_purchases).fillna(0).eq(0)
-        & customer_ids.map(future_last).fillna('active').eq('churn_risk')
-    ).astype(int)
+    )
+    return (no_future_activity | status_positive).astype(int)
 
 
 def _winsorize_and_impute(features: pd.DataFrame) -> tuple[pd.DataFrame, Dict[str, Dict[str, float]]]:
@@ -462,6 +500,7 @@ def build_feature_dataset(data_dir: str | Path, feature_store_dir: str | Path = 
     exposures = raw['exposures'].copy()
     treatment = raw['treatment'].copy()
     preprocessing_metadata = _load_preprocessing_metadata(data_dir)
+    has_explicit_churn_label = _has_explicit_uploaded_churn_label(preprocessing_metadata)
     if customers.empty:
         raise ValueError(f'No customers.csv found or the file is empty under {data_dir}')
     if treatment.empty:
@@ -470,7 +509,11 @@ def build_feature_dataset(data_dir: str | Path, feature_store_dir: str | Path = 
     if as_of_date is None:
         activity_max = _latest_activity_date(events, orders)
         if activity_max is not None:
-            if is_user_upload:
+            # For explicit uploaded churn labels, features may be built at the
+            # latest observed date. For inferred labels, reserve the final
+            # horizon as a future outcome window; otherwise the label is a
+            # current inactivity echo and the model has no valid target.
+            if is_user_upload and has_explicit_churn_label:
                 as_of_date = activity_max
             else:
                 as_of_date = activity_max - pd.Timedelta(days=horizon_days)
@@ -479,7 +522,7 @@ def build_feature_dataset(data_dir: str | Path, feature_store_dir: str | Path = 
         else:
             as_of_date = pd.Timestamp.today().floor('D')
     as_of_date = pd.Timestamp(as_of_date).floor('D')
-    if not is_user_upload:
+    if (not is_user_upload) or (is_user_upload and not has_explicit_churn_label):
         customers = customers.loc[customers['signup_date'] <= as_of_date].copy()
     base = customers.merge(treatment.drop_duplicates('customer_id', keep='last'), on='customer_id', how='left')
     base, summary_enrichment_cols = _merge_summary_enrichment(base, customer_summary)
@@ -536,15 +579,22 @@ def build_feature_dataset(data_dir: str | Path, feature_store_dir: str | Path = 
     base['monetary_per_visit_90d'] = safe_divide(base['monetary_90d'], base['visits_90d'].replace(0, np.nan), default=0.0)
     base['support_contact_rate_30d'] = safe_divide(base['support_contact_30d'], base['sessions_30d'].replace(0, np.nan), default=0.0)
     computed_label = _compute_future_label(events, orders, snapshots, base['customer_id'], as_of_date, horizon_days)
-    label_source = 'future_activity_rule'
+    label_source = 'future_activity_horizon_no_activity'
     observed = pd.Series(dtype=float)
     if 'churn_label_observed' in base.columns:
         observed = pd.to_numeric(base['churn_label_observed'], errors='coerce')
-    if observed.notna().sum() > 0 and observed.dropna().nunique() >= 2:
+
+    if has_explicit_churn_label and observed.notna().sum() > 0 and observed.dropna().nunique() >= 2:
         base['label'] = observed.fillna(computed_label).astype(float).ge(0.5).astype(int)
         label_source = 'uploaded_churn_label_observed'
     else:
-        base['label'] = computed_label
+        base['label'] = computed_label.astype(int)
+        # Last-resort fallback for uploads with too short a timeline to hold out
+        # a future horizon. This is explicitly marked so churn_training can avoid
+        # treating current recency/inactivity proxies as valid predictors.
+        if base['label'].nunique(dropna=True) < 2 and observed.notna().sum() > 0 and observed.dropna().nunique() >= 2:
+            base['label'] = observed.astype(float).ge(0.5).astype(int)
+            label_source = 'inactivity_rule_current_snapshot_fallback'
     # Remove strict active filter to allow higher churn rate
     # active_cohort = base['active_days_30d'] > 0
     # base = base.loc[active_cohort].reset_index(drop=True)
@@ -563,7 +613,12 @@ def build_feature_dataset(data_dir: str | Path, feature_store_dir: str | Path = 
         'row_count': int(len(base)),
         'positive_rate': positive_rate,
         'label_source': label_source,
-        'as_of_date_source': 'latest_activity_date' if is_user_upload else 'latest_activity_minus_horizon',
+        'preprocessing_churn_label_source': preprocessing_metadata.get('churn_label_source'),
+        'as_of_date_source': (
+            'latest_activity_date_explicit_label'
+            if (is_user_upload and has_explicit_churn_label)
+            else 'latest_activity_minus_horizon'
+        ),
         'summary_enrichment_columns': summary_enrichment_cols,
         'external_feature_columns': generated_external_cols,
         'feature_count': int(len([c for c in base.columns if c not in {'customer_id', 'label'}])),
