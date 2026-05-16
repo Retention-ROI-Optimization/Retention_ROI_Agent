@@ -667,10 +667,15 @@ def _estimate_churn_probability(customer_summary: pd.DataFrame, observed_label: 
             logit = _logit(rate) + 2.35 * rank_signal + 1.10 * (label - rate) + 0.75 * centered_behavior + tie_breaker
             return _sigmoid(logit).clip(0.02, 0.98)
 
-    base_rate = float(np.clip(0.10 + 0.70 * float(behavior_score.mean()), 0.08, 0.72))
+    # No explicit churn flag was supplied. Do not center the dashboard score at
+    # 45~50% simply because behavior_score is rank-based and therefore averages
+    # around 0.5. Use a conservative operating prior while preserving the risk
+    # ordering; the real binary training label is built later from a held-out
+    # future activity horizon in feature engineering.
+    base_rate = float(np.clip(0.06 + 0.34 * float(behavior_score.mean()), 0.08, 0.36))
     rank_signal = _rank01(behavior_score, ascending=True) - 0.5
-    logit = _logit(base_rate) + 2.60 * rank_signal + 0.90 * centered_behavior + tie_breaker
-    return _sigmoid(logit).clip(0.02, 0.98)
+    logit = _logit(base_rate) + 2.15 * rank_signal + 0.65 * centered_behavior + tie_breaker
+    return _sigmoid(logit).clip(0.02, 0.82)
 
 
 def _detect_date_column(df: pd.DataFrame, col: str) -> pd.Series:
@@ -1528,9 +1533,11 @@ def preprocess_uploaded_data(
         observed_label=customer_summary["churn_label_observed"] if has_explicit_churn_label else None,
         seed=seed,
     )
+    metadata["observed_churn_label_rate"] = float(customer_summary["churn_label_observed"].mean())
+    metadata["churn_probability_mean"] = float(customer_summary["churn_probability"].mean())
     metadata["churn_probability_strategy"] = (
         "rank_calibrated_continuous_proxy_blended_with_uploaded_label" if has_explicit_churn_label
-        else "rank_calibrated_continuous_behavior_proxy_from_recency_frequency_value_engagement"
+        else "conservative_rank_calibrated_behavior_prior_from_recency_frequency_value_engagement"
     )
 
     # ── Step 7: Fill missing core features ──
@@ -1722,6 +1729,7 @@ def preprocess_uploaded_data(
         "processed_events": int(len(events_df)),
         "processed_orders": int(len(orders_df)),
         "churn_rate": float(customer_summary["churn_probability"].mean()),
+        "observed_churn_label_rate": float(customer_summary["churn_label_observed"].mean()),
         "avg_clv": float(customer_summary["clv"].mean()),
         "preprocessing_complete": True,
     })

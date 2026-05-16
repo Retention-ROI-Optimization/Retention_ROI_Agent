@@ -160,6 +160,13 @@ DIRECT_LEAKAGE_COLUMNS = {
     "risk_score",
     "rank_score",
     "selected_threshold",
+    "uplift_score",
+    "uplift_segment_true",
+    "expected_roi",
+    "expected_incremental_profit",
+    "retention_probability",
+    "retention_prob",
+    "business_value",
     # Stage/segment columns derived from churn logic should not be model inputs.
     "current_journey_stage",
     "journey_stage",
@@ -183,6 +190,9 @@ DIRECT_LEAKAGE_COLUMNS = {
 }
 
 DIRECT_LEAKAGE_TOKENS = (
+    # Direct target / outcome / prediction fields. Keep this list narrow:
+    # generic business features such as frequency, monetary, recency, session duration,
+    # and amount aggregates are valid historical predictors for explicit or horizon labels.
     "target",
     "label",
     "churn",
@@ -197,25 +207,20 @@ DIRECT_LEAKAGE_TOKENS = (
     "predicted",
     "prediction",
     "probability",
-    "score",
     "risk_score",
     "rank_score",
     "selected_threshold",
-    "inactive_45d",
     "days_to_churn",
     "days_until_churn",
-    # Stage/segment leakage observed in feature importance.
-    "current_journey_stage",
-    "journey_stage",
-    "lifecycle_stage",
-    "customer_status",
-    "churn_risk",
-    "at_risk",
-    "risk_stage",
-    "risk_segment",
-    "risk_tier",
-    "churn_segment",
-    # Inactivity/recency label proxies observed after removing stage leakage.
+    "uplift_score",
+    "expected_roi",
+    "expected_incremental_profit",
+)
+
+# Features below are current-state proxies when the label itself is generated from
+# the same current inactivity rule. For uploaded explicit labels or time-horizon
+# future-activity labels they are allowed as historical predictors.
+CURRENT_INACTIVITY_PROXY_TOKENS = (
     "inactivity_days",
     "inactive_days",
     "days_since_last_event",
@@ -223,14 +228,22 @@ DIRECT_LEAKAGE_TOKENS = (
     "recency_days",
     "current_non_purchase_days",
     "non_purchase_days",
-    "days_from_simulation_start",
 )
+
+CURRENT_INACTIVITY_LABEL_SOURCES = {
+    "inactivity_rule",
+    "current_inactivity_rule",
+    "inactivity_rule_current_snapshot_fallback",
+    "uploaded_inactivity_rule_observed",
+}
+
 
 # Final fail-safe blacklist. These are not ordinary behavioral features in this
 # project; they are derived from the same inactivity/risk logic used to create
 # the churn label or from simulator latent probabilities. They must never reach
 # the model input.
 STRICT_FORBIDDEN_FEATURE_TOKENS = (
+    # Project-specific stage/status fields are derived from churn/risk logic.
     "current_journey_stage",
     "journey_stage",
     "customer_journey_stage",
@@ -243,18 +256,8 @@ STRICT_FORBIDDEN_FEATURE_TOKENS = (
     "risk_tier",
     "churn_segment",
     "dormant",
-    "inactivity_days",
-    "inactive_days",
-    "days_since_last_event",
-    "days_since_last_activity",
-    "recency_days",
-    "current_non_purchase_days",
-    "non_purchase_days",
-    "days_from_simulation_start",
+    # Simulator latent probabilities / generated scores, not observed customer behavior.
     "base_visit_prob",
-    "persona",
-    "days_since_registration",
-    "customer_age_days",
     "base_purchase_prob",
     "base_exposure_prob",
     "visit_probability",
@@ -263,15 +266,18 @@ STRICT_FORBIDDEN_FEATURE_TOKENS = (
     "visit_prob",
     "purchase_prob",
     "exposure_prob",
-    "frequency",
-    "monetary",
-    "clv",
-    "amount_sum",
-    "quantity_sum",
-    "session_duration_sec_sum",
-    "avg_purchase_gap_days",
+    "recent_visit_score",
+    "recent_purchase_score",
+    "recent_exposure_score",
+    # Generated decision/business outputs must not be model inputs.
+    "churn_probability",
+    "uplift_score",
+    "expected_roi",
+    "expected_incremental_profit",
+    "selection_score",
+    "priority_score",
+    "recommendation_score",
 )
-
 IDENTIFIER_TOKENS = (
     "customer_id",
     "user_id",
@@ -290,12 +296,43 @@ IDENTIFIER_TOKENS = (
 )
 
 
-def _identify_name_based_leakage_columns(columns) -> List[str]:
-    """Drop target/score/outcome columns that make churn AUC artificially perfect."""
+
+def _is_current_inactivity_label_source(label_source: str | None) -> bool:
+    normalized = str(label_source or "").strip().lower()
+    return normalized in CURRENT_INACTIVITY_LABEL_SOURCES
+
+
+def _is_current_inactivity_proxy(col: object) -> bool:
+    lower = str(col).strip().lower()
+    normalized = _normalize_column_name(col)
+    return any(token in lower or token in normalized for token in CURRENT_INACTIVITY_PROXY_TOKENS)
+
+
+def _identify_name_based_leakage_columns(columns, label_source: str | None = None) -> List[str]:
+    """Drop target/outcome columns while preserving valid historical behavior.
+
+    Earlier versions used a blanket token filter that also removed normal churn
+    predictors such as frequency, monetary value, recency, and session behavior.
+    That made the held-out AUC collapse toward 0.5 after leakage columns were
+    removed.  The filter is now intentionally narrow; current-inactivity proxy
+    columns are dropped only when the training label itself was produced by the
+    same current inactivity rule.
+    """
     leakage: List[str] = []
+    current_inactivity_label = _is_current_inactivity_label_source(label_source)
     for col in columns:
         lower = str(col).strip().lower()
         normalized = _normalize_column_name(col)
+
+        is_current_proxy = _is_current_inactivity_proxy(col)
+        if current_inactivity_label and is_current_proxy:
+            leakage.append(col)
+            continue
+        if (not current_inactivity_label) and is_current_proxy:
+            # Recency/inactivity are valid historical predictors for explicit labels
+            # and for labels measured in a future horizon.
+            continue
+
         if lower in DIRECT_LEAKAGE_COLUMNS or normalized in DIRECT_LEAKAGE_COLUMNS:
             leakage.append(col)
             continue
@@ -308,12 +345,16 @@ def _identify_name_based_leakage_columns(columns) -> List[str]:
     return leakage
 
 
-def _identify_strict_forbidden_columns(columns) -> List[str]:
-    """Fail-safe removal for known project-specific churn label proxies."""
+def _identify_strict_forbidden_columns(columns, label_source: str | None = None) -> List[str]:
+    """Fail-safe removal for known project-specific generated risk fields."""
     forbidden: List[str] = []
+    current_inactivity_label = _is_current_inactivity_label_source(label_source)
     for col in columns:
         lower = str(col).strip().lower()
         normalized = _normalize_column_name(col)
+        if current_inactivity_label and _is_current_inactivity_proxy(col):
+            forbidden.append(col)
+            continue
         if any(token in lower for token in STRICT_FORBIDDEN_FEATURE_TOKENS):
             forbidden.append(col)
             continue
@@ -324,7 +365,9 @@ def _identify_strict_forbidden_columns(columns) -> List[str]:
 
 
 
-def _identify_identifier_columns(X: pd.DataFrame, max_unique_ratio: float = 0.85) -> List[str]:
+
+
+def _identify_identifier_columns(X: pd.DataFrame, max_unique_ratio: float = 0.50) -> List[str]:
     """Remove IDs/high-cardinality categoricals that allow memorization rather than learning."""
     identifier_cols: List[str] = []
     n = max(len(X), 1)
@@ -336,7 +379,9 @@ def _identify_identifier_columns(X: pd.DataFrame, max_unique_ratio: float = 0.85
 
         if pd.api.types.is_object_dtype(X[col]) or str(X[col].dtype) == "category":
             nunique = X[col].nunique(dropna=True)
-            if nunique > 50 and (nunique / n) >= max_unique_ratio:
+            # Event-sequence strings and near-unique categoricals explode the
+            # one-hot matrix and tend to memorize individual histories.
+            if ("sequence" in lower and nunique > 50) or (nunique > 50 and (nunique / n) >= max_unique_ratio):
                 identifier_cols.append(col)
     return identifier_cols
 
@@ -390,11 +435,35 @@ def _identify_target_proxy_columns(
     return proxy_cols
 
 
+def _looks_like_datetime_series(series: pd.Series) -> bool:
+    if pd.api.types.is_datetime64_any_dtype(series):
+        return True
+    if not (pd.api.types.is_object_dtype(series) or str(series.dtype) == "category"):
+        return False
+    sample = series.dropna().astype(str).head(80)
+    if sample.empty:
+        return False
+    date_like = sample.str.contains(
+        r"\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}[-/]\d{2,4}",
+        regex=True,
+        na=False,
+    ).mean()
+    if date_like < 0.60:
+        return False
+    parsed = pd.to_datetime(sample, errors="coerce")
+    return bool(parsed.notna().mean() >= 0.70)
+
+
 def _extract_datetime_features(df: pd.DataFrame) -> tuple[pd.DataFrame, List[str]]:
     out = df.copy()
     converted_cols: List[str] = []
 
     datetime_cols = out.select_dtypes(include=["datetime", "datetimetz"]).columns.tolist()
+    object_datetime_cols = [
+        col for col in out.columns
+        if col not in datetime_cols and _looks_like_datetime_series(out[col])
+    ]
+    datetime_cols.extend(object_datetime_cols)
 
     for col in datetime_cols:
         ts = pd.to_datetime(out[col], errors="coerce")
@@ -412,6 +481,8 @@ def _extract_datetime_features(df: pd.DataFrame) -> tuple[pd.DataFrame, List[str
 
 def _sanitize_training_frame(
     features_df: pd.DataFrame,
+    *,
+    label_source: str | None = None,
 ) -> tuple[pd.DataFrame, pd.Series, pd.Series | None, Dict]:
     if "label" not in features_df.columns:
         raise ValueError("features_df must contain a binary 'label' column for churn training.")
@@ -428,11 +499,11 @@ def _sanitize_training_frame(
 
     X = features_df.drop(columns=["label", "customer_id"], errors="ignore").copy()
 
-    name_leakage_columns = _identify_name_based_leakage_columns(X.columns)
+    name_leakage_columns = _identify_name_based_leakage_columns(X.columns, label_source=label_source)
     if name_leakage_columns:
         X = X.drop(columns=name_leakage_columns, errors="ignore")
 
-    strict_forbidden_columns = _identify_strict_forbidden_columns(X.columns)
+    strict_forbidden_columns = _identify_strict_forbidden_columns(X.columns, label_source=label_source)
     if strict_forbidden_columns:
         X = X.drop(columns=strict_forbidden_columns, errors="ignore")
 
@@ -446,7 +517,7 @@ def _sanitize_training_frame(
 
     X, converted_datetime_cols = _extract_datetime_features(X)
 
-    post_datetime_forbidden_columns = _identify_strict_forbidden_columns(X.columns)
+    post_datetime_forbidden_columns = _identify_strict_forbidden_columns(X.columns, label_source=label_source)
     if post_datetime_forbidden_columns:
         X = X.drop(columns=post_datetime_forbidden_columns, errors="ignore")
 
@@ -487,6 +558,12 @@ def _sanitize_training_frame(
         ),
         "group_column": "customer_id" if groups is not None else None,
         "unique_groups": int(groups.nunique(dropna=False)) if groups is not None else None,
+        "label_source": str(label_source or "unknown"),
+        "current_inactivity_proxy_policy": (
+            "dropped recency/inactivity proxy features because label_source is current-inactivity based"
+            if _is_current_inactivity_label_source(label_source)
+            else "kept historical recency/frequency/monetary behavior features because label_source is explicit or horizon-based"
+        ),
     }
     return X, y, groups, metadata
 
@@ -782,11 +859,12 @@ def train_churn_models(
     threshold_tp_value: float = 120000.0,
     threshold_fp_cost: float = 18000.0,
     threshold_fn_cost: float = 60000.0,
+    label_source: str | None = None,
 ) -> TrainingArtifacts:
     model_dir = _ensure_dir(Path(model_dir))
     result_dir = _ensure_dir(Path(result_dir))
 
-    X, y, groups, preprocessing_meta = _sanitize_training_frame(features_df)
+    X, y, groups, preprocessing_meta = _sanitize_training_frame(features_df, label_source=label_source)
     requested_models = _resolve_requested_models(candidate_models)
 
     (
@@ -996,6 +1074,8 @@ def train_churn_models(
             recall_score(y_test, y_pred, zero_division=0)
         ),
         "positive_rate": float(y.mean()),
+        "label_source": preprocessing_meta.get("label_source"),
+        "current_inactivity_proxy_policy": preprocessing_meta.get("current_inactivity_proxy_policy"),
         "train_rows": int(len(X_train)),
         "test_rows": int(len(X_test)),
         "numeric_feature_count": len(num_cols),
@@ -1024,6 +1104,7 @@ def train_churn_models(
             "threshold_tp_value": float(threshold_tp_value),
             "threshold_fp_cost": float(threshold_fp_cost),
             "threshold_fn_cost": float(threshold_fn_cost),
+            "label_source": str(label_source or "unknown"),
         },
     }
 
