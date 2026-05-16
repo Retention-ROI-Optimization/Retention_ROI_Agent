@@ -2626,6 +2626,119 @@ def _table_widget_key(label: str, suffix: str) -> str:
     return f"table_{suffix}_{digest}"
 
 
+def _format_static_table_value(value: Any) -> str:
+    """Return a browser-safe string for the static HTML table renderer."""
+    normalized = _normalize_table_cell(value)
+    if normalized in (None, ""):
+        return ""
+    if isinstance(normalized, bool):
+        return "True" if normalized else "False"
+    if isinstance(normalized, float):
+        if math.isnan(normalized) or math.isinf(normalized):
+            return ""
+        return f"{normalized:,.4f}" if abs(normalized) < 1 and normalized != 0 else f"{normalized:,.2f}"
+    if isinstance(normalized, (int, np.integer)):
+        return f"{int(normalized):,}"
+    return str(normalized)
+
+
+def _render_static_html_table(
+    df: pd.DataFrame,
+    *,
+    label: str,
+    hide_index: bool = True,
+    max_height: int = 520,
+) -> None:
+    """
+    Render a read-only table without Streamlit's canvas/grid frontend.
+
+    Streamlit 1.44.0's dataframe frontend can intermittently raise
+    `TypeError: Cannot read properties of undefined (reading 'get')` while
+    mounting small, rerun-heavy tables.  These artifact/metadata tables are
+    read-only, so a static HTML table is safer and does not touch Plotly charts.
+    """
+    static_df = _sanitize_display_dataframe(df)
+    if static_df.empty:
+        st.info("표시할 데이터가 없습니다.")
+        return
+
+    if not hide_index:
+        static_df = static_df.copy()
+        static_df.insert(0, "index", list(static_df.index))
+
+    table_key = hashlib.md5(
+        f"{label}:{list(static_df.columns)}:{len(static_df)}".encode("utf-8")
+    ).hexdigest()[:10]
+    wrapper_class = f"safe-static-table-{table_key}"
+    height_px = max(180, int(max_height or 520))
+
+    header_html = "".join(
+        f"<th>{html.escape(str(col))}</th>" for col in static_df.columns
+    )
+    row_html_parts: list[str] = []
+    for _, row in static_df.iterrows():
+        cells = "".join(
+            f"<td>{html.escape(_format_static_table_value(value))}</td>"
+            for value in row.tolist()
+        )
+        row_html_parts.append(f"<tr>{cells}</tr>")
+    body_html = "".join(row_html_parts)
+
+    st.markdown(
+        f"""
+        <style>
+        .{wrapper_class} {{
+            width: 100%;
+            max-height: {height_px}px;
+            overflow: auto;
+            border: 1px solid rgba(148, 163, 184, 0.28);
+            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.92);
+            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.04);
+        }}
+        .{wrapper_class} table {{
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            font-size: 0.92rem;
+            color: #0f172a;
+        }}
+        .{wrapper_class} thead th {{
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            background: #f8fafc;
+            color: #334155;
+            font-weight: 800;
+            text-align: left;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.34);
+            padding: 0.72rem 0.9rem;
+            white-space: nowrap;
+        }}
+        .{wrapper_class} tbody td {{
+            border-bottom: 1px solid rgba(226, 232, 240, 0.86);
+            padding: 0.68rem 0.9rem;
+            vertical-align: top;
+            white-space: nowrap;
+        }}
+        .{wrapper_class} tbody tr:nth-child(even) td {{
+            background: rgba(248, 250, 252, 0.58);
+        }}
+        .{wrapper_class} tbody tr:last-child td {{
+            border-bottom: 0;
+        }}
+        </style>
+        <div class="{wrapper_class}" role="region" aria-label="{html.escape(label)}">
+            <table>
+                <thead><tr>{header_html}</tr></thead>
+                <tbody>{body_html}</tbody>
+            </table>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def _render_html_table(
     df: pd.DataFrame,
     *,
@@ -2667,12 +2780,34 @@ def _render_html_table(
     else:
         st.caption(_describe_table_count(safe_df, label=label))
 
-    st.dataframe(
-        view_df,
-        use_container_width=True,
-        hide_index=hide_index,
-        height=max(280, int(max_height)),
-    )
+    # Static renderer is intentionally used for read-only artifact/metadata tables
+    # and small summary tables. It avoids Streamlit's dataframe grid bug without
+    # changing any Plotly bar charts, including the churn-status view.
+    should_render_static = prefer_static or len(view_df) <= 50
+    if should_render_static:
+        _render_static_html_table(
+            view_df,
+            label=label,
+            hide_index=hide_index,
+            max_height=max_height,
+        )
+        return
+
+    try:
+        st.dataframe(
+            view_df,
+            use_container_width=True,
+            hide_index=hide_index,
+            height=max(280, int(max_height)),
+        )
+    except Exception as exc:
+        st.warning(f"대화형 표 렌더링에 실패하여 정적 표로 대체합니다: {exc}")
+        _render_static_html_table(
+            view_df,
+            label=label,
+            hide_index=hide_index,
+            max_height=max_height,
+        )
 
 
 def _render_dataframe_with_count(
