@@ -2650,18 +2650,27 @@ def _render_html_table(
         search_key = _table_widget_key(label, "search")
         _q = st.text_input(
             f"{label} 검색",
-            placeholder="고객 ID, 세그먼트 등 검색...",
+            placeholder="고객 ID검색",
             key=search_key,
             label_visibility="collapsed",
         )
         if _q.strip():
             _search_active = True
             _ql = _q.strip().lower()
-            mask = safe_df.apply(
-                lambda row, q=_ql: any(q in str(v).lower() for v in row),
-                axis=1,
+            customer_id_col = next(
+                (col for col in safe_df.columns if str(col).lower() == "customer_id"),
+                None,
             )
-            view_df = safe_df[mask].reset_index(drop=True)
+            if customer_id_col is None:
+                view_df = safe_df.iloc[0:0].reset_index(drop=True)
+            else:
+                mask = (
+                    safe_df[customer_id_col]
+                    .astype(str)
+                    .str.lower()
+                    .str.contains(re.escape(_ql), na=False)
+                )
+                view_df = safe_df[mask].reset_index(drop=True)
 
     if _search_active:
         st.caption(f"{label}: 전체 {total_rows:,}건 중 {len(view_df):,}건 일치")
