@@ -3,6 +3,7 @@ import html
 import json
 import math
 import os
+import re
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -2649,18 +2650,27 @@ def _render_html_table(
         search_key = _table_widget_key(label, "search")
         _q = st.text_input(
             f"{label} 검색",
-            placeholder="고객 ID, 세그먼트 등 검색...",
+            placeholder="고객 ID검색",
             key=search_key,
             label_visibility="collapsed",
         )
         if _q.strip():
             _search_active = True
             _ql = _q.strip().lower()
-            mask = safe_df.apply(
-                lambda row, q=_ql: any(q in str(v).lower() for v in row),
-                axis=1,
+            customer_id_col = next(
+                (col for col in safe_df.columns if str(col).lower() == "customer_id"),
+                None,
             )
-            view_df = safe_df[mask].reset_index(drop=True)
+            if customer_id_col is None:
+                view_df = safe_df.iloc[0:0].reset_index(drop=True)
+            else:
+                mask = (
+                    safe_df[customer_id_col]
+                    .astype(str)
+                    .str.lower()
+                    .str.contains(re.escape(_ql), na=False)
+                )
+                view_df = safe_df[mask].reset_index(drop=True)
 
     if _search_active:
         st.caption(f"{label}: 전체 {total_rows:,}건 중 {len(view_df):,}건 일치")
@@ -2721,6 +2731,60 @@ def _render_artifact_table(
 
 
 
+
+
+def sanitize_llm_markdown(text: str) -> str:
+    """Remove Markdown/HTML strikethrough markers from LLM output before Streamlit renders it.
+
+    LLMs often write numeric ranges such as ``3.65~~10.16`` when they mean
+    ``3.65~10.16``. Streamlit interprets ``~~...~~`` as Markdown
+    strikethrough, so we sanitize every LLM-rendered string at display time.
+    """
+    if text is None:
+        return ""
+
+    text = str(text)
+
+    # Unicode combining strikethrough/overlay characters.
+    text = re.sub(r"[\u0335-\u0338]", "", text)
+
+    # HTML strikethrough tags: <s>, <strike>, <del>.
+    text = re.sub(
+        r"</?\s*(?:s|strike|del)\b[^>]*>",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    # Inline style strikethrough spans.
+    text = re.sub(
+        r'<span\b[^>]*text-decoration\s*:\s*line-through[^>]*>(.*?)</span>',
+        r"\1",
+        text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
+    # Numeric ranges: 3.65~~10.16 -> 3.65–10.16.
+    text = re.sub(
+        r"(?P<left>\d[\d,]*(?:\.\d+)?)\s*~{1,2}\s*(?P<right>\d[\d,]*(?:\.\d+)?)",
+        r"\g<left>–\g<right>",
+        text,
+    )
+
+    # Any remaining Markdown strikethrough delimiters are unsafe for this app.
+    text = text.replace("~~", "")
+
+    return text
+
+
+def clear_llm_caches() -> None:
+    """Remove cached LLM summaries/answers so old unsanitized text is not reused."""
+    for key in list(st.session_state.keys()):
+        key_str = str(key)
+        if key_str.startswith("summary::") or key_str.startswith("qa::"):
+            del st.session_state[key]
+
+
 def _payload_hash(*parts: str) -> str:
     joined = "||".join(parts)
     return hashlib.sha256(joined.encode("utf-8")).hexdigest()
@@ -2740,7 +2804,7 @@ def get_session_cached_summary(
             user_api_key=api_key,
             model_name=model_name,
         )
-    return st.session_state[cache_key]
+    return sanitize_llm_markdown(st.session_state[cache_key])
 
 
 def get_session_cached_answer(
@@ -2759,7 +2823,7 @@ def get_session_cached_answer(
             user_api_key=api_key,
             model_name=model_name,
         )
-    return st.session_state[cache_key]
+    return sanitize_llm_markdown(st.session_state[cache_key])
 
 
 def get_chat_history_key(view_key: str) -> str:
@@ -2857,7 +2921,7 @@ def render_llm_summary(
             st.error(f"AI 요약 생성 중 오류가 발생했습니다: {exc}")
             return
 
-    st.markdown(summary)
+    st.markdown(sanitize_llm_markdown(summary))
     st.caption("추가 질문은 사이드바의 AI 챗봇 버튼을 눌러 이어서 대화할 수 있습니다.")
 
 
@@ -2982,7 +3046,7 @@ def _render_sidebar_chatbot_inline(
             role = item.get("role", "assistant")
             avatar = "🧑" if role == "user" else "🤖"
             with st.chat_message(role, avatar=avatar):
-                st.markdown(item.get("content", ""))
+                st.markdown(sanitize_llm_markdown(item.get("content", "")))
 
     # 입력창
     prompt = st.chat_input(
@@ -3081,7 +3145,7 @@ def open_chatbot_dialog(
         role = item.get("role", "assistant")
         avatar = "🧑" if role == "user" else "🤖"
         with st.chat_message(role, avatar=avatar):
-            st.markdown(item.get("content", ""))
+            st.markdown(sanitize_llm_markdown(item.get("content", "")))
 
     prompt = st.chat_input(
         "현재 화면에 대해 질문하세요.",
@@ -3113,7 +3177,7 @@ def open_chatbot_dialog(
                 except Exception as exc:
                     answer = f"AI 답변 생성 중 오류가 발생했습니다: {exc}"
 
-            st.markdown(answer)
+            st.markdown(sanitize_llm_markdown(answer))
 
         history.append({"role": "assistant", "content": answer})
         st.session_state[history_key] = history
@@ -3211,6 +3275,420 @@ def inject_draggable_chat_dialog():
 inject_custom_css()
 
 
+def _render_wizard_stepper(current: int, total: int = 6):
+    labels = ["모드 선택", "CSV 업로드", "컬럼 매핑", "이벤트 매핑", "이탈 정의", "학습"]
+    parts = []
+    for i, label in enumerate(labels[:total]):
+        if i < current:
+            parts.append(f"<span style='color:#10B981;font-weight:700'>● {label}</span>")
+        elif i == current:
+            parts.append(f"<span style='color:#3B82F6;font-weight:700'>● {label}</span>")
+        else:
+            parts.append(f"<span style='color:#9CA3AF'>○ {label}</span>")
+    st.markdown(
+        "<div style='display:flex;gap:8px;align-items:center;margin:12px 0 20px 0;font-size:0.85rem'>"
+        + " ─ ".join(parts) + "</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def _wizard_nav(step_key: str, can_next: bool = True, can_prev: bool = True, next_label: str = "다음 →", prev_label: str = "← 이전"):
+    col_l, col_r = st.columns(2)
+    with col_l:
+        if can_prev and st.button(prev_label, key=f"wiz_prev_{step_key}", use_container_width=True):
+            st.session_state["wizard_step"] = max(st.session_state.get("wizard_step", 0) - 1, 0)
+            st.rerun()
+    with col_r:
+        if can_next and st.button(next_label, key=f"wiz_next_{step_key}", use_container_width=True, type="primary"):
+            st.session_state["wizard_step"] = st.session_state.get("wizard_step", 0) + 1
+            st.rerun()
+
+
+def _render_wizard() -> bool:
+    """Main-area wizard. Returns True if wizard is active (dashboard should not render)."""
+    if st.session_state.get("wizard_dismissed"):
+        return False
+
+    st.session_state.setdefault("wizard_step", 0)
+    step = st.session_state["wizard_step"]
+
+    _render_wizard_stepper(step)
+
+    from pathlib import Path as _WizPath
+    _has_user_data = (_WizPath("data/raw_user") / "customer_summary.csv").exists()
+    _has_user_results = _WizPath("results_user").exists() and any(_WizPath("results_user").iterdir()) if _WizPath("results_user").exists() else False
+    if _has_user_data or _has_user_results:
+        st.info("이전에 학습한 결과가 있습니다. 바로 대시보드를 볼 수도 있습니다.")
+        if st.button("📊 기존 결과로 대시보드 보기", key="wizard_skip_btn", type="secondary"):
+            st.session_state["wizard_dismissed"] = True
+            st.session_state["data_mode"] = "user"
+            st.rerun()
+
+    # ── Step 0: 모드 선택 ──
+    if step == 0:
+        st.markdown("### Step 1. 분석 모드 선택")
+        st.markdown("어떤 데이터로 분석할지 선택하세요.")
+
+        col_sim, col_user = st.columns(2)
+        with col_sim:
+            st.markdown(
+                "<div style='border:2px solid #E5E7EB;border-radius:12px;padding:20px;text-align:center;min-height:180px'>"
+                "<div style='font-size:2rem'>🧪</div>"
+                "<div style='font-weight:700;margin:8px 0'>시뮬레이터 데모</div>"
+                "<div style='font-size:0.85rem;color:#6B7280'>내장 샘플 데이터로<br>플랫폼 기능을 체험합니다</div>"
+                "</div>", unsafe_allow_html=True
+            )
+            if st.button("시뮬레이터로 시작", key="wiz_mode_sim", use_container_width=True):
+                st.session_state["data_mode"] = "simulator"
+                st.session_state["wizard_dismissed"] = True
+                clear_dashboard_caches()
+                st.rerun()
+
+        with col_user:
+            st.markdown(
+                "<div style='border:2px solid #E5E7EB;border-radius:12px;padding:20px;text-align:center;min-height:180px'>"
+                "<div style='font-size:2rem'>📂</div>"
+                "<div style='font-weight:700;margin:8px 0'>자사 데이터 업로드</div>"
+                "<div style='font-size:0.85rem;color:#6B7280'>CSV 파일을 업로드하여<br>이탈 예측 모델을 학습합니다</div>"
+                "</div>", unsafe_allow_html=True
+            )
+            if st.button("자사 데이터로 시작", key="wiz_mode_user", use_container_width=True, type="primary"):
+                st.session_state["data_mode"] = "user"
+                st.session_state["wizard_step"] = 1
+                st.rerun()
+
+        return True
+
+    # ── Step 1: CSV 업로드 ──
+    if step == 1:
+        import sys
+        from pathlib import Path as _UpPath
+        st.markdown("### Step 2. CSV 파일 업로드")
+        uploaded_file = st.file_uploader(
+            "분석할 CSV 파일을 선택하세요",
+            type=["csv", "tsv"],
+            key="wizard_csv_upload",
+            help="고객 데이터, 거래 데이터, 이벤트 로그 등",
+        )
+        if uploaded_file is not None:
+            _project_root = _UpPath(__file__).resolve().parents[1]
+            if str(_project_root) not in sys.path:
+                sys.path.insert(0, str(_project_root))
+            upload_dir = _project_root / "data" / "uploads"
+            upload_dir.mkdir(parents=True, exist_ok=True)
+            upload_path = upload_dir / uploaded_file.name
+            with open(upload_path, "wb") as f:
+                f.write(uploaded_file.getbuffer())
+            st.session_state["wizard_upload_path"] = str(upload_path)
+
+            if st.session_state.get("wizard_upload_path_prev") != str(upload_path):
+                st.session_state["wizard_upload_path_prev"] = str(upload_path)
+                st.session_state.pop("wizard_mapping_preview", None)
+
+            if "wizard_mapping_preview" not in st.session_state:
+                from src.ingestion.pipeline import prepare_mapping_preview as _prep
+                import threading, time as _t
+                _file_mb = max(upload_path.stat().st_size / (1024 * 1024), 0.1)
+                _est = max(_file_mb * 0.4 + 2.0, 3.0)
+                _box: dict = {"value": None, "error": None}
+
+                def _w():
+                    try:
+                        _box["value"] = _prep(upload_path)
+                    except Exception as _e:
+                        _box["error"] = _e
+
+                _th = threading.Thread(target=_w, daemon=True)
+                _th.start()
+                _pb = st.progress(0, text="🚀 분석 시작...")
+                _el = 0.0
+                while _th.is_alive():
+                    _t.sleep(0.25)
+                    _el += 0.25
+                    _pct = min(int((_el / _est) * 90), 92)
+                    _pb.progress(_pct, text=f"🔍 컬럼 자동 감지 중... {_el:.1f}s")
+                _th.join()
+                if _box["error"]:
+                    _pb.progress(100, text="❌ 오류")
+                    st.error(f"분석 실패: {_box['error']}")
+                else:
+                    _pb.progress(100, text="✅ 완료")
+                    st.session_state["wizard_mapping_preview"] = _box["value"]
+                    st.rerun()
+
+            if "wizard_mapping_preview" in st.session_state:
+                p = st.session_state["wizard_mapping_preview"]
+                v = p.validation
+                if v.is_valid:
+                    st.success(f"✅ 검증 통과 ({v.row_count:,}행 × {v.column_count}열, 관련성 {v.relevance_score:.0%})")
+                else:
+                    for e in v.errors:
+                        st.error(f"⛔ {e}")
+                if v.warnings:
+                    for w in v.warnings:
+                        st.caption(f"⚠️ {w}")
+                if not v.is_valid:
+                    st.warning("검증 오류가 있습니다. 다른 파일을 올리거나 그대로 진행할 수 있습니다.")
+
+        _wizard_nav("step1", can_next="wizard_mapping_preview" in st.session_state)
+        return True
+
+    # ── Step 2: 컬럼 매핑 ──
+    if step == 2:
+        st.markdown("### Step 3. 컬럼 매핑 확인")
+        if "wizard_mapping_preview" not in st.session_state:
+            st.warning("먼저 CSV를 업로드해주세요.")
+            _wizard_nav("step2", can_next=False)
+            return True
+
+        preview = st.session_state["wizard_mapping_preview"]
+        from src.ingestion.preprocessor import ROLE_DESCRIPTIONS as _ROLE_DESC
+
+        st.caption("시스템이 자동으로 감지한 컬럼 매핑입니다. 잘못된 부분은 직접 수정하세요.")
+
+        with st.expander("💡 스키마 역할 설명", expanded=False):
+            _h = "<div style='font-size:0.82rem;line-height:1.5'>"
+            for _k, _d in _ROLE_DESC.items():
+                _h += f"<div><b><code>{_k}</code></b> — {_d}</div>"
+            _h += "</div>"
+            st.markdown(_h, unsafe_allow_html=True)
+
+        all_cols = list(preview.validation.column_report and
+            [c["original_name"] for c in preview.validation.column_report]
+            or list(preview.column_mapping.values()))
+        auto_map = dict(preview.column_mapping)
+        options = ["(매핑 안 함)"] + list(all_cols)
+
+        rows = []
+        for role in _ROLE_DESC.keys():
+            detected = auto_map.get(role)
+            rows.append({
+                "시스템 스키마": role,
+                "자사 CSV 컬럼": detected if detected in all_cols else "(매핑 안 함)",
+            })
+        cm_df = pd.DataFrame(rows)
+
+        edited_cm = st.data_editor(
+            cm_df, use_container_width=True, hide_index=True,
+            disabled=["시스템 스키마"],
+            column_config={
+                "시스템 스키마": st.column_config.TextColumn("시스템 스키마 (고정)"),
+                "자사 CSV 컬럼": st.column_config.SelectboxColumn("자사 CSV 컬럼 ▼", options=options, required=True),
+            },
+            key="wizard_col_map_editor",
+        )
+
+        mapping_override: dict = {}
+        for _, r in edited_cm.iterrows():
+            role = str(r["시스템 스키마"])
+            col = str(r["자사 CSV 컬럼"])
+            if col and col != "(매핑 안 함)":
+                mapping_override[role] = col
+        st.session_state["wizard_column_mapping"] = mapping_override
+
+        _wizard_nav("step2")
+        return True
+
+    # ── Step 3: 이벤트 매핑 ──
+    if step == 3:
+        st.markdown("### Step 4. 이벤트 타입 매핑")
+        preview = st.session_state.get("wizard_mapping_preview")
+        if not preview:
+            st.warning("먼저 CSV를 업로드해주세요.")
+            _wizard_nav("step3", can_next=False)
+            return True
+
+        if preview.has_event_data:
+            from src.ingestion.preprocessor import INTERNAL_EVENT_TYPES as _STD, EVENT_TYPE_DESCRIPTIONS as _EV_DESC
+
+            col_a, col_b = st.columns([3, 1])
+            with col_a:
+                st.caption(f"고유값 {len(preview.event_value_mapping)}개, 자동 커버리지 {preview.coverage_rate:.0%}")
+            with col_b:
+                if preview.coverage_rate >= 0.9:
+                    st.markdown("🟢 **양호**")
+                elif preview.coverage_rate >= 0.7:
+                    st.markdown("🟡 **검토 권장**")
+                else:
+                    st.markdown("🔴 **수정 필요**")
+
+            with st.expander("💡 표준 이벤트 6종 설명", expanded=False):
+                _h = "<div style='font-size:0.82rem;line-height:1.5'>"
+                for _s, _d in _EV_DESC.items():
+                    _h += f"<div><b><code>{_s}</code></b> — {_d}</div>"
+                _h += "</div>"
+                st.markdown(_h, unsafe_allow_html=True)
+
+            if preview.unmapped_values:
+                st.warning(f"⚠️ 매핑 실패 {len(preview.unmapped_values)}개: `{', '.join(preview.unmapped_values)}` → 'other'")
+
+            std_options = list(_STD) + ["other", "ignore"]
+            e_rows = []
+            for raw, std in sorted(preview.event_value_mapping.items(), key=lambda x: -preview.event_value_counts.get(x[0], 0)):
+                e_rows.append({"원본 값": raw, "빈도": preview.event_value_counts.get(raw, 0), "내부 표준 값": std})
+            e_df = pd.DataFrame(e_rows)
+
+            edited_ev = st.data_editor(
+                e_df, use_container_width=True, hide_index=True,
+                disabled=["원본 값", "빈도"],
+                column_config={
+                    "원본 값": st.column_config.TextColumn("원본 값"),
+                    "빈도": st.column_config.NumberColumn("빈도", format="%d"),
+                    "내부 표준 값": st.column_config.SelectboxColumn("내부 표준 값", options=std_options, required=True),
+                },
+                key="wizard_ev_map_editor",
+            )
+            st.session_state["wizard_event_mapping"] = dict(zip(edited_ev["원본 값"].astype(str), edited_ev["내부 표준 값"].astype(str)))
+            st.session_state["wizard_synthetic_fallback"] = False
+
+            std_dist: dict = {}
+            for raw, std in st.session_state["wizard_event_mapping"].items():
+                std_dist[std] = std_dist.get(std, 0) + preview.event_value_counts.get(raw, 0)
+            if std_dist:
+                st.markdown("**매핑 후 분포**")
+                cols = st.columns(min(len(std_dist), 4))
+                for idx, (k, v) in enumerate(sorted(std_dist.items(), key=lambda x: -x[1])):
+                    with cols[idx % len(cols)]:
+                        st.metric(label=k, value=f"{v:,}")
+        else:
+            st.warning("⚠️ event_type 또는 timestamp 컬럼이 감지되지 않았습니다.")
+            st.markdown("합성 이벤트로 진행하면 이벤트 시퀀스 분석은 신뢰할 수 없습니다.")
+            fallback = st.checkbox("스냅샷 데이터로 진행합니다 (이벤트 기반 분석 제외)", value=False, key="wizard_synthetic_cb")
+            st.session_state["wizard_synthetic_fallback"] = fallback
+            st.session_state["wizard_event_mapping"] = None
+
+        _wizard_nav("step3", can_next=(preview.has_event_data or st.session_state.get("wizard_synthetic_fallback", False)))
+        return True
+
+    # ── Step 4: 이탈 정의 + 학습 설정 ──
+    if step == 4:
+        st.markdown("### Step 5. 이탈 기준 정의 & 학습 설정")
+        preview = st.session_state.get("wizard_mapping_preview")
+
+        recommended = int(getattr(preview, "recommended_churn_days", None) or 30) if preview else 30
+        st.caption("마지막 활동 이후 며칠간 비활성이면 '이탈'로 분류할지 정합니다.")
+        if preview and getattr(preview, "recommended_churn_days", None):
+            st.info(f"데이터 분석 기반 추천: **{recommended}일**")
+
+        churn_days = st.slider("이탈 기준 (N일 비활성)", 7, 180, recommended, 1, key="wizard_churn_days")
+        st.caption(f"설정: 마지막 활동 **{churn_days}일** 후 이탈로 간주")
+
+        st.divider()
+        col1, col2 = st.columns(2)
+        with col1:
+            w_budget = st.number_input("마케팅 예산", value=5_000_000, step=100000, key="wizard_budget")
+        with col2:
+            w_threshold = st.slider("이탈 Threshold", 0.10, 0.90, 0.50, 0.01, key="wizard_threshold")
+
+        _wizard_nav("step4")
+        return True
+
+    # ── Step 5: 학습 실행 ──
+    if step == 5:
+        st.markdown("### Step 6. 모델 학습")
+        preview = st.session_state.get("wizard_mapping_preview")
+        if not preview:
+            st.error("데이터가 없습니다. 처음부터 다시 시작하세요.")
+            _wizard_nav("step5", can_next=False)
+            return True
+
+        col_mapping = st.session_state.get("wizard_column_mapping")
+        ev_mapping = st.session_state.get("wizard_event_mapping")
+        synthetic = st.session_state.get("wizard_synthetic_fallback", False)
+        churn_days = st.session_state.get("wizard_churn_days", 30)
+        w_budget = st.session_state.get("wizard_budget", 5_000_000)
+        w_threshold = st.session_state.get("wizard_threshold", 0.50)
+        upload_path = st.session_state.get("wizard_upload_path")
+
+        st.markdown("**설정 요약**")
+        summary_cols = st.columns(3)
+        with summary_cols[0]:
+            st.metric("이탈 기준", f"{churn_days}일")
+        with summary_cols[1]:
+            st.metric("예산", f"{int(w_budget):,}원")
+        with summary_cols[2]:
+            st.metric("Threshold", f"{w_threshold:.2f}")
+
+        if ev_mapping:
+            st.caption(f"이벤트 매핑: {len(ev_mapping)}개 값 → 표준 분류")
+        elif synthetic:
+            st.caption("⚠️ 합성 이벤트 모드 (스냅샷 데이터)")
+
+        if st.button("🚀 학습 시작", key="wizard_train_btn", use_container_width=True, type="primary"):
+            from src.ingestion.pipeline import run_ingestion_pipeline as _run_pipeline
+            from pathlib import Path as _TrainPath
+            import threading, time as _t
+
+            _project_root = _TrainPath(__file__).resolve().parents[1]
+            progress_bar = st.progress(0, text="시작 중...")
+            _holder: dict = {}
+
+            def _train():
+                try:
+                    _holder["result"] = _run_pipeline(
+                        file_path=upload_path,
+                        data_dir=_project_root / "data" / "raw_user",
+                        model_dir=_project_root / "models_user",
+                        result_dir=_project_root / "results_user",
+                        feature_store_dir=_project_root / "data" / "feature_store_user",
+                        budget=int(w_budget),
+                        threshold=float(w_threshold),
+                        column_mapping_override=col_mapping or None,
+                        event_value_mapping=ev_mapping,
+                        allow_synthetic_fallback=synthetic,
+                        churn_inactivity_days=int(churn_days),
+                    )
+                except Exception as _e:
+                    _holder["error"] = _e
+
+            _th = threading.Thread(target=_train, daemon=True)
+            _th.start()
+
+            _msgs = [
+                "📥 CSV 읽는 중…", "🔍 검증 중…", "⚙️ 매핑 적용…",
+                "🧮 RFM 계산…", "🧠 피처 엔지니어링…", "🏋️ XGBoost 학습…",
+                "🎯 Uplift 학습…", "💰 CLV 모델…", "⏳ Survival 분석…",
+                "📊 세그먼트 분석…", "📈 최적화…", "🔬 설명가능성…",
+            ]
+            _start = _t.time()
+            while _th.is_alive():
+                _el = _t.time() - _start
+                _prog = min(int(95 * (1 - 1 / (1 + _el / 25))), 95)
+                _idx = min(int(_el / 8), len(_msgs) - 1)
+                progress_bar.progress(max(_prog, 3), text=f"{_msgs[_idx]}  ({int(_el)}초)")
+                _t.sleep(0.4)
+            _th.join()
+
+            if "error" in _holder:
+                progress_bar.progress(100, text="❌ 오류")
+                st.error(f"학습 실패: {_holder['error']}")
+            else:
+                result = _holder["result"]
+                if result.success:
+                    progress_bar.progress(100, text="✅ 학습 완료!")
+                    st.success("🎉 모델 학습이 완료되었습니다! 대시보드로 이동합니다.")
+                    st.session_state["wizard_dismissed"] = True
+                    st.session_state["data_mode"] = "user"
+                    st.session_state["control_threshold"] = float(w_threshold)
+                    st.session_state["control_budget"] = int(w_budget)
+                    st.session_state["control_budget_text"] = str(int(w_budget))
+                    st.session_state.pop("wizard_mapping_preview", None)
+                    clear_dashboard_caches()
+                    _t.sleep(1.5)
+                    st.rerun()
+                else:
+                    progress_bar.progress(100, text="⚠️ 부분 완료")
+                    st.warning(f"일부 실패: {result.error or '확인 필요'}")
+
+        st.divider()
+        if st.button("← 이전 단계로", key="wiz_prev_step5", use_container_width=False):
+            st.session_state["wizard_step"] = 4
+            st.rerun()
+        return True
+
+    return False
+
+
 CONTROL_DEFAULTS = {
     "control_threshold": 0.50,
     "control_budget": 5_000_000,
@@ -3234,56 +3712,29 @@ render_hero(
 
 if bundle.used_mock:
     render_status_pill("실제 data/raw 산출물을 찾지 못해 mock data로 실행 중입니다.", "warn")
-elif bundle.source_dir:
-    _current_mode = st.session_state.get("data_mode", "simulator")
-    if _current_mode == "user":
-        render_status_pill(f"실제 자사 고객 CSV 데이터 사용 중: {bundle.source_dir}", "success")
-    else:
-        render_status_pill(f"실제 시뮬레이터 산출물 사용 중: {bundle.source_dir}", "success")
+
+_wizard_active = _render_wizard()
 
 with st.sidebar:
     st.header("제어 패널")
 
-    # ── Mode Selection (최상단) ──
-    st.subheader("🎯 분석 모드")
-    if "data_mode" not in st.session_state:
-        st.session_state["data_mode"] = "simulator"
-
-    mode_choice = st.radio(
-        "어떤 데이터로 분석할까요?",
-        options=[("simulator", "🧪 시뮬레이터 데모"), ("user", "📂 자사 데이터")],
-        format_func=lambda x: x[1] if isinstance(x, tuple) else x,
-        index=0 if st.session_state["data_mode"] == "simulator" else 1,
-        key="data_mode_radio",
-    )
-    selected_mode = mode_choice[0] if isinstance(mode_choice, tuple) else mode_choice
-
-    if selected_mode != st.session_state["data_mode"]:
-        st.session_state["data_mode"] = selected_mode
-        clear_dashboard_caches()
-        st.rerun()
-
-    # 현재 모드 안내
-    if selected_mode == "simulator":
-        st.caption("🟢 시뮬레이터 데이터 사용 중 (`data/raw_simulator/`)")
-    else:
-        st.caption("🔵 자사 데이터 사용 중 (`data/raw_user/`)")
-
-    # ── Data Upload Section (사용자 모드일 때만) ──
-    if selected_mode != "user":
-        st.info("ℹ️ 데이터 업로드는 **'📂 자사 데이터' 모드**에서만 가능합니다.")
-        # 시뮬레이터 모드에선 업로드 UI 자체를 숨김 (변수 초기화만)
+    if _wizard_active:
         uploaded_file = None
+        selected_mode = st.session_state.get("data_mode", "simulator")
     else:
-        st.subheader("📂 데이터 업로드")
-        st.caption("자사 CSV 데이터를 업로드하면 자동으로 전처리 → 모델 학습 → 대시보드 반영까지 수행합니다.")
+        # 첫 화면 돌아가기 (최상단)
+        if st.button("🏠 첫 화면으로 돌아가기", key="reset_wizard_btn", use_container_width=True):
+            st.session_state["wizard_dismissed"] = False
+            st.session_state["wizard_step"] = 0
+            st.session_state.pop("wizard_mapping_preview", None)
+            st.rerun()
 
-        uploaded_file = st.file_uploader(
-            "CSV 파일을 업로드하세요",
-            type=["csv", "tsv"],
-            key="csv_upload",
-            help="고객 데이터, 거래 데이터, 이벤트 데이터 등 분석 가능한 CSV를 업로드하세요. 파일 크기 제한은 없습니다.",
-        )
+        selected_mode = st.session_state.get("data_mode", "simulator")
+        _mode_label = "🧪 시뮬레이터 데모" if selected_mode == "simulator" else "📂 자사 데이터"
+        st.subheader(f"현재 분석 모드")
+        st.caption(_mode_label)
+
+        uploaded_file = None
 
     if uploaded_file is not None:
         import sys
@@ -3580,9 +4031,9 @@ with st.sidebar:
                 key="churn_inactivity_days",
                 help=(
                     "**서비스 성격별 권장 기준:**\n\n"
-                    "- **7\~14일:** 데일리 앱 (게임, SNS)\n"
+                    "- **7~14일:** 데일리 앱 (게임, SNS)\n"
                     "- **30일:** 일반 커머스, 라이프스타일\n\n"
-                    "- **60\~90일:** 정기 구독 서비스 (OTT, 멤버십)\n\n"
+                    "- **60~90일:** 정기 구독 서비스 (OTT, 멤버십)\n\n"
                     "설정한 기간 동안 접속 기록이 없으면 '이탈'로 간주합니다."
                 ),
             )
@@ -3741,6 +4192,9 @@ with st.sidebar:
                     progress_bar.progress(100, text="오류 발생")
                     st.error(f"파이프라인 실행 중 오류: {exc}")
 
+    if _wizard_active:
+        st.stop()
+
     st.session_state.setdefault("dashboard_view", DASHBOARD_VIEW_OPTIONS[0])
     st.session_state["dashboard_view"] = LEGACY_VIEW_REDIRECTS.get(
         st.session_state.get("dashboard_view", DASHBOARD_VIEW_OPTIONS[0]),
@@ -3805,9 +4259,6 @@ with st.sidebar:
     st.divider()
     st.markdown("#### ⚙️ 분석 컨트롤")
 
-    # 모든 세부 화면에서 같은 widget key를 항상 렌더링한다.
-    # 이렇게 해야 1번에서 바꾼 threshold/예산이 3번으로 가도 유지되고,
-    # 3번에서 다시 바꾼 값도 4번·5번 등 다른 화면에서 그대로 이어진다.
     threshold = st.slider(
         "이탈 Threshold",
         min_value=0.10,
@@ -3912,6 +4363,7 @@ with st.sidebar:
             except Exception as exc:
                 refresh_warning = f"실시간 tick 호출에는 실패했지만 화면 캐시는 새로고침했습니다: {exc}"
         clear_dashboard_caches()
+        clear_llm_caches()
         if refresh_notice:
             st.session_state["dashboard_refresh_notice"] = refresh_notice
         if refresh_warning:

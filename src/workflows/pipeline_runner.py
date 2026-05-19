@@ -321,6 +321,7 @@ def run_churn_training_pipeline(
         threshold_tp_value=threshold_tp_value,
         threshold_fp_cost=threshold_fp_cost,
         threshold_fn_cost=threshold_fn_cost,
+        label_source=built.metadata.get('label_source'),
     )
 
     metrics = dict(artifacts.metrics)
