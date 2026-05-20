@@ -69,33 +69,18 @@ from dashboard.utils.formatters import money, pct
 
 
 DASHBOARD_VIEW_ITEMS: tuple[tuple[str, str], ...] = (
-    # 고객 현황
+    # 내부 키는 기존 렌더링 분기와 호환되도록 일부 원래 번호를 유지한다.
+    # 화면에는 CORE_VIEW_DISPLAY_LABELS를 통해 1~4로 재정렬된 번호만 보여준다.
     ("1", "이탈현황"),
-    ("2", "코호트 리텐션 곡선"),
-
-    # 타겟팅·예산
-    ("3", "Uplift·CLV 세그먼트 분석"),
     ("4", "예산 최적화 및 리텐션 타겟"),
     ("5", "개인화 추천"),
-
-    # 운영·리스크
     ("6", "실시간 운영 모니터"),
-    ("7", "할인·쿠폰 운영 리스크"),
-
-    # 모델 검증·진단
-    ("8", "학습 결과 아티팩트"),
-    ("9", "이탈 시점 예측 (Survival Analysis)"),
-    ("10", "증분 성과 / A-B 실험"),
-    ("11", "설명가능성 / 고객별 개입 이유"),
 )
 DASHBOARD_VIEW_OPTIONS: tuple[str, ...] = tuple(f"{n}. {t}" for n, t in DASHBOARD_VIEW_ITEMS)
 VIEW_OPTION_BY_NUM: dict[str, str] = {num: f"{num}. {title}" for num, title in DASHBOARD_VIEW_ITEMS}
 
 DASHBOARD_VIEW_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("고객 현황", ("1", "2")),
-    ("타겟팅·예산", ("3", "4", "5")),
-    ("운영·리스크", ("6", "7")),
-    ("모델 검증·진단", ("8", "9", "10", "11")),
+    ("핵심 화면", ("1", "4", "5", "6")),
 )
 
 GROUP_TO_VIEW_OPTIONS: dict[str, tuple[str, ...]] = {
@@ -109,52 +94,1737 @@ VIEW_TO_GROUP: dict[str, str] = {
     for option in options
 }
 
+CORE_VIEW_DISPLAY_LABELS: dict[str, dict[str, str]] = {
+    "ko": {
+        "1. 이탈현황": "① 이탈 현황",
+        "4. 예산 최적화 및 리텐션 타겟": "② 예산 배분·타겟 고객",
+        "5. 개인화 추천": "③ 개인화 추천",
+        "6. 실시간 운영 모니터": "④ 실시간 운영 모니터",
+    },
+    "en": {
+        "1. 이탈현황": "① Churn Status",
+        "4. 예산 최적화 및 리텐션 타겟": "② Budget Allocation & Targets",
+        "5. 개인화 추천": "③ Personalized Recommendations",
+        "6. 실시간 운영 모니터": "④ Real-time Operations",
+    },
+    "ja": {
+        "1. 이탈현황": "① 離脱状況",
+        "4. 예산 최적화 및 리텐션 타겟": "② 予算配分・対象顧客",
+        "5. 개인화 추천": "③ パーソナライズ推薦",
+        "6. 실시간 운영 모니터": "④ リアルタイム運用",
+    },
+}
+
+LANGUAGE_OPTIONS: dict[str, str] = {
+    "한국어": "ko",
+    "English": "en",
+    "日本語": "ja",
+}
+LANGUAGE_LABEL_BY_CODE: dict[str, str] = {v: k for k, v in LANGUAGE_OPTIONS.items()}
+
+DOMAIN_MODE_OPTIONS: dict[str, dict[str, str]] = {
+    "ecommerce": {
+        "ko": "이커머스 모드",
+        "en": "E-commerce Mode",
+        "ja": "ECモード",
+    },
+    "finance": {
+        "ko": "금융 모드",
+        "en": "Finance Mode",
+        "ja": "金融モード",
+    },
+}
+DOMAIN_DIRS: dict[str, dict[str, str]] = {
+    "ecommerce": {"data": "data/raw_ecommerce", "results": "results_ecommerce", "models": "models_ecommerce", "features": "data/feature_store_ecommerce"},
+    "finance": {"data": "data/raw_finance", "results": "results_finance", "models": "models_finance", "features": "data/feature_store_finance"},
+    "user": {"data": "data/raw_user", "results": "results_user", "models": "models_user", "features": "data/feature_store_user"},
+    "simulator": {"data": "data/raw_simulator", "results": "results_simulator", "models": "models_simulator", "features": "data/feature_store_simulator"},
+}
+BUSINESS_UPLOAD_MODES: set[str] = {"ecommerce", "finance", "user"}
+
+UI_TEXT: dict[str, dict[str, str]] = {
+    "en": {
+        "고객 이탈 예측·개입 최적화·ROI 분석 플랫폼": "Customer Churn, Intervention Optimization & ROI Platform",
+        "누가 이탈할 가능성이 높은지뿐 아니라, 언제 개입해야 하는지, 누구에게 예산을 우선 배분할지, 어떤 액션을 추천할지까지 연결해 보여주는 운영형 리텐션 분석 플랫폼입니다.": "An operational retention platform that connects churn risk, intervention timing, budget priority, and recommended actions.",
+        "핵심 화면": "Core Views",
+        "분석 화면": "Analysis View",
+        "분석 모드 선택": "Choose Analysis Mode",
+        "어떤 산업 데이터로 분석할지 선택하세요.": "Choose the industry domain for your dataset.",
+        "금융 모드": "Finance Mode",
+        "이커머스 모드": "E-commerce Mode",
+        "언어": "Language",
+        "현재 분석 모드": "Current Mode",
+        "사용 데이터셋": "Dataset",
+        "미선택": "Not selected",
+        "제어 패널": "Control Panel",
+        "분석 컨트롤": "Analysis Controls",
+        "데이터/결과 새로고침": "Refresh current view",
+        "실행 / 새로고침": "Run / Refresh",
+        "이탈현황": "Churn Status",
+        "이탈 현황": "Churn Status",
+        "예산 최적화 및 리텐션 타겟": "Budget Allocation & Retention Targets",
+        "최종 타겟 고객 대상 개인화 추천": "Personalized Recommendations for Final Targets",
+        "실시간 운영 모니터": "Real-time Operations Monitor",
+        "이탈 위험 고객 목록": "At-risk Customer List",
+        "세그먼트별 예산 배분 후보 고객 수": "Candidate Customers by Segment",
+        "세그먼트별 예산 배분 테이블": "Segment Budget Allocation Table",
+        "최종 리텐션 타겟 고객 테이블": "Final Retention Target Customers",
+        "고객별 선택 이유 / 주의사항": "Customer-level Reasons / Cautions",
+        "개인화 추천 테이블": "Personalized Recommendation Table",
+        "실시간 이탈 위험 테이블": "Real-time Churn Risk Table",
+        "실시간 액션 큐 상세": "Real-time Action Queue Details",
+        "Live Action Queue": "Live Action Queue",
+        "용어 설명": "Terminology",
+    },
+    "ja": {
+        "고객 이탈 예측·개입 최적화·ROI 분석 플랫폼": "顧客離脱予測・介入最適化・ROI分析プラットフォーム",
+        "누가 이탈할 가능성이 높은지뿐 아니라, 언제 개입해야 하는지, 누구에게 예산을 우선 배분할지, 어떤 액션을 추천할지까지 연결해 보여주는 운영형 리텐션 분석 플랫폼입니다.": "離脱リスク、介入タイミング、予算優先度、推奨アクションを一つにつなぐ運用型リテンション分析基盤です。",
+        "핵심 화면": "主要画面",
+        "분석 화면": "分析画面",
+        "분석 모드 선택": "分析モード選択",
+        "어떤 산업 데이터로 분석할지 선택하세요.": "分析するデータの業界ドメインを選択してください。",
+        "금융 모드": "金融モード",
+        "이커머스 모드": "ECモード",
+        "언어": "言語",
+        "현재 분석 모드": "現在のモード",
+        "사용 데이터셋": "使用データセット",
+        "미선택": "未選択",
+        "제어 패널": "コントロールパネル",
+        "분석 컨트롤": "分析コントロール",
+        "데이터/결과 새로고침": "現在画面を更新",
+        "실행 / 새로고침": "実行 / 更新",
+        "이탈현황": "離脱状況",
+        "이탈 현황": "離脱状況",
+        "예산 최적화 및 리텐션 타겟": "予算配分・リテンション対象",
+        "최종 타겟 고객 대상 개인화 추천": "最終対象顧客への推薦",
+        "실시간 운영 모니터": "リアルタイム運用モニター",
+        "이탈 위험 고객 목록": "離脱リスク顧客一覧",
+        "세그먼트별 예산 배분 후보 고객 수": "セグメント別候補顧客数",
+        "세그먼트별 예산 배분 테이블": "セグメント別予算配分表",
+        "최종 리텐션 타겟 고객 테이블": "最終リテンション対象顧客",
+        "고객별 선택 이유 / 주의사항": "顧客別選定理由・注意事項",
+        "개인화 추천 테이블": "パーソナライズ推薦表",
+        "실시간 이탈 위험 테이블": "リアルタイム離脱リスク表",
+        "실시간 액션 큐 상세": "リアルタイムアクションキュー詳細",
+        "Live Action Queue": "Live Action Queue",
+        "용어 설명": "用語説明",
+    },
+}
+
+COLUMN_LABELS: dict[str, dict[str, str]] = {
+    "ko": {
+        "customer_id": "고객 ID", "persona": "고객 유형", "churn_probability": "이탈 확률", "churn_score": "이탈 점수", "realtime_churn_score": "실시간 이탈 점수", "base_churn_probability": "기준 이탈 확률", "score_delta": "점수 변화",
+        "clv": "고객 생애가치(CLV)", "uplift_score": "개입 효과 점수", "uplift_segment": "개입 반응 세그먼트", "risk_segment": "위험 등급", "expected_roi": "예상 ROI", "expected_incremental_profit": "예상 증분이익", "expected_profit": "예상 이익", "coupon_cost": "쿠폰/개입 비용",
+        "allocated_budget": "배정 예산", "customer_count": "선정 고객 수", "candidate_customer_count": "후보 고객 수", "intervention_intensity": "개입 강도", "recommended_action": "추천 액션", "priority_score": "우선순위 점수", "selection_score": "선정 점수", "recommended_intervention_window": "추천 개입 시점",
+        "recommended_category": "추천 카테고리", "recommendation_rank": "추천 순위", "recommendation_score": "추천 점수", "recommendation_priority": "추천 우선순위", "target_priority_score": "타겟 우선순위", "reason_tags": "추천 이유", "action_status": "액션 상태", "source_type": "발생 경로", "trigger_reason": "트리거 이유",
+        "queued_at": "큐 적재 시각", "updated_at": "갱신 시각", "scored_at": "점수 산출 시각", "latest_trigger_reason": "최근 트리거 이유", "queued_recommended_action": "큐 추천 액션", "queued_intervention_intensity": "큐 개입 강도", "queued_coupon_cost": "큐 쿠폰 비용", "queued_expected_profit": "큐 예상 이익", "queued_expected_roi": "큐 예상 ROI", "reoptimization_count": "재최적화 횟수",
+        "feature": "변수", "feature_display": "변수명", "importance": "중요도", "importance_share": "중요도 비중", "reason_summary": "선정 이유", "caution": "주의사항", "next_best_action": "다음 추천 액션", "survival_prob_30d": "30일 생존확률", "action_queue_status": "액션 큐 상태",
+    },
+    "en": {
+        "customer_id": "Customer ID", "persona": "Customer Type", "churn_probability": "Churn Probability", "churn_score": "Churn Score", "realtime_churn_score": "Real-time Churn Score", "base_churn_probability": "Base Churn Probability", "score_delta": "Score Delta",
+        "clv": "Customer Lifetime Value (CLV)", "uplift_score": "Uplift Score", "uplift_segment": "Uplift Segment", "risk_segment": "Risk Segment", "expected_roi": "Expected ROI", "expected_incremental_profit": "Expected Incremental Profit", "expected_profit": "Expected Profit", "coupon_cost": "Coupon/Intervention Cost",
+        "allocated_budget": "Allocated Budget", "customer_count": "Selected Customers", "candidate_customer_count": "Candidate Customers", "intervention_intensity": "Intervention Intensity", "recommended_action": "Recommended Action", "priority_score": "Priority Score", "selection_score": "Selection Score", "recommended_intervention_window": "Recommended Timing",
+        "recommended_category": "Recommended Category", "recommendation_rank": "Rank", "recommendation_score": "Recommendation Score", "recommendation_priority": "Recommendation Priority", "target_priority_score": "Target Priority", "reason_tags": "Reason Tags", "action_status": "Action Status", "source_type": "Source Type", "trigger_reason": "Trigger Reason",
+        "queued_at": "Queued At", "updated_at": "Updated At", "scored_at": "Scored At", "latest_trigger_reason": "Latest Trigger Reason", "queued_recommended_action": "Queued Action", "queued_intervention_intensity": "Queued Intensity", "queued_coupon_cost": "Queued Coupon Cost", "queued_expected_profit": "Queued Expected Profit", "queued_expected_roi": "Queued Expected ROI", "reoptimization_count": "Re-optimization Count",
+        "feature": "Feature", "feature_display": "Feature", "importance": "Importance", "importance_share": "Importance Share", "reason_summary": "Reason Summary", "caution": "Caution", "next_best_action": "Next Best Action", "survival_prob_30d": "30-day Survival Probability", "action_queue_status": "Action Queue Status",
+    },
+    "ja": {
+        "customer_id": "顧客ID", "persona": "顧客タイプ", "churn_probability": "離脱確率", "churn_score": "離脱スコア", "realtime_churn_score": "リアルタイム離脱スコア", "base_churn_probability": "基準離脱確率", "score_delta": "スコア変化",
+        "clv": "顧客生涯価値(CLV)", "uplift_score": "介入効果スコア", "uplift_segment": "介入反応セグメント", "risk_segment": "リスク区分", "expected_roi": "予想ROI", "expected_incremental_profit": "予想増分利益", "expected_profit": "予想利益", "coupon_cost": "クーポン/介入費用",
+        "allocated_budget": "配分予算", "customer_count": "選定顧客数", "candidate_customer_count": "候補顧客数", "intervention_intensity": "介入強度", "recommended_action": "推奨アクション", "priority_score": "優先度スコア", "selection_score": "選定スコア", "recommended_intervention_window": "推奨介入時点",
+        "recommended_category": "推薦カテゴリ", "recommendation_rank": "推薦順位", "recommendation_score": "推薦スコア", "recommendation_priority": "推薦優先度", "target_priority_score": "対象優先度", "reason_tags": "推薦理由", "action_status": "アクション状態", "source_type": "発生経路", "trigger_reason": "トリガー理由",
+        "queued_at": "キュー登録時刻", "updated_at": "更新時刻", "scored_at": "スコア算出時刻", "latest_trigger_reason": "最新トリガー理由", "queued_recommended_action": "キュー推奨アクション", "queued_intervention_intensity": "キュー介入強度", "queued_coupon_cost": "キュー費用", "queued_expected_profit": "キュー予想利益", "queued_expected_roi": "キュー予想ROI", "reoptimization_count": "再最適化回数",
+        "feature": "変数", "feature_display": "変数名", "importance": "重要度", "importance_share": "重要度比率", "reason_summary": "選定理由", "caution": "注意事項", "next_best_action": "次の推奨アクション", "survival_prob_30d": "30日生存確率", "action_queue_status": "アクションキュー状態",
+    },
+}
+
+TERM_CAPTIONS: dict[str, dict[str, str]] = {
+    "ko": {
+        "CLV": "CLV는 고객이 앞으로 가져올 것으로 추정되는 생애가치입니다.",
+        "Uplift": "Uplift는 개입했을 때 이탈 방지·구매 증가가 얼마나 추가로 발생할지 나타내는 점수입니다.",
+        "ROI": "ROI는 투입 비용 대비 기대 이익의 비율입니다. 100%는 비용만큼의 이익, 0% 이하는 손실 가능성을 의미합니다.",
+        "Priority": "우선순위 점수는 이탈 위험, 개입 효과, 고객 가치, 비용을 합쳐 타겟 순서를 정한 값입니다.",
+    },
+    "en": {
+        "CLV": "CLV is the estimated lifetime value a customer may generate in the future.",
+        "Uplift": "Uplift estimates the incremental retention or purchase effect caused by an intervention.",
+        "ROI": "ROI is expected profit relative to intervention cost; 100% means profit equals the cost.",
+        "Priority": "Priority score combines churn risk, uplift, customer value, and cost to rank targets.",
+    },
+    "ja": {
+        "CLV": "CLVは顧客が将来もたらすと推定される生涯価値です。",
+        "Uplift": "Upliftは介入によって追加で得られる離脱防止・購買増加効果の推定値です。",
+        "ROI": "ROIは介入費用に対する期待利益の比率です。100%は費用と同額の利益を意味します。",
+        "Priority": "優先度スコアは離脱リスク、介入効果、顧客価値、費用を組み合わせた順位付け指標です。",
+    },
+}
+
+UI_TEXT["en"].update({
+    "전체 고객 수": "Total Customers", "이탈 위험 고객 수": "At-risk Customers", "위험 고객 비율": "Risk Rate", "평균 이탈 확률": "Avg. Churn Probability",
+    "이탈 임계값": "Churn Threshold", "총 마케팅 예산": "Total Marketing Budget", "최대 타겟 고객 수": "Max Target Customers", "차트 기준 표시 고객 수": "Rows/Customers to Display", "고객당 추천 개수": "Recommendations per Customer",
+    "총 예산": "Total Budget", "집행 예산": "Spent Budget", "잔여 예산": "Remaining Budget", "타겟 고객 수": "Target Customers", "예상 증분 이익": "Expected Incremental Profit",
+    "표시 추천 행 수": "Displayed Recommendation Rows", "추천 대상 고객 수": "Recommended Customers", "평균 추천 수/고객": "Avg. Recommendations / Customer", "현재 최종 타겟 고객 수": "Current Final Target Customers", "추천 카테고리 분포": "Recommendation Category Distribution",
+    "이벤트 수": "Events", "실시간 고객 상태": "Live Customer States", "점수 고객 수": "Scored Customers", "Queued 액션": "Queued Actions", "평균 이탈 점수": "Avg. Churn Score", "고위험 고객": "High-risk Customers", "Live 추천": "Live Recommendations", "최신 점수 갱신": "Latest Score Update",
+    "추적 고객 수": "Tracked Customers", "재최적화 트리거 수": "Re-optimization Triggers", "액션 큐 적재 수": "Action Queue Size", "임계 위험 고객 수": "Critical-risk Customers", "처리 이벤트 수": "Processed Events", "폐쇄루프 예산 사용": "Closed-loop Budget Used", "채널 할당 수": "Channel Allocations", "운영 모니터": "Operations Monitor", "재최적화 횟수": "Re-optimizations", "큐 적재 수": "Queued Actions", "채널 용량 사용률": "Channel Capacity Utilization", "고우선순위 큐": "High-priority Queue",
+})
+UI_TEXT["ja"].update({
+    "전체 고객 수": "全顧客数", "이탈 위험 고객 수": "離脱リスク顧客数", "위험 고객 비율": "リスク顧客比率", "평균 이탈 확률": "平均離脱確率",
+    "이탈 임계값": "離脱リスク基準", "총 마케팅 예산": "総マーケティング予算", "최대 타겟 고객 수": "最大対象顧客数", "차트 기준 표시 고객 수": "表示件数", "고객당 추천 개수": "顧客あたり推薦数",
+    "총 예산": "総予算", "집행 예산": "使用予算", "잔여 예산": "残予算", "타겟 고객 수": "対象顧客数", "예상 증분 이익": "予想増分利益",
+    "표시 추천 행 수": "表示推薦行数", "추천 대상 고객 수": "推薦対象顧客数", "평균 추천 수/고객": "平均推薦数/顧客", "현재 최종 타겟 고객 수": "現在の最終対象顧客数", "추천 카테고리 분포": "推薦カテゴリ分布",
+    "이벤트 수": "イベント数", "실시간 고객 상태": "リアルタイム顧客状態", "점수 고객 수": "スコア算出顧客数", "Queued 액션": "Queuedアクション", "평균 이탈 점수": "平均離脱スコア", "고위험 고객": "高リスク顧客", "Live 추천": "Live推薦", "최신 점수 갱신": "最新スコア更新",
+    "추적 고객 수": "追跡顧客数", "재최적화 트리거 수": "再最適化トリガー数", "액션 큐 적재 수": "アクションキュー数", "임계 위험 고객 수": "重大リスク顧客数", "처리 이벤트 수": "処理イベント数", "폐쇄루프 예산 사용": "閉ループ予算使用", "채널 할당 수": "チャネル割当数", "운영 모니터": "運用モニター", "재최적화 횟수": "再最適化回数", "큐 적재 수": "キュー数", "채널 용량 사용률": "チャネル容量使用率", "고우선순위 큐": "高優先度キュー",
+})
+
+UI_TEXT["en"].update({
+    "LLM 결과 요약": "LLM Result Summary",
+    "LLM결과요약": "LLM Result Summary",
+    "현재 화면의 지표·표·그래프에서 추린 요약 컨텍스트만 바탕으로 응답합니다.": "The response is based only on the summary context extracted from the current screen's metrics, tables, and charts.",
+    "AI가 현재 화면의 결과를 요약하는 중입니다...": "AI is summarizing the current screen...",
+    "AI 요약 생성 중 오류가 발생했습니다": "An error occurred while generating the AI summary",
+    "추가 질문은 사이드바의 AI 챗봇 버튼을 눌러 이어서 대화할 수 있습니다.": "For follow-up questions, open the AI chatbot in the sidebar.",
+    "AI 챗봇": "AI Chatbot",
+    "챗봇 닫기": "Close Chatbot",
+    "챗봇 열기": "Open Chatbot",
+    "LLM 기능이 꺼져 있어 챗봇을 열 수 없습니다.": "The chatbot cannot be opened because the LLM feature is disabled.",
+    "현재 화면": "Current View",
+    "화면의 표·그래프를 보면서 질문할 수 있습니다.": "You can ask questions while viewing the tables and charts on this screen.",
+    "고정된 챗봇 컨텍스트": "Pinned Chatbot Context",
+    "화면을 이동해도 챗봇은 처음 열었던 화면의 데이터로 유지됩니다.": "Even when you move between views, the chatbot keeps the data from the view where it was first opened.",
+    "현재 화면으로 컨텍스트 갱신": "Refresh Context to Current View",
+    "대화 지우기": "Clear Chat",
+    "컨텍스트": "Context",
+    "현재 화면에 대해 질문하세요...": "Ask about the current view...",
+    "현재 화면에 대해 질문하세요.": "Ask about the current view.",
+    "AI 답변 생성 중": "Generating AI answer",
+    "AI 답변 생성 중 오류가 발생했습니다": "An error occurred while generating the AI answer",
+    "표시할 데이터가 없습니다.": "No data to display.",
+    "검색": "Search",
+    "고객 ID 검색": "Search Customer ID",
+    "분포 차원 선택": "Choose Distribution Dimension",
+    "LLM 설정": "LLM Settings",
+    "권장: API 키는 코드에 쓰지 말고 환경변수 OPENAI_API_KEY 또는 Streamlit secrets로 관리하세요.": "Recommended: manage API keys through the OPENAI_API_KEY environment variable or Streamlit secrets instead of writing them in code.",
+    "LLM 요약/질문 기능 사용": "Enable LLM summaries/questions",
+    "OpenAI API Key (선택)": "OpenAI API Key (Optional)",
+    "비워두면 OPENAI_API_KEY 환경변수를 사용합니다.": "Leave empty to use the OPENAI_API_KEY environment variable.",
+    "모델이 목록에 없으면 '직접 입력'을 선택해서 모델명을 넣어주세요.": "If the model is not listed, choose 'Manual Input' and enter the model name.",
+    "LLM 모델 선택": "Choose LLM Model",
+    "LLM 모델명 (직접 입력)": "LLM Model Name (Manual Input)",
+    "현재 OPENAI_API_KEY 환경변수를 사용하도록 설정되어 있습니다.": "The app is currently configured to use the OPENAI_API_KEY environment variable.",
+    "자사 데이터 Live DB 연결됨": "Live DB connected",
+    "자사 데이터 Live DB 상태 확인 실패": "Live DB health check failed",
+    "최신 이벤트": "Latest Event",
+    "Live DB 상태": "Live DB Status",
+    "저장 추천후보": "Saved Recommendation Candidates",
+    "현재 데이터셋과 Live DB가 일치하지 않아 CSV/결과 파일 기준으로 표시합니다.": "The Live DB does not match the current dataset, so the dashboard is using the CSV/result files.",
+    "모드/데이터셋 변경": "Change Mode/Dataset",
+    "기존 결과로 대시보드 보기": "Open Dashboard with Existing Results",
+    "학습 완료. 대시보드로 이동합니다.": "Training completed. Opening the dashboard.",
+    "PostgreSQL user-live DB 초기 적재 완료": "PostgreSQL user-live DB seeding completed",
+    "PostgreSQL user-live DB 자동 적재 실패": "PostgreSQL user-live DB automatic seeding failed",
+})
+UI_TEXT["ja"].update({
+    "LLM 결과 요약": "LLM結果サマリー",
+    "LLM결과요약": "LLM結果サマリー",
+    "현재 화면의 지표·표·그래프에서 추린 요약 컨텍스트만 바탕으로 응답합니다.": "現在画面の指標・表・グラフから抽出した要約コンテキストだけに基づいて応答します。",
+    "AI가 현재 화면의 결과를 요약하는 중입니다...": "AIが現在画面の結果を要約しています...",
+    "AI 요약 생성 중 오류가 발생했습니다": "AI要約の生成中にエラーが発生しました",
+    "추가 질문은 사이드바의 AI 챗봇 버튼을 눌러 이어서 대화할 수 있습니다.": "追加質問はサイドバーのAIチャットボットから続けられます。",
+    "AI 챗봇": "AIチャットボット",
+    "챗봇 닫기": "チャットボットを閉じる",
+    "챗봇 열기": "チャットボットを開く",
+    "LLM 기능이 꺼져 있어 챗봇을 열 수 없습니다.": "LLM機能がオフのためチャットボットを開けません。",
+    "현재 화면": "現在の画面",
+    "화면의 표·그래프를 보면서 질문할 수 있습니다.": "画面の表・グラフを見ながら質問できます。",
+    "고정된 챗봇 컨텍스트": "固定されたチャットボットコンテキスト",
+    "화면을 이동해도 챗봇은 처음 열었던 화면의 데이터로 유지됩니다.": "画面を移動しても、チャットボットは最初に開いた画面のデータを維持します。",
+    "현재 화면으로 컨텍스트 갱신": "現在画面でコンテキストを更新",
+    "실시간 화면에서는 새로고침 시 스트림을 조금씩 더 재생해 수치가 변하도록 했습니다. 나머지 화면은 캐시를 비우고 다시 계산합니다.": "リアルタイム画面では、更新時にストリームを少し進めて指標が変わるようにします。その他の画面ではキャッシュを削除して再計算します。",
+    "LLM 요약은 API 키가 준비된 경우에만 메인 화면에 표시됩니다.": "LLM要約はAPIキーが準備されている場合のみメイン画面に表示されます。",
+    "대화 지우기": "会話を削除",
+    "컨텍스트": "コンテキスト",
+    "현재 화면에 대해 질문하세요...": "現在画面について質問してください...",
+    "현재 화면에 대해 질문하세요.": "現在画面について質問してください。",
+    "AI 답변 생성 중": "AI回答を生成中",
+    "AI 답변 생성 중 오류가 발생했습니다": "AI回答の生成中にエラーが発生しました",
+    "표시할 데이터가 없습니다.": "表示するデータがありません。",
+    "검색": "検索",
+    "고객 ID 검색": "顧客ID検索",
+    "분포 차원 선택": "分布次元を選択",
+    "LLM 설정": "LLM設定",
+    "권장: API 키는 코드에 쓰지 말고 환경변수 OPENAI_API_KEY 또는 Streamlit secrets로 관리하세요.": "推奨: APIキーはコードに書かず、OPENAI_API_KEY環境変数またはStreamlit secretsで管理してください。",
+    "LLM 요약/질문 기능 사용": "LLM要約/質問機能を使用",
+    "OpenAI API Key (선택)": "OpenAI API Key（任意）",
+    "비워두면 OPENAI_API_KEY 환경변수를 사용합니다.": "空欄の場合はOPENAI_API_KEY環境変数を使用します。",
+    "모델이 목록에 없으면 '직접 입력'을 선택해서 모델명을 넣어주세요.": "モデルが一覧にない場合は「直接入力」を選択してモデル名を入力してください。",
+    "LLM 모델 선택": "LLMモデル選択",
+    "LLM 모델명 (직접 입력)": "LLMモデル名（直接入力）",
+    "현재 OPENAI_API_KEY 환경변수를 사용하도록 설정되어 있습니다.": "現在OPENAI_API_KEY環境変数を使用する設定です。",
+    "자사 데이터 Live DB 연결됨": "Live DB接続済み",
+    "자사 데이터 Live DB 상태 확인 실패": "Live DB状態確認失敗",
+    "최신 이벤트": "最新イベント",
+    "Live DB 상태": "Live DB状態",
+    "저장 추천후보": "保存推薦候補",
+    "현재 데이터셋과 Live DB가 일치하지 않아 CSV/결과 파일 기준으로 표시합니다.": "現在のデータセットとLive DBが一致しないため、CSV/結果ファイル基準で表示します。",
+    "모드/데이터셋 변경": "モード/データセット変更",
+    "기존 결과로 대시보드 보기": "既存結果でダッシュボードを開く",
+    "학습 완료. 대시보드로 이동합니다.": "学習完了。ダッシュボードへ移動します。",
+    "PostgreSQL user-live DB 초기 적재 완료": "PostgreSQL user-live DB初期投入完了",
+    "PostgreSQL user-live DB 자동 적재 실패": "PostgreSQL user-live DB自動投入失敗",
+})
+
+
+# ============================================================
+# [UX/i18n PATCH] 쉬운 표현, 값 라벨, 핵심 뷰 안내문
+# ============================================================
+EXTRA_UI_TEXT: dict[str, dict[str, str]] = {
+    "en": {
+        "뷰 안내": "View guide",
+        "이 화면을 보는 이유": "Why this view matters",
+        "확인할 정보": "What to check",
+        "활용 목적": "How to use it",
+        "이탈 위험이 높은 고객을 먼저 확인해 리텐션 대응의 출발점을 잡습니다.": "Start by identifying customers with high churn risk.",
+        "전체 위험 규모와 고객별 위험도를 함께 보며 대응 우선순위를 정합니다.": "Check the overall risk size and each customer's risk level to prioritize actions.",
+        "예산 화면과 추천 화면으로 넘어가기 전에 어떤 고객군이 문제인지 빠르게 파악하는 목적입니다.": "Use this as the starting point before budget allocation and personalized recommendations.",
+        "한정된 예산을 어떤 고객·세그먼트에 먼저 쓸지 결정하는 화면입니다.": "Decide which customers and segments deserve budget first.",
+        "예상 이익, 비용, 고객 반응 가능성을 함께 보며 최종 타겟을 검토합니다.": "Review final targets using expected profit, cost, and response likelihood together.",
+        "운영자는 이 화면을 바탕으로 캠페인 집행 대상과 예산 배분 근거를 설명할 수 있습니다.": "Use this view to explain campaign targets and the rationale behind budget allocation.",
+        "최종 타겟 고객에게 어떤 상품·혜택·액션을 제안할지 확인하는 화면입니다.": "See which product, benefit, or action should be suggested to each final target.",
+        "추천 점수와 추천 이유를 통해 고객별 다음 행동을 바로 실행 가능한 형태로 확인합니다.": "Use recommendation scores and reasons to turn model output into concrete next actions.",
+        "단순 예측을 넘어 실제 CRM·마케팅 액션으로 연결하는 목적입니다.": "This view turns prediction into CRM and marketing execution.",
+        "실시간 이벤트가 들어올 때 고객 위험도와 액션 큐가 어떻게 바뀌는지 확인합니다.": "Monitor how customer risk and the action queue change as live events arrive.",
+        "새 이벤트, 고위험 고객, 큐 적재 상태를 함께 보며 운영 이상 여부를 점검합니다.": "Check live events, high-risk customers, and queue status together to spot operational issues.",
+        "시연이나 실제 운영에서 시스템이 데이터 변화에 반응하는지 검증하는 목적입니다.": "Use this view to verify that the system reacts correctly during demos or real operations.",
+        "현재 화면은 업로드된 CSV 산출물을 기준으로 표시합니다. 원본 CSV에 Treatment/Control이 없으면 전처리 단계의 자동 배정 및 쉬운 추정값이 사용됩니다.": "This view uses outputs generated from the uploaded CSV. If the original CSV has no Treatment/Control column, the preprocessing step creates a simple estimated comparison group.",
+        "예산 배분 후보, 최종 선정 고객, 고객별 선택 이유만 남긴 핵심 운영 화면입니다.": "This core operations view keeps only candidate segments, final targets, and customer-level reasons.",
+        "세그먼트별 후보 고객 수를 계산할 데이터가 없습니다.": "There is not enough data to calculate candidate customers by segment.",
+        "현재 조건에서 예산 배분 대상 고객이 없습니다.": "No customers match the current budget-allocation conditions.",
+        "현재 조건에서 리텐션 타겟 고객이 없습니다.": "No retention target customers match the current conditions.",
+        "고객별 설명 테이블을 만들 데이터가 부족합니다. 학습 파이프라인의 explainability 단계가 생성한 산출물을 확인하세요.": "There is not enough data to build customer-level explanations. Check the explanation output from the training pipeline.",
+        "현재 예산·이탈 임계값으로 선별된 최종 타겟 고객에게만 새 추천을 생성합니다. 추천 점수는 고객 구매 이력, 최근 관심, 세그먼트 인기, 전역 인기를 혼합해 계산합니다.": "New recommendations are generated only for final targets selected by the current budget and churn-risk threshold. Scores combine purchase history, recent interests, segment popularity, and overall popularity.",
+        "현재 조건에서 생성된 추천이 없습니다. 최종 타겟 고객 수가 0명이면 예산을 늘리거나 이탈 임계값을 낮춰야 합니다. 저장된 과거 후보를 현재 추천처럼 표시하지 않습니다.": "No recommendations were generated under the current conditions. If final targets are zero, raise the budget or lower the churn-risk threshold. Saved past candidates are not shown as current recommendations.",
+        "이벤트 스트림을 재생하며 고객별 실시간 위험 점수와 액션 큐 상태를 함께 갱신합니다.": "Replay live events and update each customer's risk score and action-queue status together.",
+        "실시간 스코어 API 호출 실패": "Real-time score API call failed",
+        "먼저 Redis를 실행한 뒤 realtime-bootstrap / realtime-produce / realtime-consume(또는 realtime-replay) 명령을 수행하세요.": "Start Redis first, then run realtime-bootstrap / realtime-produce / realtime-consume or realtime-replay.",
+        "실시간 스코어 스냅샷이 없습니다. 스트림 소비 결과가 아직 생성되지 않았을 수 있습니다.": "No real-time score snapshot is available yet. Stream consumption may not have produced results.",
+        "큐 상태": "Queue status",
+        "트리거 이유": "Trigger reason",
+        "행동 신호": "Behavior signal",
+        "액션 큐 상태 구성": "Action queue status mix",
+        "주요 트리거 이유": "Main trigger reasons",
+        "트리거 이유 빈도": "Trigger reason frequency",
+        "행동 신호 평균값": "Average behavior signal values",
+        "행동 신호 평균": "Behavior signal average",
+        "실시간 부분 재최적화 액션 큐": "Real-time re-optimized action queue",
+        "Live 이탈 점수 Top 고객": "Top live churn-risk customers",
+        "표시할 live score 데이터가 없습니다.": "No live score data to display.",
+        "현재 queued action이 없습니다. action_threshold를 낮춰 테스트하거나 새 이벤트를 입력하세요.": "No queued actions now. Lower the action threshold for testing or add new events.",
+        "시연을 시작하면 설정된 간격마다 가상 고객 이벤트(방문, 구매 등)가 자동 생성되고, 이탈 점수 재산정 및 액션 큐가 갱신됩니다.": "When the demo starts, virtual customer events are generated at the chosen interval, then churn scores and the action queue are updated.",
+        "시연 실행 중": "Demo running",
+        "시연 중지": "Stop demo",
+        "시연 초기화": "Reset demo",
+        "시연 시작": "Start demo",
+        "10초마다 자동 새로고침": "Auto-refresh every 10 seconds",
+        "N초마다 이벤트 1건 생성": "Generate one event every N seconds",
+        "간격(초)": "Interval (seconds)",
+        "새 고객 vs 기존 고객 비율": "New vs existing customer ratio",
+        "신규 비율": "New-customer ratio",
+        "이벤트 로그": "Event log",
+        "중지됨": "stopped",
+        "다음 자동 새로고침까지 10초...": "Next auto-refresh in 10 seconds...",
+        "현재 화면은": "Current view uses",
+        "기준 PostgreSQL live DB 운영 모니터입니다.": "PostgreSQL live DB operations monitor.",
+        "고객별 이탈 확률 분포": "Customer churn-risk distribution",
+        "실시간 이탈 위험 상위 고객": "Top real-time churn-risk customers",
+        "세그먼트·개입 강도별 예산 배분": "Budget allocation by customer group and intervention level",
+        "세그먼트별 예산 배분": "Budget allocation by customer group",
+        "개입 강도": "Intervention level",
+        "추천 기준": "Recommendation basis",
+        "예산": "Budget",
+        "이탈 임계값": "Churn-risk threshold",
+        "최대 타겟": "Max targets",
+        "명": "customers",
+        "행": "rows",
+        "건": "items",
+        "전체": "total",
+        "중": "of",
+        "일치": "matched",
+        "학습 단계에서는 예산과 이탈 임계값을 조절하지 않습니다. 학습이 끝난 뒤 대시보드의 분석 컨트롤에서 운영 조건을 바꿔 비교하세요.": "Budget and churn-risk threshold are not adjusted during training. After training, change operating conditions from the dashboard analysis controls.",
+        "학습 설정": "Training settings",
+        "이탈 고객 정의": "Churn definition",
+        "학습 예산": "Training budget",
+        "학습 이탈 임계값": "Training churn threshold",
+        "이탈 기준·학습": "Churn definition & training",
+        "Step 5. 이탈 기준·학습": "Step 5. Churn definition & training",
+        "이탈 기준: N일 이상 비활성": "Churn definition: inactive for N+ days",
+        "총 개입 예산": "Total intervention budget",
+        "업로드 샘플": "Uploaded sample",
+        "시작 중...": "Starting...",
+        "학습 실패": "Training failed",
+        "CSV 검증": "CSV validation",
+        "전처리": "Preprocessing",
+        "피처 생성": "Feature generation",
+        "이탈 모델 학습": "Churn model training",
+        "Uplift/CLV 계산": "Response/profit estimation",
+        "예산 최적화": "Budget optimization",
+        "추천/설명 생성": "Recommendation/explanation generation",
+        "OpenAI API 키가 설정되지 않았습니다. 사이드바에 키를 입력하거나 OPENAI_API_KEY 환경변수를 설정하세요.": "OpenAI API key is not configured. Enter a key in the sidebar or set the OPENAI_API_KEY environment variable.",
+        "안녕하세요. 현재 보고 있는 화면 기준으로 답해드릴게요.": "Hi. I will answer based on the dashboard view you are currently seeing.",
+        "왜 이 지표가 높/낮은지": "Why a metric is high or low",
+        "어떤 고객/세그먼트가 핵심인지": "Which customers or customer groups matter most",
+        "예산·threshold에서 뭘 바꾸면 좋을지": "What to change in budget or churn-risk threshold",
+        "AI가 답변하는 중입니다...": "AI is answering...",
+        "AI 분석 챗봇": "AI analysis chatbot",
+        "드래그해서 이동": "Drag to move",
+        "닫기": "Close",
+        "실시간 화면에서는 새로고침 시 스트림을 조금씩 더 재생해 수치가 변하도록 했습니다. 나머지 화면은 캐시를 비우고 다시 계산합니다.": "On the real-time view, refresh advances the stream slightly so the metrics can change. Other views clear the cache and recalculate.",
+    "LLM 요약은 API 키가 준비된 경우에만 메인 화면에 표시됩니다.": "The LLM summary is shown on the main screen only when an API key is ready.",
+    "대화 지우기": "Clear chat",
+    },
+    "ja": {
+        "뷰 안내": "画面ガイド",
+        "이 화면을 보는 이유": "この画面を見る理由",
+        "확인할 정보": "確認する情報",
+        "활용 목적": "活用目的",
+        "이탈 위험이 높은 고객을 먼저 확인해 리텐션 대응의 출발점을 잡습니다.": "まず離脱リスクの高い顧客を確認し、リテンション対応の出発点を決めます。",
+        "전체 위험 규모와 고객별 위험도를 함께 보며 대응 우선순위를 정합니다.": "全体のリスク規模と顧客別リスクを見ながら、対応優先順位を決めます。",
+        "예산 화면과 추천 화면으로 넘어가기 전에 어떤 고객군이 문제인지 빠르게 파악하는 목적입니다.": "予算配分や推薦画面に進む前に、どの顧客群が問題かを素早く把握するための画面です。",
+        "한정된 예산을 어떤 고객·세그먼트에 먼저 쓸지 결정하는 화면입니다.": "限られた予算をどの顧客・顧客群に優先投入するかを決める画面です。",
+        "예상 이익, 비용, 고객 반응 가능성을 함께 보며 최종 타겟을 검토합니다.": "予想利益、費用、顧客の反応見込みを合わせて最終対象を確認します。",
+        "운영자는 이 화면을 바탕으로 캠페인 집행 대상과 예산 배분 근거를 설명할 수 있습니다.": "運用担当者はこの画面をもとに、キャンペーン対象と予算配分の根拠を説明できます。",
+        "최종 타겟 고객에게 어떤 상품·혜택·액션을 제안할지 확인하는 화면입니다.": "最終対象顧客にどの商品・特典・アクションを提案するかを確認する画面です。",
+        "추천 점수와 추천 이유를 통해 고객별 다음 행동을 바로 실행 가능한 형태로 확인합니다.": "推薦スコアと理由から、顧客別の次アクションを実行しやすい形で確認します。",
+        "단순 예측을 넘어 실제 CRM·마케팅 액션으로 연결하는 목적입니다.": "単なる予測を実際のCRM・マーケティング施策につなげるための画面です。",
+        "실시간 이벤트가 들어올 때 고객 위험도와 액션 큐가 어떻게 바뀌는지 확인합니다.": "リアルタイムイベントにより顧客リスクとアクションキューがどう変わるかを確認します。",
+        "새 이벤트, 고위험 고객, 큐 적재 상태를 함께 보며 운영 이상 여부를 점검합니다.": "新規イベント、高リスク顧客、キュー状態を一緒に見て運用上の異常を点検します。",
+        "시연이나 실제 운영에서 시스템이 데이터 변화에 반응하는지 검증하는 목적입니다.": "デモや実運用で、システムがデータ変化に反応しているかを検証するための画面です。",
+        "현재 화면은 업로드된 CSV 산출물을 기준으로 표시합니다. 원본 CSV에 Treatment/Control이 없으면 전처리 단계의 자동 배정 및 쉬운 추정값이 사용됩니다.": "この画面はアップロードCSVから生成された結果を基準に表示します。元CSVにTreatment/Controlがない場合は、前処理で作成した簡易推定値を使用します。",
+        "예산 배분 후보, 최종 선정 고객, 고객별 선택 이유만 남긴 핵심 운영 화면입니다.": "候補顧客群、最終対象顧客、顧客別の選定理由だけを残した主要運用画面です。",
+        "세그먼트별 후보 고객 수를 계산할 데이터가 없습니다.": "顧客群別の候補顧客数を計算できるデータがありません。",
+        "현재 조건에서 예산 배분 대상 고객이 없습니다.": "現在条件で予算配分対象となる顧客はいません。",
+        "현재 조건에서 리텐션 타겟 고객이 없습니다.": "現在条件でリテンション対象となる顧客はいません。",
+        "고객별 설명 테이블을 만들 데이터가 부족합니다. 학습 파이프라인의 explainability 단계가 생성한 산출물을 확인하세요.": "顧客別説明テーブルを作成するデータが不足しています。学習パイプラインの説明結果を確認してください。",
+        "현재 예산·이탈 임계값으로 선별된 최종 타겟 고객에게만 새 추천을 생성합니다. 추천 점수는 고객 구매 이력, 최근 관심, 세그먼트 인기, 전역 인기를 혼합해 계산합니다.": "現在の予算・離脱リスク基準で選ばれた最終対象顧客にだけ新しい推薦を生成します。推薦スコアは購買履歴、最近の関心、顧客群の人気、全体人気を組み合わせて計算します。",
+        "현재 조건에서 생성된 추천이 없습니다. 최종 타겟 고객 수가 0명이면 예산을 늘리거나 이탈 임계값을 낮춰야 합니다. 저장된 과거 후보를 현재 추천처럼 표시하지 않습니다.": "現在条件で生成された推薦はありません。最終対象顧客が0人の場合は、予算を増やすか離脱リスク基準を下げてください。保存済みの過去候補は現在推薦として表示しません。",
+        "이벤트 스트림을 재생하며 고객별 실시간 위험 점수와 액션 큐 상태를 함께 갱신합니다.": "イベントストリームを再生し、顧客別のリアルタイムリスクスコアとアクションキュー状態を更新します。",
+        "실시간 스코어 API 호출 실패": "リアルタイムスコアAPI呼び出し失敗",
+        "먼저 Redis를 실행한 뒤 realtime-bootstrap / realtime-produce / realtime-consume(또는 realtime-replay) 명령을 수행하세요.": "まずRedisを起動し、realtime-bootstrap / realtime-produce / realtime-consume または realtime-replay を実行してください。",
+        "실시간 스코어 스냅샷이 없습니다. 스트림 소비 결과가 아직 생성되지 않았을 수 있습니다.": "リアルタイムスコアスナップショットがありません。ストリーム処理結果がまだ生成されていない可能性があります。",
+        "큐 상태": "キュー状態",
+        "트리거 이유": "トリガー理由",
+        "행동 신호": "行動シグナル",
+        "액션 큐 상태 구성": "アクションキュー状態構成",
+        "주요 트리거 이유": "主なトリガー理由",
+        "트리거 이유 빈도": "トリガー理由頻度",
+        "행동 신호 평균값": "行動シグナル平均値",
+        "행동 신호 평균": "行動シグナル平均",
+        "실시간 부분 재최적화 액션 큐": "リアルタイム部分再最適化アクションキュー",
+        "Live 이탈 점수 Top 고객": "Live離脱リスク上位顧客",
+        "표시할 live score 데이터가 없습니다.": "表示するlive scoreデータがありません。",
+        "현재 queued action이 없습니다. action_threshold를 낮춰 테스트하거나 새 이벤트를 입력하세요.": "現在queued actionはありません。テストではaction_thresholdを下げるか新しいイベントを入力してください。",
+        "시연을 시작하면 설정된 간격마다 가상 고객 이벤트(방문, 구매 등)가 자동 생성되고, 이탈 점수 재산정 및 액션 큐가 갱신됩니다.": "デモを開始すると、設定間隔ごとに仮想顧客イベント（訪問・購入など）が自動生成され、離脱スコアとアクションキューが更新されます。",
+        "시연 실행 중": "デモ実行中",
+        "시연 중지": "デモ停止",
+        "시연 초기화": "デモ初期化",
+        "시연 시작": "デモ開始",
+        "10초마다 자동 새로고침": "10秒ごとに自動更新",
+        "N초마다 이벤트 1건 생성": "N秒ごとにイベント1件を生成",
+        "간격(초)": "間隔（秒）",
+        "새 고객 vs 기존 고객 비율": "新規顧客と既存顧客の比率",
+        "신규 비율": "新規比率",
+        "이벤트 로그": "イベントログ",
+        "중지됨": "停止中",
+        "다음 자동 새로고침까지 10초...": "次の自動更新まで10秒...",
+        "현재 화면은": "現在画面は",
+        "기준 PostgreSQL live DB 운영 모니터입니다.": "基準のPostgreSQL live DB運用モニターです。",
+        "고객별 이탈 확률 분포": "顧客別離脱リスク分布",
+        "실시간 이탈 위험 상위 고객": "リアルタイム離脱リスク上位顧客",
+        "세그먼트·개입 강도별 예산 배분": "顧客群・介入レベル別予算配分",
+        "세그먼트별 예산 배분": "顧客群別予算配分",
+        "개입 강도": "介入レベル",
+        "추천 기준": "推薦基準",
+        "예산": "予算",
+        "이탈 임계값": "離脱リスク基準",
+        "최대 타겟": "最大対象",
+        "명": "人",
+        "행": "行",
+        "건": "件",
+        "전체": "全体",
+        "중": "中",
+        "일치": "一致",
+        "학습 단계에서는 예산과 이탈 임계값을 조절하지 않습니다. 학습이 끝난 뒤 대시보드의 분석 컨트롤에서 운영 조건을 바꿔 비교하세요.": "学習段階では予算と離脱リスク基準を調整しません。学習後にダッシュボードの分析コントロールで運用条件を変えて比較してください。",
+        "학습 설정": "学習設定",
+        "이탈 고객 정의": "離脱顧客定義",
+        "학습 예산": "学習予算",
+        "학습 이탈 임계값": "学習離脱リスク基準",
+        "이탈 기준·학습": "離脱基準・学習",
+        "Step 5. 이탈 기준·학습": "Step 5. 離脱基準・学習",
+        "이탈 기준: N일 이상 비활성": "離脱基準: N日以上非アクティブ",
+        "총 개입 예산": "総介入予算",
+        "업로드 샘플": "アップロードサンプル",
+        "시작 중...": "開始中...",
+        "학습 실패": "学習失敗",
+        "CSV 검증": "CSV検証",
+        "전처리": "前処理",
+        "피처 생성": "特徴量生成",
+        "이탈 모델 학습": "離脱モデル学習",
+        "Uplift/CLV 계산": "反応・利益推定",
+        "예산 최적화": "予算最適化",
+        "추천/설명 생성": "推薦・説明生成",
+        "OpenAI API 키가 설정되지 않았습니다. 사이드바에 키를 입력하거나 OPENAI_API_KEY 환경변수를 설정하세요.": "OpenAI APIキーが設定されていません。サイドバーにキーを入力するか、OPENAI_API_KEY環境変数を設定してください。",
+        "안녕하세요. 현재 보고 있는 화면 기준으로 답해드릴게요.": "こんにちは。現在表示している画面を基準に回答します。",
+        "왜 이 지표가 높/낮은지": "なぜこの指標が高い/低いのか",
+        "어떤 고객/세그먼트가 핵심인지": "どの顧客・顧客群が重要か",
+        "예산·threshold에서 뭘 바꾸면 좋을지": "予算や離脱リスク基準で何を変えるべきか",
+        "AI가 답변하는 중입니다...": "AIが回答中です...",
+        "AI 분석 챗봇": "AI分析チャットボット",
+        "드래그해서 이동": "ドラッグして移動",
+        "닫기": "閉じる",
+        "대화 지우기": "会話を削除",
+    },
+}
+for _lang, _mapping in EXTRA_UI_TEXT.items():
+    UI_TEXT.setdefault(_lang, {}).update(_mapping)
+UI_TEXT.setdefault("en", {}).update({"학습 대상": "Training target", "파일": "File", "신규": "New", "기존": "Existing", "학습 시작": "Start training", "NEW": "New", "UPD": "Updated"})
+UI_TEXT.setdefault("ja", {}).update({"학습 대상": "学習対象", "파일": "ファイル", "신규": "新規", "기존": "既存", "학습 시작": "学習開始", "NEW": "新規", "UPD": "更新"})
+
+
+# ============================================================
+# [PATCH] Remaining visible i18n fragments and real-time no-chart labels
+# ============================================================
+UI_TEXT.setdefault("en", {}).update({
+    "5번 화면은 저장 후보를 그대로 쓰지 않고 현재 예산·임계값 타겟 기준으로 새 추천을 만듭니다.": "View 5 generates new recommendations from the current budget and threshold targets instead of reusing saved candidates.",
+    "저장 후보를 그대로 쓰지 않고 현재 예산·임계값 타겟 기준으로 새 추천을 만듭니다.": "New recommendations are generated from the current budget and threshold targets instead of saved candidates.",
+    "이 값 이상인 고객을 이탈 위험군으로 간주합니다. 모든 화면에서 동일하게 유지됩니다.": "Customers at or above this value are treated as churn-risk customers. The value is shared across all views.",
+    "상한 없이 입력 가능합니다. 쉼표 없이 숫자만 입력해도 됩니다.": "There is no upper limit. You may enter numbers without commas.",
+    "상한 없이 입력 가능합니다. 1 이상의 정수만 입력하세요.": "There is no upper limit. Enter an integer of 1 or higher.",
+    "총 마케팅 예산은 0 이상의 정수로 입력해야 합니다.": "Total marketing budget must be a non-negative integer.",
+    "최대 타겟 고객 수는 1 이상의 정수여야 합니다.": "Max target customers must be an integer of 1 or higher.",
+    "최대 타겟 고객 수는 1 이상의 정수로 입력해야 합니다.": "Max target customers must be entered as an integer of 1 or higher.",
+    "최종 리텐션 타겟 고객군(예산/임계값 적용)에게만 추천을 생성합니다.": "Recommendations are generated only for final retention targets after budget and threshold filters.",
+    "현재 공통 조건": "Current shared conditions",
+    "최종 타겟 고객 수": "Final target customers",
+    "실시간 그래프는 시연 집중도를 높이기 위해 숨겼습니다. 아래 표에서 최신 고객 위험도와 액션 큐를 확인하세요.": "Real-time charts are hidden to keep the demo focused. Check the latest customer risk and action queue in the tables below.",
+    "실시간 스코어 상위 고객": "Top real-time score customers",
+    "실시간 운영 모니터 그래프는 제거하고 표 중심으로 표시합니다.": "Real-time operations charts have been removed and the view is table-first.",
+    "분석 컨트롤 값은 언어 전환 시에도 유지됩니다.": "Analysis control values are preserved when the language changes.",
+    "화면 전환 최적화가 적용되어 Live DB 조회와 무거운 산출물 로딩을 필요한 화면에서만 수행합니다.": "View-switch optimization is enabled: Live DB calls and heavy artifact loads run only where needed.",
+    "고객 위험도 목록": "Customer risk list",
+    "액션 큐 목록": "Action queue list",
+    "상태 구성 목록": "Status mix list",
+    "트리거 이유 목록": "Trigger reason list",
+    "행동 신호 목록": "Behavior signal list",
+    "예금·대출·카드·거래·잔고·연체·상담 이력 기반 이탈/해지 위험과 캠페인 우선순위를 분석합니다.": "Analyze churn/cancellation risk and campaign priority from deposits, loans, cards, transactions, balances, delinquency, and service history.",
+    "방문·검색·장바구니·구매·쿠폰·카테고리 선호 기반 이탈 위험과 개인화 추천을 분석합니다.": "Analyze churn risk and personalized recommendations from visits, searches, carts, purchases, coupons, and category preferences.",
+    "에 이전 학습 결과가 있습니다.": " has existing training results.",
+    "CSV 구조를 분석하고 자동 매핑하는 중입니다...": "Analyzing the CSV structure and auto-mapping columns...",
+    "업로드 완료": "Upload complete",
+    "업로드 파일을 찾지 못했습니다.": "The uploaded file was not found.",
+    "업로드 파일을 찾지 못했습니다. 이전 단계로 돌아가세요.": "The uploaded file was not found. Go back to the previous step.",
+    "분석할 CSV/TSV 파일을 업로드하면 다음 단계로 이동할 수 있습니다.": "Upload a CSV/TSV file to continue to the next step.",
+    "시스템 역할": "System role",
+    "업로드 컬럼": "Uploaded column",
+    "원본 값": "Original value",
+    "빈도": "Frequency",
+    "내부 표준 값": "Internal standard value",
+    "자동 매핑 커버리지": "Auto-mapping coverage",
+    "event_type/timestamp 조합이 부족합니다. 스냅샷 데이터로 진행하면 일부 실시간·행동 시계열 분석은 제한됩니다.": "The event_type/timestamp combination is insufficient. If you proceed with snapshot data, some real-time and behavior time-series analyses will be limited.",
+    "스냅샷 데이터로 진행": "Proceed with snapshot data",
+    "이탈 기준: N일 이상 비활성": "Churn definition: inactive for N+ days",
+    "완료": "Complete",
+    "부분 완료": "Partially complete",
+    "일부 단계 실패": "Some steps failed",
+    "산출물을 확인하세요.": "Please check the generated outputs.",
+    "이전 단계로": "Previous step",
+    "다음": "Next",
+    "이전": "Previous",
+})
+UI_TEXT.setdefault("ja", {}).update({
+    "5번 화면은 저장 후보를 그대로 쓰지 않고 현재 예산·임계값 타겟 기준으로 새 추천을 만듭니다.": "5番画面は保存候補をそのまま使わず、現在の予算・閾値で選ばれた対象を基準に新しい推薦を作成します。",
+    "저장 후보를 그대로 쓰지 않고 현재 예산·임계값 타겟 기준으로 새 추천을 만듭니다.": "保存候補をそのまま使わず、現在の予算・閾値で選ばれた対象を基準に新しい推薦を作成します。",
+    "이 값 이상인 고객을 이탈 위험군으로 간주합니다. 모든 화면에서 동일하게 유지됩니다.": "この値以上の顧客を離脱リスク顧客とみなします。すべての画面で同じ値を維持します。",
+    "상한 없이 입력 가능합니다. 쉼표 없이 숫자만 입력해도 됩니다.": "上限なく入力できます。カンマなしの数字だけでも入力できます。",
+    "상한 없이 입력 가능합니다. 1 이상의 정수만 입력하세요.": "上限なく入力できます。1以上の整数を入力してください。",
+    "총 마케팅 예산은 0 이상의 정수로 입력해야 합니다.": "総マーケティング予算は0以上の整数で入力してください。",
+    "최대 타겟 고객 수는 1 이상의 정수여야 합니다.": "最大対象顧客数は1以上の整数である必要があります。",
+    "최대 타겟 고객 수는 1 이상의 정수로 입력해야 합니다.": "最大対象顧客数は1以上の整数で入力してください。",
+    "최종 리텐션 타겟 고객군(예산/임계값 적용)에게만 추천을 생성합니다.": "予算・閾値適用後の最終リテンション対象にだけ推薦を生成します。",
+    "현재 공통 조건": "現在の共通条件",
+    "최종 타겟 고객 수": "最終対象顧客数",
+    "실시간 그래프는 시연 집중도를 높이기 위해 숨겼습니다. 아래 표에서 최신 고객 위험도와 액션 큐를 확인하세요.": "デモの集中度を高めるため、リアルタイムグラフは非表示にしました。下の表で最新の顧客リスクとアクションキューを確認してください。",
+    "실시간 스코어 상위 고객": "リアルタイムスコア上位顧客",
+    "실시간 운영 모니터 그래프는 제거하고 표 중심으로 표시합니다.": "リアルタイム運用モニターのグラフは削除し、表中心で表示します。",
+    "분석 컨트롤 값은 언어 전환 시에도 유지됩니다.": "分析コントロールの値は言語変更時にも維持されます。",
+    "화면 전환 최적화가 적용되어 Live DB 조회와 무거운 산출물 로딩을 필요한 화면에서만 수행합니다.": "画面切り替え最適化により、Live DB照会と重い出力読み込みは必要な画面でのみ実行します。",
+    "고객 위험도 목록": "顧客リスク一覧",
+    "액션 큐 목록": "アクションキュー一覧",
+    "상태 구성 목록": "状態構成一覧",
+    "트리거 이유 목록": "トリガー理由一覧",
+    "행동 신호 목록": "行動シグナル一覧",
+    "예금·대출·카드·거래·잔고·연체·상담 이력 기반 이탈/해지 위험과 캠페인 우선순위를 분석합니다.": "預金・融資・カード・取引・残高・延滞・相談履歴を基に離脱/解約リスクとキャンペーン優先順位を分析します。",
+    "방문·검색·장바구니·구매·쿠폰·카테고리 선호 기반 이탈 위험과 개인화 추천을 분석합니다.": "訪問・検索・カート・購入・クーポン・カテゴリ嗜好を基に離脱リスクとパーソナライズ推薦を分析します。",
+    "에 이전 학습 결과가 있습니다.": "に以前の学習結果があります。",
+    "CSV 구조를 분석하고 자동 매핑하는 중입니다...": "CSV構造を分析し、自動マッピングしています...",
+    "업로드 완료": "アップロード完了",
+    "업로드 파일을 찾지 못했습니다.": "アップロードファイルが見つかりません。",
+    "업로드 파일을 찾지 못했습니다. 이전 단계로 돌아가세요.": "アップロードファイルが見つかりません。前の段階に戻ってください。",
+    "분석할 CSV/TSV 파일을 업로드하면 다음 단계로 이동할 수 있습니다.": "分析するCSV/TSVファイルをアップロードすると次の段階へ進めます。",
+    "시스템 역할": "システム役割",
+    "업로드 컬럼": "アップロード列",
+    "원본 값": "元の値",
+    "빈도": "頻度",
+    "내부 표준 값": "内部標準値",
+    "자동 매핑 커버리지": "自動マッピングカバレッジ",
+    "event_type/timestamp 조합이 부족합니다. 스냅샷 데이터로 진행하면 일부 실시간·행동 시계열 분석은 제한됩니다.": "event_type/timestampの組み合わせが不足しています。スナップショットデータで進むと一部のリアルタイム・行動時系列分析は制限されます。",
+    "스냅샷 데이터로 진행": "スナップショットデータで進む",
+    "이탈 기준: N일 이상 비활성": "離脱基準: N日以上非アクティブ",
+    "완료": "完了",
+    "부분 완료": "一部完了",
+    "일부 단계 실패": "一部段階失敗",
+    "산출물을 확인하세요.": "出力を確認してください。",
+    "이전 단계로": "前の段階へ",
+    "다음": "次へ",
+    "이전": "前へ",
+})
+# ============================================================
+# [/PATCH]
+# ============================================================
+
+EXTRA_COLUMN_LABELS: dict[str, dict[str, str]] = {
+    "ko": {
+        "selection_reason": "선정 이유", "reason_summary": "선정 이유", "watchout": "주의사항", "caution": "주의사항", "next_best_action": "다음 추천 액션",
+        "uplift_segment": "고객 반응 유형", "risk_group": "위험 그룹", "risk_segment": "위험 등급", "customer_count_label": "고객 수", "recommend_count": "추천 수",
+        "status": "상태", "signal": "행동 신호", "mean_value": "평균값", "count": "수", "log": "이벤트 로그",
+    },
+    "en": {
+        "selection_reason": "Reason Selected", "reason_summary": "Reason Selected", "watchout": "Caution", "caution": "Caution", "next_best_action": "Next Action",
+        "uplift_segment": "Response Type", "risk_group": "Risk Group", "risk_segment": "Risk Level", "customer_count_label": "Customer Count", "recommend_count": "Recommendations",
+        "status": "Status", "signal": "Behavior Signal", "mean_value": "Average Value", "count": "Count", "log": "Event Log",
+    },
+    "ja": {
+        "selection_reason": "選定理由", "reason_summary": "選定理由", "watchout": "注意事項", "caution": "注意事項", "next_best_action": "次の推奨アクション",
+        "uplift_segment": "顧客反応タイプ", "risk_group": "リスクグループ", "risk_segment": "リスク等級", "customer_count_label": "顧客数", "recommend_count": "推薦数",
+        "status": "状態", "signal": "行動シグナル", "mean_value": "平均値", "count": "数", "log": "イベントログ",
+    },
+}
+for _lang, _mapping in EXTRA_COLUMN_LABELS.items():
+    COLUMN_LABELS.setdefault(_lang, {}).update(_mapping)
+
+VIEW_INTRO_LINES: dict[str, list[str]] = {
+    "1": [
+        "이탈 위험이 높은 고객을 먼저 확인해 리텐션 대응의 출발점을 잡습니다.",
+        "전체 위험 규모와 고객별 위험도를 함께 보며 대응 우선순위를 정합니다.",
+        "예산 화면과 추천 화면으로 넘어가기 전에 어떤 고객군이 문제인지 빠르게 파악하는 목적입니다.",
+    ],
+    "4": [
+        "한정된 예산을 어떤 고객·세그먼트에 먼저 쓸지 결정하는 화면입니다.",
+        "예상 이익, 비용, 고객 반응 가능성을 함께 보며 최종 타겟을 검토합니다.",
+        "운영자는 이 화면을 바탕으로 캠페인 집행 대상과 예산 배분 근거를 설명할 수 있습니다.",
+    ],
+    "5": [
+        "최종 타겟 고객에게 어떤 상품·혜택·액션을 제안할지 확인하는 화면입니다.",
+        "추천 점수와 추천 이유를 통해 고객별 다음 행동을 바로 실행 가능한 형태로 확인합니다.",
+        "단순 예측을 넘어 실제 CRM·마케팅 액션으로 연결하는 목적입니다.",
+    ],
+    "6": [
+        "실시간 이벤트가 들어올 때 고객 위험도와 액션 큐가 어떻게 바뀌는지 확인합니다.",
+        "새 이벤트, 고위험 고객, 큐 적재 상태를 함께 보며 운영 이상 여부를 점검합니다.",
+        "시연이나 실제 운영에서 시스템이 데이터 변화에 반응하는지 검증하는 목적입니다.",
+    ],
+}
+
+VALUE_LABELS: dict[str, dict[str, str]] = {
+    "ko": {
+        "sure_things": "이미 반응 가능성이 높은 고객", "sleeping_dogs": "건드리면 이탈 위험이 커질 수 있는 고객", "lost_causes": "개입 효과가 낮은 고객", "persuadables": "개입하면 반응할 가능성이 높은 고객",
+        "vip_loyal": "충성 VIP 고객", "regular_loyal": "충성 일반 고객", "vip_at_risk": "이탈 위험 VIP 고객", "regular_at_risk": "이탈 위험 일반 고객", "new_customer": "신규 고객", "dormant": "휴면 고객",
+        "high_uplift": "개입 반응 높음", "very_high_uplift": "개입 반응 매우 높음", "medium_uplift": "개입 반응 보통", "low_uplift": "개입 반응 낮음", "negative_uplift": "개입 비추천", "unknown_segment": "분류 정보 없음", "live": "실시간 고객", "live_user": "실시간 고객",
+        "high": "높음", "medium": "보통", "low": "낮음", "critical": "매우 높음", "queued": "큐에 적재됨", "not_queued": "미적재", "pending": "대기 중", "sent": "발송 완료", "completed": "완료", "failed": "실패",
+        "generic_retention_offer": "기본 리텐션 혜택", "coupon_offer": "쿠폰 혜택", "discount_offer": "할인 혜택", "service_recovery": "서비스 회복 안내", "loyalty_reward": "충성 고객 보상", "personalized_coupon": "개인 맞춤 쿠폰", "retention_action": "리텐션 액션",
+        "page_view": "페이지 방문", "purchase": "구매", "cart": "장바구니", "add_to_cart": "장바구니 담기", "search": "검색", "login": "로그인", "NEW": "신규", "UPD": "기존 갱신",
+    },
+    "en": {
+        "sure_things": "Already likely to respond", "sleeping_dogs": "Avoid unnecessary intervention", "lost_causes": "Low expected response", "persuadables": "Likely to respond if contacted",
+        "vip_loyal": "Loyal VIP customer", "regular_loyal": "Loyal regular customer", "vip_at_risk": "At-risk VIP customer", "regular_at_risk": "At-risk regular customer", "new_customer": "New customer", "dormant": "Inactive customer",
+        "high_uplift": "High response potential", "very_high_uplift": "Very high response potential", "medium_uplift": "Medium response potential", "low_uplift": "Low response potential", "negative_uplift": "Intervention not recommended", "unknown_segment": "No group info", "live": "Live customer", "live_user": "Live customer",
+        "high": "High", "medium": "Medium", "low": "Low", "critical": "Critical", "queued": "Queued", "not_queued": "Not queued", "pending": "Pending", "sent": "Sent", "completed": "Completed", "failed": "Failed",
+        "generic_retention_offer": "Basic retention offer", "coupon_offer": "Coupon offer", "discount_offer": "Discount offer", "service_recovery": "Service recovery message", "loyalty_reward": "Loyalty reward", "personalized_coupon": "Personalized coupon", "retention_action": "Retention action",
+        "page_view": "Page visit", "purchase": "Purchase", "cart": "Cart", "add_to_cart": "Add to cart", "search": "Search", "login": "Login", "NEW": "New", "UPD": "Updated existing",
+    },
+    "ja": {
+        "sure_things": "すでに反応しやすい顧客", "sleeping_dogs": "過度な介入を避ける顧客", "lost_causes": "反応見込みが低い顧客", "persuadables": "介入すると反応しやすい顧客",
+        "vip_loyal": "ロイヤルVIP顧客", "regular_loyal": "ロイヤル一般顧客", "vip_at_risk": "離脱リスクVIP顧客", "regular_at_risk": "離脱リスク一般顧客", "new_customer": "新規顧客", "dormant": "休眠顧客",
+        "high_uplift": "反応見込み高", "very_high_uplift": "反応見込み非常に高", "medium_uplift": "反応見込み中", "low_uplift": "反応見込み低", "negative_uplift": "介入非推奨", "unknown_segment": "分類情報なし", "live": "リアルタイム顧客", "live_user": "リアルタイム顧客",
+        "high": "高", "medium": "中", "low": "低", "critical": "重大", "queued": "キュー登録済み", "not_queued": "未登録", "pending": "待機中", "sent": "送信済み", "completed": "完了", "failed": "失敗",
+        "generic_retention_offer": "基本リテンション特典", "coupon_offer": "クーポン特典", "discount_offer": "割引特典", "service_recovery": "サービス回復メッセージ", "loyalty_reward": "ロイヤル顧客特典", "personalized_coupon": "個別クーポン", "retention_action": "リテンション施策",
+        "page_view": "ページ訪問", "purchase": "購入", "cart": "カート", "add_to_cart": "カート追加", "search": "検索", "login": "ログイン", "NEW": "新規", "UPD": "既存更新",
+    },
+}
+
+PHRASE_LABELS: dict[str, dict[str, str]] = {
+    "en": {
+        "개입 반응 가능성이 큼": "high response potential", "고객 가치가 높음": "high customer value", "예상 ROI가 양호함": "good expected ROI", "단기 이탈 가속 주의": "watch for short-term churn acceleration", "가격·서비스·타이밍 리스크를 함께 점검": "check price, service, and timing risks together",
+    },
+    "ja": {
+        "개입 반응 가능성이 큼": "介入反応の可能性が高い", "고객 가치가 높음": "顧客価値が高い", "예상 ROI가 양호함": "予想ROIが良好", "단기 이탈 가속 주의": "短期離脱の加速に注意", "가격·서비스·타이밍 리스크를 함께 점검": "価格・サービス・タイミングリスクを一緒に確認",
+    },
+}
+
+
+
+# ============================================================
+# [FULL I18N PATCH] Runtime UI translation coverage
+# - Adds translations for remaining dashboard/wizard/control messages.
+# - Runtime wrappers below also translate unwrapped Streamlit/Plotly labels.
+# ============================================================
+FULL_UI_TEXT_PATCH: dict[str, dict[str, str]] = {
+    "en": {
+        "실제 data/raw 산출물을 찾지 못해 mock data로 실행 중입니다.": "Running with mock data because no real data/raw outputs were found.",
+        "시뮬레이터 데모 산출물이 아직 없습니다. docker compose up만 실행하면 일부 모델 검증/생존분석/실험 산출물은 생성되지 않습니다.": "Simulator demo outputs are not available yet. Running only docker compose up does not create some model validation, survival-analysis, or experiment outputs.",
+        "python src/main.py --mode train, survival, abtest, fidelity 등 필요한 시뮬레이터 산출 명령을 먼저 실행하세요.": "Run the required simulator output commands first, such as python src/main.py --mode train, survival, abtest, or fidelity.",
+        "이 값 이상인 고객을 이탈 위험군으로 간주합니다. 모든 화면에서 동일하게 유지됩니다.": "Customers at or above this value are treated as churn-risk customers. This value stays the same across all views.",
+        "상한 없이 입력 가능합니다. 쉼표 없이 숫자만 입력해도 됩니다.": "No upper limit. You may enter numbers without commas.",
+        "상한 없이 입력 가능합니다. 1 이상의 정수만 입력하세요.": "No upper limit. Enter an integer of 1 or higher.",
+        "현재 공통 조건": "Current common conditions",
+        "threshold": "threshold",
+        "예산": "budget",
+        "최종 타겟 고객 수": "final target customers",
+        "원": "KRW",
+        "실시간 화면에서는 새로고침 시 스트림을 조금씩 더 재생해 수치가 변하도록 했습니다. 나머지 화면은 캐시를 비우고 다시 계산합니다.": "On the real-time view, refresh replays a little more of the stream so the numbers change. Other views clear the cache and recalculate.",
+        "최종 리텐션 타겟 고객군(예산/임계값 적용)에게만 추천을 생성합니다.": "Recommendations are generated only for final retention targets after applying the budget and threshold.",
+        "고객당 추천 개수": "Recommendations per customer",
+        "코호트 리텐션 분석": "Cohort Retention Analysis",
+        "현재 기준": "Current basis",
+        "period 0은 코호트 정의상 100%로 고정하고, 아직 관측할 수 없는 미래 period는 0이 아니라 공란으로 둡니다.": "Period 0 is fixed at 100% by cohort definition; future periods that cannot yet be observed are left blank, not zero.",
+        "해당 월 재방문율(point)은 재활성화 고객 때문에 month 2가 month 1보다 높아질 수 있습니다. 최근/오래된 코호트를 섞어 해석하지 않도록 아래 공통 비교 지표를 함께 보세요.": "Monthly return rate (point) can be higher in month 2 than month 1 because of reactivated customers. Use the common comparison metrics below to avoid mixing recent and old cohorts.",
+        "롤링 리텐션(rolling)은 해당 월 또는 그 이후에 다시 살아난 고객까지 포함하므로 곡선이 단조 감소합니다. 코호트 붕괴 속도를 비교하기에 더 안정적입니다.": "Rolling retention includes customers who return in that month or later, so the curve decreases monotonically. It is more stable for comparing cohort decay speed.",
+        "참고: 현재 point 기준에서는": "Note: under the current point basis,",
+        "개 코호트에서 후행 월 리텐션이 앞선 월보다 높게 나타났습니다.": "cohorts show later-month retention higher than earlier-month retention.",
+        "표시할 코호트 데이터가 없습니다.": "No cohort data to display.",
+        "가입 코호트별 리텐션 곡선": "Retention curve by signup cohort",
+        "코호트 리텐션 히트맵": "Cohort retention heatmap",
+        "경과 기간(개월)": "Elapsed period (months)",
+        "코호트": "Cohort",
+        "코호트 리텐션 테이블": "Cohort retention table",
+        "공통 기간 비교": "Common-period comparison",
+        "공통 기간 비교 테이블": "Common-period comparison table",
+        "Uplift·CLV 세그먼트 분석": "Uplift and CLV Segment Analysis",
+        "Uplift 세그먼트별 고객 수": "Customers by uplift segment",
+        "Uplift 세그먼트 요약": "Uplift segment summary",
+        "상위 고객의 Uplift-CLV 분포": "Uplift-CLV distribution of top customers",
+        "버블 크기는 expected_incremental_profit 대신 value_score(CLV × uplift_score)를 사용합니다. 차트는 성능을 위해 상위 500명만, 아래 테이블은 전체 정렬 결과를 보여줍니다.": "Bubble size uses value_score (CLV × uplift_score) instead of expected_incremental_profit. For performance, the chart shows only the top 500 customers, while the table shows the full sorted result.",
+        "상위 고객 테이블": "Top customer table",
+        "학습 결과 아티팩트": "Training Result Artifacts",
+        "이 화면은 백엔드 API가 보관 중인 최신 학습 산출물을 읽기 전용으로 표시합니다. 대시보드에서 학습 파라미터를 조정하거나 재학습을 직접 실행하지 않습니다.": "This view displays the latest training outputs stored by the backend API in read-only mode. Training parameters are not changed and retraining is not run directly from the dashboard.",
+        "학습 결과를 아직 불러오지 못했습니다.": "Training results could not be loaded yet.",
+        "학습 메타데이터": "Training metadata",
+        "선택된 threshold 요약": "Selected threshold summary",
+        "선택 threshold 요약": "Selected threshold summary",
+        "학습 파라미터 (서버 반영값)": "Training parameters (server-applied values)",
+        "학습 파라미터": "Training parameters",
+        "학습 시각화": "Training visualization",
+        "Feature store 미리보기": "Feature store preview",
+        "파일이 없습니다.": "file is missing.",
+        "추천 API 호출 실패": "Recommendation API call failed",
+        "기준 PostgreSQL live DB 운영 모니터입니다.": "PostgreSQL live DB operations monitor.",
+        "시연 실행 중": "Demo running",
+        "시연 중지": "Stop demo",
+        "시연 초기화": "Reset demo",
+        "시연 시작": "Start demo",
+        "10초마다 자동 새로고침": "Auto-refresh every 10 seconds",
+        "N초마다 이벤트 1건 생성": "Generate one event every N seconds",
+        "간격(초)": "Interval (seconds)",
+        "새 고객 vs 기존 고객 비율": "New vs existing customer ratio",
+        "신규 비율": "New-customer ratio",
+        "이벤트 로그": "Event log",
+        "다음 자동 새로고침까지 10초...": "Next auto-refresh in 10 seconds...",
+        "Live 이탈 점수 Top 고객": "Top live churn-risk customers",
+        "실시간 부분 재최적화 액션 큐": "Real-time partially re-optimized action queue",
+        "이탈 시점 예측 (Survival Analysis)": "Churn Timing Prediction (Survival Analysis)",
+        "Cox Proportional Hazards 기반으로 landmark 시점 이후 얼마 안에 churn risk 상태로 진입할지를 추정합니다. 분류 모델과 달리 \"언제\" 위험이 커지는지를 함께 봅니다.": "Based on Cox Proportional Hazards, this estimates how soon customers enter a churn-risk state after the landmark point. Unlike a classification model, it also shows when risk increases.",
+        "survival_metrics.json, survival_predictions.csv 또는 survival 모델 산출물을 찾지 못했습니다.": "survival_metrics.json, survival_predictions.csv, or survival model outputs were not found.",
+        "시뮬레이터 데모에서는 python src/main.py --mode survival 실행 후 대시보드를 새로고침하세요.": "For the simulator demo, run python src/main.py --mode survival and refresh the dashboard.",
+        "모델": "Model",
+        "일": "days",
+        "Survival 메타데이터": "Survival metadata",
+        "예측 위험군별 생존 곡선": "Survival curves by predicted risk group",
+        "단기 churn 위험 상위 고객": "Top customers by short-term churn risk",
+        "Survival 예측 결과": "Survival prediction results",
+        "주요 hazard coefficient": "Key hazard coefficients",
+        "증분 성과 / A-B 실험": "Incremental Performance / A-B Experiment",
+        "정확도보다 더 중요한 운영 지표인 증분 리텐션, 추가 유지 고객 수, 비용 대비 유지 성과, dose-response 결과를 함께 봅니다.": "This view shows operational metrics that matter more than accuracy: incremental retention, additional retained customers, retention performance per cost, and dose-response results.",
+        "검출력 부족 — 결과를 효과 유무의 근거로 사용할 수 없습니다.": "Insufficient statistical power — do not use this result as evidence of whether the effect exists.",
+        "현재 표본은 효과 검출에 필요한 수의 일부에 불과합니다": "The current sample is only a fraction of the size needed to detect the effect",
+        "아래 수치(증분 리텐션, ROI 등)는 통계적 노이즈일 가능성이 매우 높으며": "The numbers below, such as incremental retention and ROI, are highly likely to be statistical noise",
+        "효과가 없다": "there is no effect",
+        "효과를 측정할 수 없었다": "the effect could not be measured",
+        "증분 리텐션": "Incremental retention",
+        "추가 유지 고객 수": "Additional retained customers",
+        "쿠폰 집행 총액": "Total coupon spend",
+        "측정 불가": "Not measurable",
+        "추가 유지 고객 수가 0 이하라 분모가 정의되지 않습니다. 효과 검출 실패 — 표본 확대 후 재측정 필요.": "The denominator is undefined because additional retained customers are zero or below. Effect detection failed — increase the sample size and measure again.",
+        "A/B 해석": "A/B interpretation",
+        "개입 강도 효과": "Intervention intensity effect",
+        "Persuadables 프로필": "Persuadables profile",
+        "두 그룹 간 차이가 통계적으로 유의합니다": "the difference between the two groups is statistically significant",
+        "기준": "basis",
+        "A/B 테스트 산출물을 찾지 못했습니다.": "A/B test outputs were not found.",
+        "개입 강도별 retention rate": "Retention rate by intervention intensity",
+        "dose-response arm 요약": "Dose-response arm summary",
+        "dose-response 요약을 찾지 못했습니다.": "Dose-response summary was not found.",
+        "What-if: 충분한 표본/효과 크기 시 예상 성과": "What-if: Expected performance with enough sample size/effect size",
+        "현재 표본의 검출력 한계를 보완하기 위해, 효과 크기 가정별 운영 시나리오를 계산합니다. 실제 운영 데이터 누적 후 본 시스템이 동일 분석을 자동 수행합니다.": "To supplement the power limitation of the current sample, this calculates operating scenarios by assumed effect size. After real operating data accumulates, the system runs the same analysis automatically.",
+        "보수적": "Conservative",
+        "중간": "Medium",
+        "낙관적": "Optimistic",
+        "시나리오": "Scenario",
+        "추가 유지 고객": "Additional retained customers",
+        "추가 매출": "Additional revenue",
+        "쿠폰비 반영 ROI": "ROI after coupon cost",
+        "효과 크기 가정별 시뮬레이션": "Simulation by assumed effect size",
+        "본 표는 동일 표본·쿠폰비 조건에서 효과 크기만 가정해 산출한 추정치입니다.": "This table is an estimate calculated by assuming only the effect size under the same sample and coupon-cost conditions.",
+        "운영 데이터가 누적되면 본 시스템이 동일 방식으로 실효 ROI를 자동 산출하도록 설계되어 있습니다.": "The system is designed to automatically calculate realized ROI in the same way once operating data accumulates.",
+        "Persuadables 비중": "Persuadables share",
+        "도출된 타겟팅 규칙": "Derived targeting rules",
+        "Persuadables 수치 프로필 차이": "Numeric profile differences of persuadables",
+        "설명가능성 / 고객별 개입 이유": "Explainability / Customer-level Intervention Reasons",
+        "왜 이 고객이 위험군인지, 왜 개입 후보로 뽑혔는지, 무엇을 조심해야 하는지를 운영 언어로 풀어 보여줍니다.": "This explains in operational language why each customer is risky, why they were selected for intervention, and what to be careful about.",
+        "전역 설명": "Global explanation",
+        "고객별 설명": "Customer-level explanation",
+        "전역 중요 변수 Top 10": "Top 10 global important features",
+        "전역 중요 변수": "Global important features",
+        "전역 중요 변수 파일을 찾지 못했습니다.": "The global feature-importance file was not found.",
+        "페르소나별 위험·가치 프로필": "Risk/value profile by persona",
+        "설명가능성 테이블을 만들 데이터가 부족합니다.": "There is not enough data to build the explainability table.",
+        "데이터 진단 / 시뮬레이터 충실도": "Data Diagnostics / Simulator Fidelity",
+        "시뮬레이터가 만든 원천 데이터와 파생 산출물이 운영형 분석에 쓰기 적절한지, 기본적인 정합성과 분포를 함께 점검합니다.": "This checks whether the simulator's raw data and derived outputs are suitable for operational analysis by reviewing basic consistency and distributions.",
+        "시뮬레이터 원천 데이터/산출 데이터 볼륨, 행동 분포, 고객 분포 진단 결과를 찾지 못했습니다.": "Simulator raw/output data volume, behavior distribution, and customer distribution diagnostics were not found.",
+        "양호": "Good",
+        "주의": "Warning",
+        "점검 항목": "check items",
+        "정합성 점검 결과": "Consistency check results",
+        "데이터 볼륨": "Data volume",
+        "행동 분포": "Behavior distribution",
+        "고객 분포": "Customer distribution",
+        "원천/산출 데이터 볼륨": "Raw/output data volume",
+        "이벤트 타입 분포": "Event type distribution",
+        "이벤트 분포를 계산할 데이터가 없습니다.": "There is no data to calculate event distribution.",
+        "분포 차원 선택": "Choose distribution dimension",
+        "분포": "distribution",
+        "고객 분포를 계산할 데이터가 없습니다.": "There is no data to calculate customer distribution.",
+        "할인·쿠폰 운영 리스크": "Discount/Coupon Operations Risk",
+        "쿠폰 노출/리딤/믹스 리스크 산출물이 없습니다.": "Coupon exposure/redemption/mix risk outputs are not available.",
+        "쿠폰 노출 누적, 리딤 효율, 강도별 효과, 추천/개입 믹스를 같이 보면서 할인 남발의 부작용 가능성을 점검합니다.": "Review cumulative coupon exposure, redemption efficiency, effects by intensity, and recommendation/intervention mix to check for side effects from excessive discounting.",
+        "노출 고객 수": "Exposed customers",
+        "고노출 고객 수": "Highly exposed customers",
+        "전체 노출 수": "Total exposures",
+        "오픈율": "Open rate",
+        "리딤률": "Redemption rate",
+        "쿠폰 운영 리스크 플래그": "Coupon operations risk flags",
+        "페르소나별 노출": "Exposure by persona",
+        "추천/강도 믹스": "Recommendation/intensity mix",
+        "운영 해석": "Operational interpretation",
+        "페르소나별 평균 쿠폰 노출": "Average coupon exposure by persona",
+        "페르소나별 쿠폰 노출/성과": "Coupon exposure/performance by persona",
+        "쿠폰 노출 집계를 계산할 데이터가 없습니다.": "There is no data to aggregate coupon exposure.",
+        "추천 카테고리 믹스": "Recommended category mix",
+        "선정된 개입 강도 믹스": "Selected intervention intensity mix",
+        "고강도 개입의 prior effect가 음수이면 혜택을 세게 줄수록 오히려 성과가 악화될 수 있습니다.": "If the prior effect of high-intensity intervention is negative, stronger benefits may actually worsen performance.",
+        "현재 high 강도 prior effect": "Current high-intensity prior effect",
+        "high 강도 prior effect를 찾지 못했습니다.": "High-intensity prior effect was not found.",
+        "노출 고객 수와 리딤률을 함께 봐야 합니다.": "Review exposed customers and redemption rate together.",
+        "노출은 많은데 리딤이 낮으면 학습효과/피로 누적 가능성이 큽니다.": "High exposure with low redemption may indicate learning effects or accumulated fatigue.",
+        "price_sensitive 성향이 강한 고객군은 단기 반응은 좋을 수 있지만, 장기적으로는 마진 희석과 할인 의존이 커질 수 있습니다.": "Price-sensitive customers may respond in the short term, but over time they can dilute margin and become dependent on discounts.",
+        "support 이슈형 고객은 쿠폰보다 서비스 회복 메시지나 CS 해결이 더 나을 수 있습니다.": "For customers with support issues, service recovery messages or CS resolution may work better than coupons.",
+        "금융/이커머스 원천 CSV를 업로드하세요. 고객 스냅샷, 거래, 이벤트 로그 형태를 모두 허용합니다.": "Upload a finance/e-commerce source CSV. Customer snapshots, transactions, and event logs are all supported.",
+        "금융 데이터 권장 컬럼": "Recommended finance columns",
+        "이커머스 데이터 권장 컬럼": "Recommended e-commerce columns",
+        "CSV/TSV 파일": "CSV/TSV file",
+        "CSV 구조를 분석하고 자동 매핑하는 중입니다...": "Analyzing the CSV structure and auto-mapping columns...",
+        "업로드 완료": "Upload completed",
+        "분석할 CSV/TSV 파일을 업로드하면 다음 단계로 이동할 수 있습니다.": "Upload a CSV/TSV file to move to the next step.",
+        "컬럼 매핑 검토": "Review column mapping",
+        "업로드 파일을 찾지 못했습니다. 이전 단계로 돌아가세요.": "The uploaded file was not found. Go back to the previous step.",
+        "업로드 파일을 찾지 못했습니다.": "The uploaded file was not found.",
+        "시스템 역할": "System role",
+        "업로드 컬럼": "Uploaded column",
+        "설명": "Description",
+        "고객을 식별하는 ID": "ID that identifies the customer",
+        "이벤트·거래 발생 시각": "Event/transaction timestamp",
+        "방문/구매/거래/상담 등 행동 유형": "Behavior type such as visit, purchase, transaction, or consultation",
+        "주문금액·거래금액·잔고 등 금액성 컬럼": "Amount-related column such as order amount, transaction amount, or balance",
+        "분석 피처로 사용할 수 있는 컬럼": "Column usable as an analysis feature",
+        "매핑 안 함": "Do not map",
+        "이벤트·거래 타입 매핑": "Event/transaction type mapping",
+        "원본 값": "Original value",
+        "빈도": "Frequency",
+        "내부 표준 값": "Internal standard value",
+        "자동 매핑 커버리지": "Auto-mapping coverage",
+        "event_type/timestamp 조합이 부족합니다. 스냅샷 데이터로 진행하면 일부 실시간·행동 시계열 분석은 제한됩니다.": "The event_type/timestamp combination is insufficient. If you proceed with snapshot data, some real-time and behavioral time-series analyses will be limited.",
+        "스냅샷 데이터로 진행": "Proceed with snapshot data",
+        "다음": "Next",
+        "이전": "Previous",
+        "이전 단계로": "Back to previous step",
+        "오류": "Error",
+        "학습 실패": "Training failed",
+        "일부 단계 실패": "Some steps failed",
+        "산출물을 확인하세요.": "Check the outputs.",
+        "파이프라인 실행 중 오류": "Pipeline execution error",
+        "완료": "Completed",
+        "실패": "Failed",
+        "완료된 단계": "Completed steps",
+        "실패 단계 상세": "Failed step details",
+        "검증 통과": "Validation passed",
+        "관련성": "relevance",
+        "컬럼 매핑": "Column mapping",
+        "왼쪽은 **시스템 스키마 칼럼**, 오른쪽은 **자사 CSV 컬럼** 입니다. 오른쪽 셀을 더블클릭하면 매핑 컬럼을 변경할 수 있습니다.": "The left side is the system schema column and the right side is your CSV column. Double-click the right cell to change the mapped column.",
+        "시스템 스키마": "System schema",
+        "자사 CSV 컬럼": "Your CSV column",
+        "시스템 스키마 (고정)": "System schema (fixed)",
+        "자사 CSV 컬럼 ▼": "Your CSV column ▼",
+        "시스템에서 사용하는 표준 역할명 — 변경 불가": "Standard role name used by the system — cannot be changed",
+        "자동 감지된 결과 — 잘못 매핑되었으면 ▼ 클릭해서 변경": "Auto-detected result — click ▼ to change if it is wrong",
+        "event_type 값 매핑": "event_type value mapping",
+        "당신의 CSV에 있는 event_type 값입니다.": "event_type values found in your CSV.",
+        "해당 값이 데이터에 등장한 횟수": "Number of times this value appears in the data",
+        "이 원본 값을 어떤 표준 이벤트로 분류할지 선택하세요.": "Choose which standard event this original value should map to.",
+        "event_type 또는 timestamp 컬럼이 감지되지 않았습니다.": "event_type or timestamp column was not detected.",
+        "합성 이벤트 데이터": "synthetic event data",
+        "신뢰할 수 없습니다": "cannot be trusted",
+        "그래도 합성 이벤트로 진행 (제한된 분석만 신뢰 가능)": "Proceed with synthetic events anyway (only limited analyses are reliable)",
+        "체크하면 시스템이 가짜 이벤트를 생성해서 학습합니다. 결과 해석에 주의하세요.": "If checked, the system generates synthetic events for training. Interpret the results carefully.",
+        "이탈 고객 정의": "Churn customer definition",
+        "마지막 활동(이벤트/주문) 이후 며칠 동안 활동이 없으면 \"이탈\"로 분류할지 정합니다. 업종에 따라 적절한 값이 다릅니다.": "Set how many inactive days after the last activity/event/order should classify a customer as churned. The right value differs by industry.",
+        "서비스 성격별 권장 기준": "Recommended 기준 by service type",
+        "데일리 앱": "daily apps",
+        "일반 커머스, 라이프스타일": "general commerce and lifestyle",
+        "정기 구독 서비스": "subscription services",
+        "접속 기록이 없으면": "if there is no access record",
+        "이탈로 간주합니다": "the customer is treated as churned",
+        "현재 설정": "Current setting",
+        "마지막 활동": "last activity",
+        "일 후 이탈": "days later as churned",
+        "event_type/timestamp 컬럼이 없어 진행 불가. 위에서 합성 진행에 동의하면 활성화됩니다.": "Cannot proceed because event_type/timestamp columns are missing. It will be enabled if you agree to synthetic processing above.",
+        "학습 완료. 대시보드로 이동합니다.": "Training completed. Moving to the dashboard.",
+        "전처리, 모델 학습, user-live DB 초기 적재가 완료되었습니다! 이제 터미널에서 curl 이벤트를 주입하면 실시간 운영 모니터에 반영됩니다.": "Preprocessing, model training, and initial user-live DB seeding are complete. Now curl events injected from the terminal will be reflected in the real-time operations monitor.",
+        "전처리 및 모델 학습이 완료되었습니다! 대시보드가 자동으로 새로고침됩니다.": "Preprocessing and model training are complete. The dashboard will refresh automatically.",
+        "PostgreSQL user-live DB 자동 적재는 실패했습니다. 시연 전 RETENTION_USER_DB_URL, PostgreSQL 실행 상태, API 로그를 확인하세요. 필요하면 터미널에서 seed-from-user-artifacts를 수동 호출하면 됩니다.": "Automatic PostgreSQL user-live DB seeding failed. Before the demo, check RETENTION_USER_DB_URL, PostgreSQL status, and API logs. If needed, call seed-from-user-artifacts manually from the terminal.",
+        "seed 오류": "seed error",
+        "실제 데이터": "real data",
+        "합성 데이터": "synthetic data",
+        "문자열 ID 변환": "string ID conversion",
+        "수치 ID": "numeric ID",
+        "원본 그대로 사용": "used as-is",
+        "매핑 양호": "mapping looks good",
+        "검토 권장": "review recommended",
+        "수정 필요": "needs correction",
+        "자동 매핑 실패한": "auto-mapping failed for",
+        "개 값": "values",
+        "필요시 직접 수정해 주세요": "please adjust manually if needed",
+        "매핑 후 분포 (예상)": "Expected distribution after mapping",
+        "업로드 데이터의 평균 활동/구매 주기를 기준으로": "Based on the average activity/purchase cycle in the uploaded data",
+        "일을 추천합니다": "days is recommended",
+        "학습 대상": "Training target",
+        "파일": "File",
+        "신규": "New",
+        "기존": "Existing",
+        "NEW": "New",
+        "UPD": "Updated",
+        "행": "rows",
+        "열": "columns",
+        "개": "items",
+        "회": "times",
+        "명": "customers",
+        "건": "items",
+    },
+    "ja": {
+        "실제 data/raw 산출물을 찾지 못해 mock data로 실행 중입니다.": "実際のdata/raw出力が見つからないため、mock dataで実行中です。",
+        "시뮬레이터 데모 산출물이 아직 없습니다. docker compose up만 실행하면 일부 모델 검증/생존분석/실험 산출물은 생성되지 않습니다.": "シミュレーターデモの出力がまだありません。docker compose upだけでは一部のモデル検証・生存分析・実験出力は作成されません。",
+        "python src/main.py --mode train, survival, abtest, fidelity 등 필요한 시뮬레이터 산출 명령을 먼저 실행하세요.": "python src/main.py --mode train、survival、abtest、fidelityなど、必要なシミュレーター出力コマンドを先に実行してください。",
+        "이 값 이상인 고객을 이탈 위험군으로 간주합니다. 모든 화면에서 동일하게 유지됩니다.": "この値以上の顧客を離脱リスク顧客とみなします。この値は全画面で同じまま維持されます。",
+        "상한 없이 입력 가능합니다. 쉼표 없이 숫자만 입력해도 됩니다.": "上限なしで入力できます。カンマなしの数字だけでも入力できます。",
+        "상한 없이 입력 가능합니다. 1 이상의 정수만 입력하세요.": "上限なしで入力できます。1以上の整数を入力してください。",
+        "현재 공통 조건": "現在の共通条件",
+        "threshold": "しきい値",
+        "예산": "予算",
+        "최종 타겟 고객 수": "最終対象顧客数",
+        "원": "ウォン",
+        "실시간 화면에서는 새로고침 시 스트림을 조금씩 더 재생해 수치가 변하도록 했습니다. 나머지 화면은 캐시를 비우고 다시 계산합니다.": "リアルタイム画面では、更新時にストリームを少しずつ再生して数値が変わるようにしています。その他の画面はキャッシュをクリアして再計算します。",
+        "최종 리텐션 타겟 고객군(예산/임계값 적용)에게만 추천을 생성합니다.": "予算としきい値を適用した最終リテンション対象顧客にのみ推薦を生成します。",
+        "고객당 추천 개수": "顧客あたり推薦数",
+        "코호트 리텐션 분석": "コホートリテンション分析",
+        "현재 기준": "現在基準",
+        "period 0은 코호트 정의상 100%로 고정하고, 아직 관측할 수 없는 미래 period는 0이 아니라 공란으로 둡니다.": "period 0はコホート定義上100%に固定し、まだ観測できない未来periodは0ではなく空欄にします。",
+        "해당 월 재방문율(point)은 재활성화 고객 때문에 month 2가 month 1보다 높아질 수 있습니다. 최근/오래된 코호트를 섞어 해석하지 않도록 아래 공통 비교 지표를 함께 보세요.": "該当月の再訪率(point)は、再活性化顧客によりmonth 2がmonth 1より高くなる場合があります。新旧コホートを混同しないよう、下の共通比較指標も確認してください。",
+        "롤링 리텐션(rolling)은 해당 월 또는 그 이후에 다시 살아난 고객까지 포함하므로 곡선이 단조 감소합니다. 코호트 붕괴 속도를 비교하기에 더 안정적입니다.": "ローリングリテンション(rolling)は、その月以降に戻った顧客も含むため曲線が単調減少します。コホートの崩壊速度比較により安定的です。",
+        "참고: 현재 point 기준에서는": "参考: 現在のpoint基準では",
+        "개 코호트에서 후행 월 리텐션이 앞선 월보다 높게 나타났습니다.": "個のコホートで後続月リテンションが前月より高く表示されました。",
+        "표시할 코호트 데이터가 없습니다.": "表示するコホートデータがありません。",
+        "가입 코호트별 리텐션 곡선": "加入コホート別リテンション曲線",
+        "코호트 리텐션 히트맵": "コホートリテンションヒートマップ",
+        "경과 기간(개월)": "経過期間（月）",
+        "코호트": "コホート",
+        "코호트 리텐션 테이블": "コホートリテンション表",
+        "공통 기간 비교": "共通期間比較",
+        "공통 기간 비교 테이블": "共通期間比較表",
+        "Uplift·CLV 세그먼트 분석": "Uplift・CLVセグメント分析",
+        "Uplift 세그먼트별 고객 수": "Upliftセグメント別顧客数",
+        "Uplift 세그먼트 요약": "Upliftセグメント要約",
+        "상위 고객의 Uplift-CLV 분포": "上位顧客のUplift-CLV分布",
+        "버블 크기는 expected_incremental_profit 대신 value_score(CLV × uplift_score)를 사용합니다. 차트는 성능을 위해 상위 500명만, 아래 테이블은 전체 정렬 결과를 보여줍니다.": "バブルサイズはexpected_incremental_profitの代わりにvalue_score（CLV × uplift_score）を使用します。性能のためチャートは上位500人のみ、下の表は全体の並び替え結果を表示します。",
+        "상위 고객 테이블": "上位顧客テーブル",
+        "학습 결과 아티팩트": "学習結果アーティファクト",
+        "이 화면은 백엔드 API가 보관 중인 최신 학습 산출물을 읽기 전용으로 표시합니다. 대시보드에서 학습 파라미터를 조정하거나 재학습을 직접 실행하지 않습니다.": "この画面はバックエンドAPIが保管している最新学習出力を読み取り専用で表示します。ダッシュボードで学習パラメータを調整したり再学習を直接実行したりしません。",
+        "학습 결과를 아직 불러오지 못했습니다.": "学習結果をまだ読み込めません。",
+        "학습 메타데이터": "学習メタデータ",
+        "선택된 threshold 요약": "選択しきい値要約",
+        "선택 threshold 요약": "選択しきい値要約",
+        "학습 파라미터 (서버 반영값)": "学習パラメータ（サーバー反映値）",
+        "학습 파라미터": "学習パラメータ",
+        "학습 시각화": "学習可視化",
+        "Feature store 미리보기": "Feature storeプレビュー",
+        "파일이 없습니다.": "ファイルがありません。",
+        "추천 API 호출 실패": "推薦API呼び出し失敗",
+        "기준 PostgreSQL live DB 운영 모니터입니다.": "基準のPostgreSQL live DB運用モニターです。",
+        "시연 실행 중": "デモ実行中",
+        "시연 중지": "デモ停止",
+        "시연 초기화": "デモ初期化",
+        "시연 시작": "デモ開始",
+        "10초마다 자동 새로고침": "10秒ごとに自動更新",
+        "N초마다 이벤트 1건 생성": "N秒ごとにイベントを1件生成",
+        "간격(초)": "間隔（秒）",
+        "새 고객 vs 기존 고객 비율": "新規顧客と既存顧客の比率",
+        "신규 비율": "新規比率",
+        "이벤트 로그": "イベントログ",
+        "다음 자동 새로고침까지 10초...": "次の自動更新まで10秒...",
+        "Live 이탈 점수 Top 고객": "Live離脱リスク上位顧客",
+        "실시간 부분 재최적화 액션 큐": "リアルタイム部分再最適化アクションキュー",
+        "이탈 시점 예측 (Survival Analysis)": "離脱時点予測（Survival Analysis）",
+        "Cox Proportional Hazards 기반으로 landmark 시점 이후 얼마 안에 churn risk 상태로 진입할지를 추정합니다. 분류 모델과 달리 \"언제\" 위험이 커지는지를 함께 봅니다.": "Cox Proportional Hazardsに基づき、landmark時点後どれくらいでchurn risk状態に入るかを推定します。分類モデルと異なり「いつ」リスクが高まるかも確認します。",
+        "survival_metrics.json, survival_predictions.csv 또는 survival 모델 산출물을 찾지 못했습니다.": "survival_metrics.json、survival_predictions.csv、またはsurvivalモデル出力が見つかりません。",
+        "시뮬레이터 데모에서는 python src/main.py --mode survival 실행 후 대시보드를 새로고침하세요.": "シミュレーターデモでは python src/main.py --mode survival を実行後、ダッシュボードを更新してください。",
+        "모델": "モデル",
+        "일": "日",
+        "Survival 메타데이터": "Survivalメタデータ",
+        "예측 위험군별 생존 곡선": "予測リスク群別生存曲線",
+        "단기 churn 위험 상위 고객": "短期churnリスク上位顧客",
+        "Survival 예측 결과": "Survival予測結果",
+        "주요 hazard coefficient": "主要hazard coefficient",
+        "증분 성과 / A-B 실험": "増分成果 / A-B実験",
+        "정확도보다 더 중요한 운영 지표인 증분 리텐션, 추가 유지 고객 수, 비용 대비 유지 성과, dose-response 결과를 함께 봅니다.": "精度より重要な運用指標である増分リテンション、追加維持顧客数、費用対効果、dose-response結果を一緒に確認します。",
+        "검출력 부족 — 결과를 효과 유무의 근거로 사용할 수 없습니다.": "検出力不足 — 結果を効果有無の根拠として使えません。",
+        "현재 표본은 효과 검출에 필요한 수의 일부에 불과합니다": "現在の標本は効果検出に必要な数の一部に過ぎません",
+        "아래 수치(증분 리텐션, ROI 등)는 통계적 노이즈일 가능성이 매우 높으며": "下の数値（増分リテンション、ROIなど）は統計的ノイズである可能性が非常に高く",
+        "효과가 없다": "効果がない",
+        "효과를 측정할 수 없었다": "効果を測定できなかった",
+        "증분 리텐션": "増分リテンション",
+        "추가 유지 고객 수": "追加維持顧客数",
+        "쿠폰 집행 총액": "クーポン実行総額",
+        "측정 불가": "測定不可",
+        "추가 유지 고객 수가 0 이하라 분모가 정의되지 않습니다. 효과 검출 실패 — 표본 확대 후 재측정 필요.": "追加維持顧客数が0以下のため分母が定義できません。効果検出失敗 — 標本拡大後に再測定が必要です。",
+        "A/B 해석": "A/B解釈",
+        "개입 강도 효과": "介入強度効果",
+        "Persuadables 프로필": "Persuadablesプロフィール",
+        "두 그룹 간 차이가 통계적으로 유의합니다": "2群間の差は統計的に有意です",
+        "기준": "基準",
+        "A/B 테스트 산출물을 찾지 못했습니다.": "A/Bテスト出力が見つかりません。",
+        "개입 강도별 retention rate": "介入強度別retention rate",
+        "dose-response arm 요약": "dose-response arm要約",
+        "dose-response 요약을 찾지 못했습니다.": "dose-response要約が見つかりません。",
+        "What-if: 충분한 표본/효과 크기 시 예상 성과": "What-if: 十分な標本/効果サイズ時の予想成果",
+        "현재 표본의 검출력 한계를 보완하기 위해, 효과 크기 가정별 운영 시나리오를 계산합니다. 실제 운영 데이터 누적 후 본 시스템이 동일 분석을 자동 수행합니다.": "現在標本の検出力限界を補完するため、効果サイズ仮定別の運用シナリオを計算します。実運用データ蓄積後、本システムが同じ分析を自動実行します。",
+        "보수적": "保守的",
+        "중간": "中間",
+        "낙관적": "楽観的",
+        "시나리오": "シナリオ",
+        "추가 유지 고객": "追加維持顧客",
+        "추가 매출": "追加売上",
+        "쿠폰비 반영 ROI": "クーポン費反映ROI",
+        "효과 크기 가정별 시뮬레이션": "効果サイズ仮定別シミュレーション",
+        "본 표는 동일 표본·쿠폰비 조건에서 효과 크기만 가정해 산출한 추정치입니다.": "本表は同一標本・クーポン費条件で効果サイズだけを仮定して算出した推定値です。",
+        "운영 데이터가 누적되면 본 시스템이 동일 방식으로 실효 ROI를 자동 산출하도록 설계되어 있습니다.": "運用データが蓄積されると、本システムが同じ方式で実効ROIを自動算出するよう設計されています。",
+        "Persuadables 비중": "Persuadables比率",
+        "도출된 타겟팅 규칙": "導出されたターゲティング規則",
+        "Persuadables 수치 프로필 차이": "Persuadables数値プロフィール差",
+        "설명가능성 / 고객별 개입 이유": "説明可能性 / 顧客別介入理由",
+        "왜 이 고객이 위험군인지, 왜 개입 후보로 뽑혔는지, 무엇을 조심해야 하는지를 운영 언어로 풀어 보여줍니다.": "なぜこの顧客がリスク群なのか、なぜ介入候補に選ばれたのか、何に注意すべきかを運用言語で説明します。",
+        "전역 설명": "全体説明",
+        "고객별 설명": "顧客別説明",
+        "전역 중요 변수 Top 10": "全体重要変数Top 10",
+        "전역 중요 변수": "全体重要変数",
+        "전역 중요 변수 파일을 찾지 못했습니다.": "全体重要変数ファイルが見つかりません。",
+        "페르소나별 위험·가치 프로필": "ペルソナ別リスク・価値プロフィール",
+        "설명가능성 테이블을 만들 데이터가 부족합니다.": "説明可能性テーブルを作成するデータが不足しています。",
+        "데이터 진단 / 시뮬레이터 충실도": "データ診断 / シミュレーター忠実度",
+        "시뮬레이터가 만든 원천 데이터와 파생 산출물이 운영형 분석에 쓰기 적절한지, 기본적인 정합성과 분포를 함께 점검합니다.": "シミュレーターが作成した原始データと派生出力が運用型分析に適切か、基本的な整合性と分布を確認します。",
+        "시뮬레이터 원천 데이터/산출 데이터 볼륨, 행동 분포, 고객 분포 진단 결과를 찾지 못했습니다.": "シミュレーター原始/出力データ量、行動分布、顧客分布診断結果が見つかりません。",
+        "양호": "良好",
+        "주의": "注意",
+        "점검 항목": "点検項目",
+        "정합성 점검 결과": "整合性点検結果",
+        "데이터 볼륨": "データ量",
+        "행동 분포": "行動分布",
+        "고객 분포": "顧客分布",
+        "원천/산출 데이터 볼륨": "原始/出力データ量",
+        "이벤트 타입 분포": "イベントタイプ分布",
+        "이벤트 분포를 계산할 데이터가 없습니다.": "イベント分布を計算するデータがありません。",
+        "분포 차원 선택": "分布次元を選択",
+        "분포": "分布",
+        "고객 분포를 계산할 데이터가 없습니다.": "顧客分布を計算するデータがありません。",
+        "할인·쿠폰 운영 리스크": "割引・クーポン運用リスク",
+        "쿠폰 노출/리딤/믹스 리스크 산출물이 없습니다.": "クーポン露出/リディーム/ミックスリスク出力がありません。",
+        "쿠폰 노출 누적, 리딤 효율, 강도별 효과, 추천/개입 믹스를 같이 보면서 할인 남발의 부작용 가능성을 점검합니다.": "クーポン露出累積、リディーム効率、強度別効果、推薦/介入ミックスを確認し、割引乱発の副作用可能性を点検します。",
+        "노출 고객 수": "露出顧客数",
+        "고노출 고객 수": "高露出顧客数",
+        "전체 노출 수": "総露出数",
+        "오픈율": "開封率",
+        "리딤률": "リディーム率",
+        "쿠폰 운영 리스크 플래그": "クーポン運用リスクフラグ",
+        "페르소나별 노출": "ペルソナ別露出",
+        "추천/강도 믹스": "推薦/強度ミックス",
+        "운영 해석": "運用解釈",
+        "페르소나별 평균 쿠폰 노출": "ペルソナ別平均クーポン露出",
+        "페르소나별 쿠폰 노출/성과": "ペルソナ別クーポン露出/成果",
+        "쿠폰 노출 집계를 계산할 데이터가 없습니다.": "クーポン露出集計を計算するデータがありません。",
+        "추천 카테고리 믹스": "推薦カテゴリミックス",
+        "선정된 개입 강도 믹스": "選定された介入強度ミックス",
+        "고강도 개입의 prior effect가 음수이면 혜택을 세게 줄수록 오히려 성과가 악화될 수 있습니다.": "高強度介入のprior effectが負の場合、特典を強めるほど成果が悪化する可能性があります。",
+        "현재 high 강도 prior effect": "現在のhigh強度prior effect",
+        "high 강도 prior effect를 찾지 못했습니다.": "high強度prior effectが見つかりません。",
+        "노출 고객 수와 리딤률을 함께 봐야 합니다.": "露出顧客数とリディーム率を一緒に見る必要があります。",
+        "노출은 많은데 리딤이 낮으면 학습효과/피로 누적 가능성이 큽니다.": "露出が多いのにリディームが低い場合、学習効果/疲労蓄積の可能性が大きいです。",
+        "price_sensitive 성향이 강한 고객군은 단기 반응은 좋을 수 있지만, 장기적으로는 마진 희석과 할인 의존이 커질 수 있습니다.": "price_sensitive傾向が強い顧客群は短期反応は良い可能性がありますが、長期的にはマージン希薄化と割引依存が大きくなる可能性があります。",
+        "support 이슈형 고객은 쿠폰보다 서비스 회복 메시지나 CS 해결이 더 나을 수 있습니다.": "support問題型顧客にはクーポンよりサービス回復メッセージやCS解決が有効な場合があります。",
+        "금융/이커머스 원천 CSV를 업로드하세요. 고객 스냅샷, 거래, 이벤트 로그 형태를 모두 허용합니다.": "金融/ECの元CSVをアップロードしてください。顧客スナップショット、取引、イベントログ形式をすべて許可します。",
+        "금융 데이터 권장 컬럼": "金融データ推奨カラム",
+        "이커머스 데이터 권장 컬럼": "ECデータ推奨カラム",
+        "CSV/TSV 파일": "CSV/TSVファイル",
+        "CSV 구조를 분석하고 자동 매핑하는 중입니다...": "CSV構造を分析し、自動マッピング中です...",
+        "업로드 완료": "アップロード完了",
+        "분석할 CSV/TSV 파일을 업로드하면 다음 단계로 이동할 수 있습니다.": "分析するCSV/TSVファイルをアップロードすると次の段階に進めます。",
+        "컬럼 매핑 검토": "カラムマッピング確認",
+        "업로드 파일을 찾지 못했습니다. 이전 단계로 돌아가세요.": "アップロードファイルが見つかりません。前の段階に戻ってください。",
+        "업로드 파일을 찾지 못했습니다.": "アップロードファイルが見つかりません。",
+        "시스템 역할": "システム役割",
+        "업로드 컬럼": "アップロードカラム",
+        "설명": "説明",
+        "고객을 식별하는 ID": "顧客を識別するID",
+        "이벤트·거래 발생 시각": "イベント・取引発生時刻",
+        "방문/구매/거래/상담 등 행동 유형": "訪問/購入/取引/相談などの行動タイプ",
+        "주문금액·거래금액·잔고 등 금액성 컬럼": "注文金額・取引金額・残高など金額系カラム",
+        "분석 피처로 사용할 수 있는 컬럼": "分析特徴量として使用できるカラム",
+        "매핑 안 함": "マッピングしない",
+        "이벤트·거래 타입 매핑": "イベント・取引タイプマッピング",
+        "원본 값": "元の値",
+        "빈도": "頻度",
+        "내부 표준 값": "内部標準値",
+        "자동 매핑 커버리지": "自動マッピングカバレッジ",
+        "event_type/timestamp 조합이 부족합니다. 스냅샷 데이터로 진행하면 일부 실시간·행동 시계열 분석은 제한됩니다.": "event_type/timestampの組み合わせが不足しています。スナップショットデータで進むと一部のリアルタイム・行動時系列分析は制限されます。",
+        "스냅샷 데이터로 진행": "スナップショットデータで進む",
+        "다음": "次へ",
+        "이전": "前へ",
+        "이전 단계로": "前の段階へ",
+        "오류": "エラー",
+        "학습 실패": "学習失敗",
+        "일부 단계 실패": "一部段階失敗",
+        "산출물을 확인하세요.": "出力を確認してください。",
+        "파이프라인 실행 중 오류": "パイプライン実行中エラー",
+        "완료": "完了",
+        "실패": "失敗",
+        "완료된 단계": "完了した段階",
+        "실패 단계 상세": "失敗段階詳細",
+        "검증 통과": "検証通過",
+        "관련성": "関連性",
+        "컬럼 매핑": "カラムマッピング",
+        "왼쪽은 **시스템 스키마 칼럼**, 오른쪽은 **자사 CSV 컬럼** 입니다. 오른쪽 셀을 더블클릭하면 매핑 컬럼을 변경할 수 있습니다.": "左は**システムスキーマカラム**、右は**自社CSVカラム**です。右セルをダブルクリックするとマッピングカラムを変更できます。",
+        "시스템 스키마": "システムスキーマ",
+        "자사 CSV 컬럼": "自社CSVカラム",
+        "시스템 스키마 (고정)": "システムスキーマ（固定）",
+        "자사 CSV 컬럼 ▼": "自社CSVカラム ▼",
+        "시스템에서 사용하는 표준 역할명 — 변경 불가": "システムで使用する標準役割名 — 変更不可",
+        "자동 감지된 결과 — 잘못 매핑되었으면 ▼ 클릭해서 변경": "自動検出結果 — 誤っている場合は▼をクリックして変更",
+        "event_type 값 매핑": "event_type値マッピング",
+        "당신의 CSV에 있는 event_type 값입니다.": "あなたのCSVにあるevent_type値です。",
+        "해당 값이 데이터에 등장한 횟수": "その値がデータに登場した回数",
+        "이 원본 값을 어떤 표준 이벤트로 분류할지 선택하세요.": "この元の値をどの標準イベントに分類するか選択してください。",
+        "event_type 또는 timestamp 컬럼이 감지되지 않았습니다.": "event_typeまたはtimestampカラムが検出されませんでした。",
+        "합성 이벤트 데이터": "合成イベントデータ",
+        "신뢰할 수 없습니다": "信頼できません",
+        "그래도 합성 이벤트로 진행 (제한된 분석만 신뢰 가능)": "それでも合成イベントで進む（限定的な分析のみ信頼可能）",
+        "체크하면 시스템이 가짜 이벤트를 생성해서 학습합니다. 결과 해석에 주의하세요.": "チェックするとシステムが偽イベントを生成して学習します。結果解釈に注意してください。",
+        "이탈 고객 정의": "離脱顧客定義",
+        "마지막 활동(이벤트/주문) 이후 며칠 동안 활동이 없으면 \"이탈\"로 분류할지 정합니다. 업종에 따라 적절한 값이 다릅니다.": "最後の活動（イベント/注文）後、何日間活動がなければ「離脱」と分類するかを決めます。業種により適切な値は異なります。",
+        "서비스 성격별 권장 기준": "サービス性格別推奨基準",
+        "데일리 앱": "デイリーアプリ",
+        "일반 커머스, 라이프스타일": "一般コマース、ライフスタイル",
+        "정기 구독 서비스": "定期購読サービス",
+        "접속 기록이 없으면": "接続記録がなければ",
+        "이탈로 간주합니다": "離脱とみなします",
+        "현재 설정": "現在設定",
+        "마지막 활동": "最後の活動",
+        "일 후 이탈": "日後に離脱",
+        "event_type/timestamp 컬럼이 없어 진행 불가. 위에서 합성 진행에 동의하면 활성화됩니다.": "event_type/timestampカラムがないため進行不可。上で合成進行に同意すると有効化されます。",
+        "학습 완료. 대시보드로 이동합니다.": "学習完了。ダッシュボードへ移動します。",
+        "전처리, 모델 학습, user-live DB 초기 적재가 완료되었습니다! 이제 터미널에서 curl 이벤트를 주입하면 실시간 운영 모니터에 반영됩니다.": "前処理、モデル学習、user-live DB初期投入が完了しました。これで端末からcurlイベントを注入するとリアルタイム運用モニターに反映されます。",
+        "전처리 및 모델 학습이 완료되었습니다! 대시보드가 자동으로 새로고침됩니다.": "前処理とモデル学習が完了しました。ダッシュボードが自動で更新されます。",
+        "PostgreSQL user-live DB 자동 적재는 실패했습니다. 시연 전 RETENTION_USER_DB_URL, PostgreSQL 실행 상태, API 로그를 확인하세요. 필요하면 터미널에서 seed-from-user-artifacts를 수동 호출하면 됩니다.": "PostgreSQL user-live DB自動投入に失敗しました。デモ前にRETENTION_USER_DB_URL、PostgreSQL実行状態、APIログを確認してください。必要なら端末でseed-from-user-artifactsを手動呼び出ししてください。",
+        "seed 오류": "seedエラー",
+        "실제 데이터": "実データ",
+        "합성 데이터": "合成データ",
+        "문자열 ID 변환": "文字列ID変換",
+        "수치 ID": "数値ID",
+        "원본 그대로 사용": "元のまま使用",
+        "매핑 양호": "マッピング良好",
+        "검토 권장": "確認推奨",
+        "수정 필요": "修正必要",
+        "자동 매핑 실패한": "自動マッピングに失敗した",
+        "개 값": "個の値",
+        "필요시 직접 수정해 주세요": "必要に応じて直接修正してください",
+        "매핑 후 분포 (예상)": "マッピング後分布（予想）",
+        "업로드 데이터의 평균 활동/구매 주기를 기준으로": "アップロードデータの平均活動/購入周期を基準に",
+        "일을 추천합니다": "日を推奨します",
+        "학습 대상": "学習対象",
+        "파일": "ファイル",
+        "신규": "新規",
+        "기존": "既存",
+        "NEW": "新規",
+        "UPD": "更新",
+        "행": "行",
+        "열": "列",
+        "개": "個",
+        "회": "回",
+        "명": "人",
+        "건": "件",
+    },
+}
+for _lang, _mapping in FULL_UI_TEXT_PATCH.items():
+    UI_TEXT.setdefault(_lang, {}).update(_mapping)
+
+
+# ============================================================
+# [PATCH] Table-cell i18n expansion
+# Many values in the dashboard are generated by the training/explanation
+# pipeline, not by Streamlit widgets. They arrive as table cell values such as
+# "이탈 위험이 높음" or "price_sensitive", so widget-level T(...) wrapping alone
+# cannot translate them. Keep these mappings close to the UI layer so display
+# language changes do not mutate source artifacts.
+# ============================================================
+_EXTRA_VALUE_LABELS_PATCH: dict[str, dict[str, str]] = {
+    "en": {
+        "로열VIP고객": "Loyal VIP customer",
+        "로열 VIP 고객": "Loyal VIP customer",
+        "로열일반고객": "Loyal regular customer",
+        "로열 일반 고객": "Loyal regular customer",
+        "충성VIP고객": "Loyal VIP customer",
+        "충성 VIP 고객": "Loyal VIP customer",
+        "충성일반고객": "Loyal regular customer",
+        "충성 일반 고객": "Loyal regular customer",
+        "이탈위험VIP고객": "At-risk VIP customer",
+        "이탈 위험 VIP 고객": "At-risk VIP customer",
+        "이탈위험일반고객": "At-risk regular customer",
+        "이탈 위험 일반 고객": "At-risk regular customer",
+        "price_sensitive": "Price-sensitive customer",
+        "churn_progressing": "Churn-progressing customer",
+        "churn_risk": "Churn-risk customer",
+        "at_risk": "At-risk customer",
+        "loyal_vip": "Loyal VIP customer",
+        "loyal_regular": "Loyal regular customer",
+        "vip_customer": "VIP customer",
+        "regular_customer": "Regular customer",
+        "medium_high": "Medium-high",
+        "very_low": "Very low",
+        "very_high": "Very high",
+    },
+    "ja": {
+        "로열VIP고객": "ロイヤルVIP顧客",
+        "로열 VIP 고객": "ロイヤルVIP顧客",
+        "로열일반고객": "ロイヤル一般顧客",
+        "로열 일반 고객": "ロイヤル一般顧客",
+        "충성VIP고객": "ロイヤルVIP顧客",
+        "충성 VIP 고객": "ロイヤルVIP顧客",
+        "충성일반고객": "ロイヤル一般顧客",
+        "충성 일반 고객": "ロイヤル一般顧客",
+        "이탈위험VIP고객": "離脱リスクVIP顧客",
+        "이탈 위험 VIP 고객": "離脱リスクVIP顧客",
+        "이탈위험일반고객": "離脱リスク一般顧客",
+        "이탈 위험 일반 고객": "離脱リスク一般顧客",
+        "price_sensitive": "価格敏感顧客",
+        "churn_progressing": "離脱進行顧客",
+        "churn_risk": "離脱リスク顧客",
+        "at_risk": "離脱リスク顧客",
+        "loyal_vip": "ロイヤルVIP顧客",
+        "loyal_regular": "ロイヤル一般顧客",
+        "vip_customer": "VIP顧客",
+        "regular_customer": "一般顧客",
+        "medium_high": "中高",
+        "very_low": "非常に低い",
+        "very_high": "非常に高い",
+    },
+}
+for _lang, _mapping in _EXTRA_VALUE_LABELS_PATCH.items():
+    VALUE_LABELS.setdefault(_lang, {}).update(_mapping)
+
+_EXTRA_PHRASE_LABELS_PATCH: dict[str, dict[str, str]] = {
+    "en": {
+        "이탈 위험이 높음": "high churn risk",
+        "이탈 위험 높음": "high churn risk",
+        "이탈 위험이 큼": "high churn risk",
+        "개입 반응 가능성이 큼": "high response potential",
+        "개입 반응의 가능성이 큼": "high response potential",
+        "고객 가치가 높음": "high customer value",
+        "고객 가치 높음": "high customer value",
+        "예상 ROI가 양호함": "good expected ROI",
+        "예상 ROI 양호": "good expected ROI",
+        "예상 이익이 큼": "high expected profit",
+        "예상 증분이익이 큼": "high expected incremental profit",
+        "단기 이탈 가속 주의": "watch for short-term churn acceleration",
+        "가격·서비스·타이밍 리스크를 함께 점검": "check price, service, and timing risks together",
+        "가격/서비스/타이밍 리스크를 함께 점검": "check price, service, and timing risks together",
+        "쿠폰 비용 대비 수익성 확인": "check profitability against coupon cost",
+        "과도한 할인 의존 주의": "avoid over-reliance on discounts",
+        "최근 활동 감소": "recent activity decreased",
+        "구매 간격 증가": "purchase interval increased",
+        "재방문 감소": "revisit frequency decreased",
+        "장바구니 이탈 증가": "cart abandonment increased",
+        "개인화 쿠폰 제안": "offer a personalized coupon",
+        "리텐션 혜택 제안": "offer a retention benefit",
+        "서비스 회복 안내": "send a service recovery message",
+        "로열티 보상 제안": "offer a loyalty reward",
+        "우선 개입 권장": "priority intervention recommended",
+        "관찰 필요": "monitor closely",
+        "발송 보류": "hold delivery",
+    },
+    "ja": {
+        "이탈 위험이 높음": "離脱リスクが高い",
+        "이탈 위험 높음": "離脱リスクが高い",
+        "이탈 위험이 큼": "離脱リスクが高い",
+        "개입 반응 가능성이 큼": "介入反応の可能性が高い",
+        "개입 반응의 가능성이 큼": "介入反応の可能性が高い",
+        "고객 가치가 높음": "顧客価値が高い",
+        "고객 가치 높음": "顧客価値が高い",
+        "예상 ROI가 양호함": "予想ROIが良好",
+        "예상 ROI 양호": "予想ROIが良好",
+        "예상 이익이 큼": "予想利益が大きい",
+        "예상 증분이익이 큼": "予想増分利益が大きい",
+        "단기 이탈 가속 주의": "短期離脱の加速に注意",
+        "가격·서비스·타이밍 리스크를 함께 점검": "価格・サービス・タイミングリスクを一緒に確認",
+        "가격/서비스/타이밍 리스크를 함께 점검": "価格・サービス・タイミングリスクを一緒に確認",
+        "쿠폰 비용 대비 수익성 확인": "クーポン費用に対する収益性を確認",
+        "과도한 할인 의존 주의": "過度な割引依存に注意",
+        "최근 활동 감소": "最近の活動が減少",
+        "구매 간격 증가": "購入間隔が増加",
+        "재방문 감소": "再訪問が減少",
+        "장바구니 이탈 증가": "カート離脱が増加",
+        "개인화 쿠폰 제안": "個別クーポンを提案",
+        "리텐션 혜택 제안": "リテンション特典を提案",
+        "서비스 회복 안내": "サービス回復メッセージを送信",
+        "로열티 보상 제안": "ロイヤルティ特典を提案",
+        "우선 개입 권장": "優先介入を推奨",
+        "관찰 필요": "継続観察が必要",
+        "발송 보류": "送信保留",
+    },
+}
+for _lang, _mapping in _EXTRA_PHRASE_LABELS_PATCH.items():
+    PHRASE_LABELS.setdefault(_lang, {}).update(_mapping)
+# ============================================================
+# [/PATCH]
+# ============================================================
+
 LEGACY_VIEW_REDIRECTS: dict[str, str] = {
-    # 병합/삭제 전 메뉴명
+    "2. 예산 배분·타겟 고객": "4. 예산 최적화 및 리텐션 타겟",
+    "3. 개인화 추천": "5. 개인화 추천",
+    "4. 실시간 운영 모니터": "6. 실시간 운영 모니터",
     "6. 의사결정 엔진 비교": "4. 예산 최적화 및 리텐션 타겟",
-    "3. Uplift + CLV 상위 고객": "3. Uplift·CLV 세그먼트 분석",
+    "3. Uplift + CLV 상위 고객": "4. 예산 최적화 및 리텐션 타겟",
     "4. 예산 배분 결과": "4. 예산 최적화 및 리텐션 타겟",
     "5. 예상 최적화 ROI": "4. 예산 최적화 및 리텐션 타겟",
     "6. 리텐션 대상 고객 목록": "4. 예산 최적화 및 리텐션 타겟",
-    "7. 학습 결과 아티팩트": "8. 학습 결과 아티팩트",
-    "8. Uplift/최적화 결과": "3. Uplift·CLV 세그먼트 분석",
-    "8. Uplift/최적화 결과 (실시간)": "3. Uplift·CLV 세그먼트 분석",
+    "7. 학습 결과 아티팩트": "5. 개인화 추천",
+    "8. Uplift/최적화 결과": "4. 예산 최적화 및 리텐션 타겟",
+    "8. Uplift/최적화 결과 (실시간)": "4. 예산 최적화 및 리텐션 타겟",
     "9. 개인화 추천": "5. 개인화 추천",
     "10. 실시간 운영 모니터": "6. 실시간 운영 모니터",
     "10. 실시간 위험 스코어링 / 운영 모니터": "6. 실시간 운영 모니터",
-    "11. 이탈 시점 예측 (Survival Analysis)": "9. 이탈 시점 예측 (Survival Analysis)",
+    "11. 이탈 시점 예측 (Survival Analysis)": "1. 이탈현황",
     "12. 의사결정 엔진 비교": "4. 예산 최적화 및 리텐션 타겟",
     "13. 운영 한눈에 보기": "6. 실시간 운영 모니터",
-    "14. 증분 성과 / A-B 실험": "10. 증분 성과 / A-B 실험",
-    "15. 설명가능성 / 고객별 개입 이유": "11. 설명가능성 / 고객별 개입 이유",
-    "17. 할인·쿠폰 운영 리스크": "7. 할인·쿠폰 운영 리스크",
-
-    # 의사결정 엔진 비교 삭제 직후 13개 구조에서 새 번호로 이동
+    "14. 증분 성과 / A-B 실험": "4. 예산 최적화 및 리텐션 타겟",
+    "15. 설명가능성 / 고객별 개입 이유": "4. 예산 최적화 및 리텐션 타겟",
+    "17. 할인·쿠폰 운영 리스크": "4. 예산 최적화 및 리텐션 타겟",
     "7. 실시간 운영 모니터": "6. 실시간 운영 모니터",
-    "8. 할인·쿠폰 운영 리스크": "7. 할인·쿠폰 운영 리스크",
-    "9. 학습 결과 아티팩트": "8. 학습 결과 아티팩트",
-    "10. 이탈 시점 예측 (Survival Analysis)": "9. 이탈 시점 예측 (Survival Analysis)",
-    "11. 증분 성과 / A-B 실험": "10. 증분 성과 / A-B 실험",
-    "12. 설명가능성 / 고객별 개입 이유": "11. 설명가능성 / 고객별 개입 이유",
-
-    # 더 오래된 user-mode 메뉴명
+    "8. 할인·쿠폰 운영 리스크": "4. 예산 최적화 및 리텐션 타겟",
+    "9. 학습 결과 아티팩트": "5. 개인화 추천",
+    "10. 이탈 시점 예측 (Survival Analysis)": "1. 이탈현황",
+    "11. 증분 성과 / A-B 실험": "4. 예산 최적화 및 리텐션 타겟",
+    "12. 설명가능성 / 고객별 개입 이유": "4. 예산 최적화 및 리텐션 타겟",
     "6. 개인화 추천": "5. 개인화 추천",
-    "8. 이탈 시점 예측 (Survival Analysis)": "9. 이탈 시점 예측 (Survival Analysis)",
+    "8. 이탈 시점 예측 (Survival Analysis)": "1. 이탈현황",
     "9. 의사결정 엔진 비교": "4. 예산 최적화 및 리텐션 타겟",
-    "10. 증분 성과 / A-B 실험": "10. 증분 성과 / A-B 실험",
-    "11. 설명가능성 / 고객별 개입 이유": "11. 설명가능성 / 고객별 개입 이유",
-    "13. 할인·쿠폰 운영 리스크": "7. 할인·쿠폰 운영 리스크",
+    "10. 증분 성과 / A-B 실험": "4. 예산 최적화 및 리텐션 타겟",
+    "11. 설명가능성 / 고객별 개입 이유": "4. 예산 최적화 및 리텐션 타겟",
+    "13. 할인·쿠폰 운영 리스크": "4. 예산 최적화 및 리텐션 타겟",
 }
-REALTIME_REFRESH_VIEWS: set[str] = {
-    "6. 실시간 운영 모니터",
-}
+REALTIME_REFRESH_VIEWS: set[str] = {"6. 실시간 운영 모니터"}
+INSIGHT_HEAVY_VIEWS: set[str] = {"4. 예산 최적화 및 리텐션 타겟", "6. 실시간 운영 모니터"}
 
-INSIGHT_HEAVY_VIEWS: set[str] = {
-    "6. 실시간 운영 모니터",
-    "7. 할인·쿠폰 운영 리스크",
-    "10. 증분 성과 / A-B 실험",
-    "11. 설명가능성 / 고객별 개입 이유",
-}
+
+def _language_code() -> str:
+    return st.session_state.get("language_code", "ko") if hasattr(st, "session_state") else "ko"
+
+
+def _normalize_i18n_key(text: str) -> str:
+    """번역 키 비교용 정규화: 공백/언더스코어/대소문자 차이를 흡수한다."""
+    return re.sub(r"[\s_\-:：/\.()\[\]{}]+", "", str(text or "")).lower()
+
+
+def T(text: str) -> str:
+    code = _language_code()
+    raw = str(text)
+
+    # 1) 정확히 등록된 UI 문구 우선
+    direct = UI_TEXT.get(code, {}).get(raw)
+    if direct is not None:
+        return direct
+
+    # 2) "LLM결과요약" vs "LLM 결과 요약", "고객 id" vs "고객 ID" 같은 표기 차이 보정
+    normalized = _normalize_i18n_key(raw)
+    for ko_key, translated in UI_TEXT.get(code, {}).items():
+        if _normalize_i18n_key(ko_key) == normalized:
+            return translated
+
+    # 3) 컬럼 라벨도 일반 텍스트로 들어오는 경우가 있어 역매핑한다.
+    column_labels = COLUMN_LABELS.get(code, COLUMN_LABELS.get("ko", {}))
+    for canonical, translated in column_labels.items():
+        if _normalize_i18n_key(canonical) == normalized:
+            return translated
+        for labels_by_lang in COLUMN_LABELS.values():
+            localized = labels_by_lang.get(canonical)
+            if localized and _normalize_i18n_key(localized) == normalized:
+                return translated
+
+    return raw
+
+
+def _translate_runtime_text(text: Any) -> str:
+    """Translate runtime/service/UI messages, including dynamic f-string fragments."""
+    raw = str(text or "")
+    if not raw:
+        return ""
+
+    translated = T(raw)
+    if translated != raw:
+        return translated
+
+    code = _language_code()
+    out = raw
+
+    # Replace the longest known Korean UI fragments first so dynamic f-strings such as
+    # "현재 공통 조건: ..." are translated without needing an exact full-string key.
+    for mapping in (UI_TEXT.get(code, {}), PHRASE_LABELS.get(code, {}), VALUE_LABELS.get(code, {})):
+        for src, dst in sorted(mapping.items(), key=lambda item: len(str(item[0])), reverse=True):
+            src = str(src)
+            if src and src in out:
+                out = out.replace(src, str(dst))
+
+    api_key_msg = "OpenAI API 키가 설정되지 않았습니다. 사이드바에 키를 입력하거나 OPENAI_API_KEY 환경변수를 설정하세요."
+    out = out.replace(api_key_msg, T(api_key_msg))
+    return out
+
+
+def _translate_cell_value(value: Any) -> str:
+    """Turn internal segment/action codes into beginner-friendly labels."""
+    raw = str(value)
+    stripped = raw.strip()
+    if stripped == "":
+        return ""
+    code = _language_code()
+    value_labels = VALUE_LABELS.get(code, VALUE_LABELS.get("ko", {}))
+    norm = _normalize_i18n_key(stripped)
+    # Exact code / normalized code match.
+    for src, dst in value_labels.items():
+        if stripped == src or norm == _normalize_i18n_key(src):
+            return dst
+    # Human-readable phrase replacement for generated Korean explanations.
+    out = stripped
+    for src, dst in PHRASE_LABELS.get(code, {}).items():
+        out = out.replace(src, dst)
+    # Replace known snake_case tokens even when embedded in logs/lists.
+    for src, dst in value_labels.items():
+        out = re.sub(rf"(?<![A-Za-z0-9_]){re.escape(src)}(?![A-Za-z0-9_])", dst, out)
+    out = out.replace("-> action queued", "→ " + value_labels.get("queued", "queued"))
+    out = out.replace("score=", "risk=")
+    return out
+
+
+
+
+def _translate_dataframe_values_for_display(df: pd.DataFrame) -> pd.DataFrame:
+    if not isinstance(df, pd.DataFrame) or df.empty:
+        return pd.DataFrame() if df is None else df
+    out = df.copy()
+    for col in out.columns:
+        if pd.api.types.is_object_dtype(out[col]) or pd.api.types.is_string_dtype(out[col]):
+            out[col] = out[col].map(lambda v: _translate_cell_value(v) if not _is_missing_live_value(v) else v)
+    return out
+
+
+
+
+def _translate_ui_arg(value: Any) -> Any:
+    """Translate labels/messages passed to UI widgets while preserving non-text data."""
+    if isinstance(value, str):
+        return _translate_runtime_text(value)
+    if isinstance(value, list):
+        return [_translate_ui_arg(v) for v in value]
+    if isinstance(value, tuple):
+        return tuple(_translate_ui_arg(v) for v in value)
+    if isinstance(value, dict):
+        return {k: (_translate_ui_arg(v) if isinstance(v, str) else v) for k, v in value.items()}
+    return value
+
+
+def _install_i18n_runtime_patches() -> None:
+    """Translate remaining unwrapped Streamlit and Plotly labels at render time.
+
+    This is intentionally limited to labels/help/title/caption-like fields so dataset
+    columns, widget keys, and user-uploaded values are not mutated.
+    """
+    if getattr(st, "_retention_i18n_runtime_patched", False):
+        return
+
+    def _wrap_callable(obj: Any, name: str, arg_indexes: tuple[int, ...] = (0,), kw_names: tuple[str, ...] = ("label", "help", "placeholder", "caption", "text")) -> None:
+        original = getattr(obj, name, None)
+        if original is None or getattr(original, "_retention_i18n_wrapped", False):
+            return
+
+        def wrapped(*args: Any, **kwargs: Any):
+            args_list = list(args)
+            for idx in arg_indexes:
+                if idx < len(args_list):
+                    args_list[idx] = _translate_ui_arg(args_list[idx])
+            for kw in kw_names:
+                if kw in kwargs:
+                    kwargs[kw] = _translate_ui_arg(kwargs[kw])
+            return original(*args_list, **kwargs)
+
+        wrapped._retention_i18n_wrapped = True  # type: ignore[attr-defined]
+        setattr(obj, name, wrapped)
+
+    # Streamlit text/widgets.
+    for _name in [
+        "markdown", "caption", "info", "warning", "error", "success", "write",
+        "header", "subheader", "title", "toast", "spinner", "expander", "chat_input",
+        "button", "checkbox", "toggle", "radio", "selectbox", "slider", "number_input",
+        "text_input", "file_uploader", "metric", "image",
+    ]:
+        _wrap_callable(st, _name)
+
+    # st.progress has a numeric first arg; translate only its text kwarg.
+    _wrap_callable(st, "progress", arg_indexes=(), kw_names=("text",))
+
+    # st.tabs receives a list of tab labels as the first argument.
+    _wrap_callable(st, "tabs", arg_indexes=(0,), kw_names=())
+
+    # Streamlit column_config labels/help.
+    if hasattr(st, "column_config"):
+        for _name in [
+            "TextColumn", "NumberColumn", "SelectboxColumn", "CheckboxColumn", "DateColumn",
+            "DatetimeColumn", "TimeColumn", "LinkColumn", "ListColumn", "ProgressColumn",
+            "LineChartColumn", "BarChartColumn", "AreaChartColumn", "ImageColumn",
+        ]:
+            _wrap_callable(st.column_config, _name)
+
+    # Plotly Express chart titles and human-readable label values.
+    def _wrap_px(name: str) -> None:
+        original = getattr(px, name, None)
+        if original is None or getattr(original, "_retention_i18n_wrapped", False):
+            return
+
+        def wrapped(*args: Any, **kwargs: Any):
+            if "title" in kwargs:
+                kwargs["title"] = _translate_ui_arg(kwargs["title"])
+            if "labels" in kwargs and isinstance(kwargs["labels"], dict):
+                kwargs["labels"] = {k: _translate_ui_arg(v) for k, v in kwargs["labels"].items()}
+            return original(*args, **kwargs)
+
+        wrapped._retention_i18n_wrapped = True  # type: ignore[attr-defined]
+        setattr(px, name, wrapped)
+
+    for _name in ["bar", "line", "pie", "scatter", "histogram", "imshow", "area", "box", "violin"]:
+        _wrap_px(_name)
+
+    st._retention_i18n_runtime_patched = True  # type: ignore[attr-defined]
+
+
+_install_i18n_runtime_patches()
+
+def _label_matches(label: str, *needles: str) -> bool:
+    norm_label = _normalize_i18n_key(label)
+    return any(_normalize_i18n_key(n) in norm_label for n in needles)
+
+
+def _pick_existing_columns(df: pd.DataFrame, preferred: list[str]) -> pd.DataFrame:
+    if df is None or df.empty:
+        return df
+    by_norm = {_normalize_i18n_key(c): c for c in df.columns}
+    selected: list[str] = []
+    for col in preferred:
+        actual = by_norm.get(_normalize_i18n_key(col))
+        if actual is not None and actual not in selected:
+            selected.append(actual)
+    return df[selected].copy() if selected else df.copy()
+
+
+def _filter_display_columns_for_label(df: pd.DataFrame, label: str = "") -> pd.DataFrame:
+    """Hide backend/debug columns and keep each core table focused for non-expert users."""
+    if not isinstance(df, pd.DataFrame) or df.empty:
+        return pd.DataFrame() if df is None else df
+    label = str(label or "")
+    if _label_matches(label, "고객별 선택 이유", "customer level reasons", "reason caution", "顧客別選定理由", "顧客別選定理由注意事項"):
+        return _pick_existing_columns(df, ["customer_id", "persona", "selection_reason", "reason_summary", "watchout", "caution", "next_best_action", "recommended_action"])
+    if _label_matches(label, "최종 리텐션 타겟", "final retention target", "最終リテンション対象"):
+        return _pick_existing_columns(df, ["customer_id", "persona", "uplift_segment", "churn_probability", "clv", "intervention_intensity", "recommended_action", "coupon_cost", "expected_incremental_profit", "expected_roi"])
+    if _label_matches(label, "개인화 추천", "personalized recommendation", "パーソナライズ推薦"):
+        return _pick_existing_columns(df, ["customer_id", "persona", "recommended_category", "recommendation_rank", "recommendation_score", "reason_tags"])
+    if _label_matches(label, "이탈 위험 고객 목록", "at risk customer", "離脱リスク顧客"):
+        return _pick_existing_columns(df, ["customer_id", "persona", "churn_probability", "clv"])
+    if _label_matches(label, "세그먼트별 예산 배분 테이블", "segment budget allocation table", "セグメント別予算配分表"):
+        return _pick_existing_columns(df, ["uplift_segment", "customer_count", "allocated_budget", "expected_profit", "intervention_intensity"])
+    if _label_matches(label, "세그먼트별 예산 배분 후보", "candidate customers by segment", "候補顧客数"):
+        return _pick_existing_columns(df, ["uplift_segment", "candidate_customer_count"])
+    if _label_matches(label, "실시간 이탈 위험", "real time churn risk", "リアルタイム離脱リスク"):
+        return _pick_existing_columns(df, ["customer_id", "persona", "realtime_churn_score", "churn_score", "churn_probability", "action_queue_status", "queued_recommended_action", "queued_expected_profit", "latest_trigger_reason"])
+    if _label_matches(label, "실시간 액션 큐", "live action queue", "action queue", "アクションキュー"):
+        return _pick_existing_columns(df, ["customer_id", "persona", "recommended_action", "queued_recommended_action", "intervention_intensity", "queued_intervention_intensity", "expected_profit", "queued_expected_profit", "expected_roi", "queued_expected_roi", "action_status", "latest_trigger_reason"])
+
+    hidden_norms = {
+        _normalize_i18n_key(c) for c in [
+            "score_payload", "feature_payload", "source_payload", "raw_payload", "payload",
+            "persona_source", "uplift_segment_source", "source_type", "queued_at", "updated_at", "created_at", "scored_at",
+            "reoptimization_count", "customer_count_label", "index", "row_id", "internal_id", "model_version",
+        ]
+    }
+    keep = []
+    for col in df.columns:
+        n = _normalize_i18n_key(col)
+        if n in hidden_norms or "payload" in n:
+            continue
+        keep.append(col)
+    return df[keep].copy() if keep else df.copy()
+
+
+def _render_view_intro(view_key: str) -> None:
+    key = str(view_key).split(".")[0]
+    lines = VIEW_INTRO_LINES.get(key)
+    if not lines:
+        return
+    labels = [T("이 화면을 보는 이유"), T("확인할 정보"), T("활용 목적")]
+    body = "<br/>".join(
+        f"<b>{html.escape(labels[i])}</b>: {html.escape(T(line))}"
+        for i, line in enumerate(lines)
+    )
+    st.markdown(
+        f"""
+        <div style="background:#EEF6FF;border:1px solid #BFDBFE;border-radius:14px;padding:16px 18px;margin:10px 0 18px 0;line-height:1.65;color:#0F172A;">
+            <div style="font-weight:800;margin-bottom:4px;">💡 {html.escape(T('뷰 안내'))}</div>
+            <div>{body}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _llm_language_name() -> str:
+    return {"ko": "Korean", "en": "English", "ja": "Japanese"}.get(_language_code(), "Korean")
+
+
+def _llm_strict_language_instruction() -> str:
+    """Return a hard language instruction for LLM-generated summaries/answers.
+
+    The llm_service prompt may be written in Korean, so passing only translated UI
+    labels is not enough. This instruction is injected into both the title and the
+    JSON payload so the model receives an explicit output-language requirement.
+    """
+    code = _language_code()
+    if code == "en":
+        return (
+            "You must write the entire response in English. Do not write Korean or Japanese. "
+            "Use clear business English and keep technical terms brief."
+        )
+    if code == "ja":
+        return (
+            "必ず回答全体を日本語で書いてください。韓国語や英語の文章を混ぜないでください。"
+            "専門用語は短く説明し、ビジネス担当者にも分かる表現にしてください。"
+        )
+    return (
+        "반드시 전체 답변을 한국어로 작성하세요. 영어/일본어 문장을 섞지 말고, "
+        "비즈니스 담당자가 이해하기 쉬운 표현을 사용하세요."
+    )
+
+
+def _wrap_llm_payload(payload_json: str) -> str:
+    language = _llm_language_name()
+    instruction = _llm_strict_language_instruction()
+    try:
+        payload = json.loads(payload_json) if payload_json else {}
+    except Exception:
+        payload = {"raw_payload": payload_json}
+    return json.dumps(
+        {
+            "answer_language": language,
+            "output_language_instruction": instruction,
+            "important": instruction,
+            "dashboard_payload": payload,
+        },
+        ensure_ascii=False,
+    )
+
+
+def _wrap_llm_question(question: str) -> str:
+    return f"{_llm_strict_language_instruction()}\n\nUser question:\n{question}"
+
+
+def _business_mode() -> str:
+    mode = st.session_state.get("data_mode", "ecommerce") if hasattr(st, "session_state") else "ecommerce"
+    return mode if mode in DOMAIN_DIRS else "ecommerce"
+
+
+def _domain_label(mode: str | None = None) -> str:
+    mode = mode or _business_mode()
+    code = _language_code()
+    labels = DOMAIN_MODE_OPTIONS.get(mode, {})
+    return labels.get(code) or labels.get("ko") or str(mode)
+
+
+def _domain_paths(mode: str | None = None) -> dict[str, str]:
+    return DOMAIN_DIRS.get(mode or _business_mode(), DOMAIN_DIRS["ecommerce"])
+
+
+def _mode_metadata_path(mode: str | None = None) -> Path:
+    return _project_root() / _domain_paths(mode).get("results", "results_ecommerce") / "dataset_metadata.json"
+
+
+def _save_dataset_metadata(mode: str, filename: str, upload_path: str = "", row_count: int | None = None) -> None:
+    meta = {
+        "mode": mode,
+        "domain_label_ko": DOMAIN_MODE_OPTIONS.get(mode, {}).get("ko", mode),
+        "filename": filename,
+        "upload_path": upload_path,
+        "row_count": row_count,
+        "saved_at": pd.Timestamp.now().isoformat(),
+    }
+    path = _mode_metadata_path(mode)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _load_dataset_metadata(mode: str | None = None) -> dict[str, Any]:
+    path = _mode_metadata_path(mode)
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
 
 def parse_unlimited_nonnegative_int(raw_value: str, default: int = 0) -> int:
     cleaned = str(raw_value).replace(",", "").strip()
@@ -180,22 +1850,19 @@ def _user_mode_unavailable(feature_name: str, reason: str = "") -> bool:
     import streamlit as _st
     from pathlib import Path as _P
 
-    _mode = _st.session_state.get("data_mode", "simulator")
-    if _mode != "user":
+    _mode = _st.session_state.get("data_mode", "ecommerce")
+    if _mode not in BUSINESS_UPLOAD_MODES:
         return False
 
-    _has_user_data = (_P("data/raw_user") / "customer_summary.csv").exists()
-    _has_user_results = _P("results_user").exists() and any(_P("results_user").iterdir())
+    _paths = _domain_paths(_mode)
+    _has_user_data = (_P(_paths["data"]) / "customer_summary.csv").exists()
+    _has_user_results = _P(_paths["results"]).exists() and any(_P(_paths["results"]).iterdir())
     if _has_user_data or _has_user_results:
-        _st.info(
-            "현재 화면은 업로드 CSV에서 생성된 user 산출물을 기준으로 표시합니다. "
-            "원본 CSV에 Treatment/Control이 없으면 전처리 단계의 자동 배정 및 "
-            "휴리스틱 Uplift/ROI 추정값이 사용됩니다."
-        )
+        _st.info(T("현재 화면은 업로드된 CSV 산출물을 기준으로 표시합니다. 원본 CSV에 Treatment/Control이 없으면 전처리 단계의 자동 배정 및 쉬운 추정값이 사용됩니다."))
         return False
 
     _default_reason = (
-        "아직 업로드 CSV로 생성된 user 산출물이 없습니다. 먼저 사이드바에서 CSV를 업로드하고 "
+        f"아직 {_domain_label(_mode)}에서 생성된 산출물이 없습니다. 첫 화면에서 CSV를 업로드하고 "
         "매핑 확정 후 학습을 실행하세요."
     )
     _reason = reason or _default_reason
@@ -231,7 +1898,7 @@ def _user_mode_unavailable(feature_name: str, reason: str = "") -> bool:
 # user 모드에서만 /api/v1/user-live/* API를 우선 조회한다.
 # ============================================================
 def _is_user_live_mode() -> bool:
-    return st.session_state.get("data_mode", "simulator") == "user"
+    return st.session_state.get("data_mode", "ecommerce") in BUSINESS_UPLOAD_MODES
 
 
 
@@ -450,6 +2117,28 @@ def _restore_live_dimension_columns(fixed: pd.DataFrame) -> pd.DataFrame:
 def _fetch_user_live_scores_cached(cache_key: str) -> tuple[dict, pd.DataFrame]:
     """전체 customer_scores는 크므로 동일 이벤트 상태에서는 15초 동안 재사용한다."""
     return fetch_user_live_scores(limit=None)
+
+
+@st.cache_data(show_spinner=False, ttl=5)
+def _fetch_user_live_health_cached(cache_key: str) -> dict:
+    """Language/view reruns should not hit the health endpoint repeatedly."""
+    return fetch_user_live_health()
+
+
+@st.cache_data(show_spinner=False, ttl=10)
+def _fetch_user_live_seed_status_cached(cache_key: str) -> dict:
+    """Seed status changes only after training/seeding, so a short cache is safe."""
+    return fetch_user_live_seed_status()
+
+
+@st.cache_data(show_spinner=False, ttl=15)
+def _fetch_user_live_actions_cached(cache_key: str, limit: int, status: str = "queued") -> tuple[dict, pd.DataFrame]:
+    return fetch_user_live_actions(limit=limit, status=status)
+
+
+@st.cache_data(show_spinner=False, ttl=15)
+def _fetch_user_live_recommendations_cached(cache_key: str, limit: int) -> tuple[dict, pd.DataFrame]:
+    return fetch_user_live_recommendations(limit=limit)
 
 def _rename_live_score_columns(df: pd.DataFrame) -> pd.DataFrame:
     """customer_scores API 결과를 기존 대시보드 렌더링 컬럼과 맞춘다.
@@ -1102,8 +2791,9 @@ def _build_dynamic_user_recommendations(
             ),
         }, pd.DataFrame()
 
-    data_dir = Path("data/raw_user")
-    result_dir = Path("results_user")
+    _paths = _domain_paths(_business_mode())
+    data_dir = _project_root() / _paths["data"]
+    result_dir = _project_root() / _paths["results"]
     required_files = [data_dir / "customer_summary.csv", data_dir / "orders.csv", data_dir / "events.csv"]
     missing_files = [str(path) for path in required_files if not path.exists()]
     if missing_files:
@@ -1196,13 +2886,14 @@ def _build_dynamic_user_recommendations(
     return summary, rec_df
 
 
-def _load_user_live_tables(*, top_n: int, target_cap: int) -> dict[str, Any]:
+def _load_user_live_tables(*, top_n: int, target_cap: int, view: str = "") -> dict[str, Any]:
     """user mode 전용 live API 조회 묶음. 실패 시 빈 DataFrame fallback.
 
     성능 최적화:
-    - health/seed는 가벼우므로 매번 조회한다.
-    - 전체 scores 19,999행은 무거우므로 latest_event_time/seed 상태가 같으면 cache를 재사용한다.
-    - recommendations/actions는 화면 표시용이므로 safe_limit만 조회한다.
+    - health/seed는 짧은 TTL 캐시를 사용한다.
+    - 전체 scores는 latest_event_time/seed 상태가 같으면 cache를 재사용한다.
+    - actions/recommendations는 필요한 화면에서만 조회한다.
+    - target_cap*10 같은 과도한 limit을 줄여 화면 전환 지연을 줄인다.
     """
     payload: dict[str, Any] = {
         "enabled": _is_user_live_mode(),
@@ -1218,13 +2909,16 @@ def _load_user_live_tables(*, top_n: int, target_cap: int) -> dict[str, Any]:
     if not payload["enabled"]:
         return payload
 
-    safe_limit = max(int(top_n), int(target_cap) * 10, 10000)
+    safe_limit = min(max(int(top_n) * 5, int(target_cap) * 3, 1000), 5000)
+    now_bucket_5s = str(int(pd.Timestamp.now().timestamp() // 5))
+    now_bucket_10s = str(int(pd.Timestamp.now().timestamp() // 10))
+
     try:
-        payload["health"] = fetch_user_live_health()
+        payload["health"] = _fetch_user_live_health_cached(now_bucket_5s)
     except Exception as exc:
         payload["health"] = {"status": "error", "error": str(exc)}
     try:
-        payload["seed_status"] = fetch_user_live_seed_status()
+        payload["seed_status"] = _fetch_user_live_seed_status_cached(now_bucket_10s)
     except Exception as exc:
         payload["seed_status"] = {"success": False, "error": str(exc)}
 
@@ -1242,20 +2936,28 @@ def _load_user_live_tables(*, top_n: int, target_cap: int) -> dict[str, Any]:
     except Exception as exc:
         payload["score_summary"] = {"error": str(exc)}
 
-    try:
-        summary, recommendations = fetch_user_live_recommendations(limit=safe_limit)
-        payload["recommendation_summary"] = summary
-        payload["recommendations"] = recommendations
-    except Exception as exc:
-        payload["recommendation_summary"] = {"error": str(exc)}
-    try:
-        summary, actions = fetch_user_live_actions(limit=safe_limit, status="queued")
-        payload["action_summary"] = summary
-        payload["actions"] = _normalize_live_actions_df(actions)
-    except Exception as exc:
-        payload["action_summary"] = {"error": str(exc)}
-    return payload
+    # Only budget/recommendation/real-time views need action_queue. View 1 can render from scores only.
+    needs_actions = view in {
+        "4. 예산 최적화 및 리텐션 타겟",
+        "5. 개인화 추천",
+        "6. 실시간 운영 모니터",
+    }
+    if needs_actions:
+        try:
+            action_cache_key = "|".join([
+                str((payload.get("health", {}) or {}).get("latest_event_time") or "no_event"),
+                str((payload.get("score_summary", {}) or {}).get("scored_customers") or 0),
+                str(safe_limit),
+            ])
+            summary, actions = _fetch_user_live_actions_cached(action_cache_key, limit=safe_limit, status="queued")
+            payload["action_summary"] = summary
+            payload["actions"] = _normalize_live_actions_df(actions)
+        except Exception as exc:
+            payload["action_summary"] = {"error": str(exc)}
 
+    # Saved recommendations are no longer fetched on every rerun. The recommendation view
+    # builds current-condition recommendations, and fallback fetches saved candidates only if needed.
+    return payload
 
 def _render_user_live_status(live_payload: dict[str, Any]) -> None:
     if not live_payload.get("enabled"):
@@ -1263,20 +2965,20 @@ def _render_user_live_status(live_payload: dict[str, Any]) -> None:
     health = live_payload.get("health", {}) or {}
     if health.get("status") == "ok":
         st.success(
-            f"자사 데이터 Live DB 연결됨 · 이벤트 {int(health.get('event_count') or 0):,}건 · "
-            f"실시간 고객 상태 {int(health.get('feature_state_count') or 0):,}명 · "
-            f"최신 이벤트 {health.get('latest_event_time') or '-'}"
+            f"{T('자사 데이터 Live DB 연결됨')} · {T('이벤트 수')} {int(health.get('event_count') or 0):,} · "
+            f"{T('실시간 고객 상태')} {int(health.get('feature_state_count') or 0):,} · "
+            f"{T('최신 이벤트')} {health.get('latest_event_time') or '-'}"
         )
     else:
-        st.warning(f"자사 데이터 Live DB 상태 확인 실패: {health.get('error', 'unknown error')}")
+        st.warning(f"{T('자사 데이터 Live DB 상태 확인 실패')}: {health.get('error', 'unknown error')}")
 
     seed_status = live_payload.get("seed_status", {}) or {}
     status = seed_status.get("status", {}) if isinstance(seed_status, dict) else {}
     if status:
         st.caption(
-            "Live DB 상태 · "
+            f"{T('Live DB 상태')} · "
             f"scores={int(status.get('score_count') or 0):,}, "
-            f"저장 추천후보={int(status.get('recommendation_count') or 0):,}, "
+            f"{T('저장 추천후보')}={int(status.get('recommendation_count') or 0):,}, "
             f"queued actions={int(status.get('action_queue_count') or 0):,} "
             "(5번 화면은 저장 후보를 그대로 쓰지 않고 현재 예산·임계값 타겟 기준으로 새 추천을 만듭니다.)"
         )
@@ -1355,7 +3057,7 @@ def _nonempty_mapping(value: Any) -> bool:
 
 def _simulator_mode_unavailable(feature_name: str, has_data: bool, reason: str = "", action_hint: str = "") -> bool:
     """simulator 모드에서 필요한 데이터가 없을 때 일관된 안내를 보여준다."""
-    if st.session_state.get("data_mode", "simulator") != "simulator":
+    if st.session_state.get("data_mode", "ecommerce") != "simulator":
         return False
     if has_data:
         return False
@@ -1467,10 +3169,17 @@ def _circled_num(n: str) -> str:
 
 
 def _view_title_from_option(option: str) -> str:
-    for num, title in DASHBOARD_VIEW_ITEMS:
-        if f"{num}. {title}" == option:
-            return f"{_circled_num(num)}  {title}"
-    return option
+    return CORE_VIEW_DISPLAY_LABELS.get(_language_code(), CORE_VIEW_DISPLAY_LABELS["ko"]).get(option, option)
+
+
+def _set_query_param_if_changed(key: str, value: Any) -> None:
+    """Avoid extra Streamlit reruns by writing query params only when changed."""
+    try:
+        value_s = str(value)
+        if st.query_params.get(key) != value_s:
+            st.query_params[key] = value_s
+    except Exception:
+        pass
 
 st.set_page_config(
     page_title="Retention ROI Dashboard",
@@ -1913,7 +3622,14 @@ def inject_custom_css():
         }
 
         .oai-table-wrapper {
+            position: relative;
+            z-index: 0;
+            isolation: isolate;
+            display: block;
+            clear: both;
             overflow: auto;
+            max-width: 100%;
+            margin: 4px 0 18px 0;
             border: 1px solid rgba(148,163,184,0.28);
             border-radius: 16px;
             background: rgba(255,255,255,0.96);
@@ -2235,6 +3951,8 @@ def inject_custom_css():
 
 
 def render_hero(title: str, subtitle: str):
+    title = _translate_runtime_text(title)
+    subtitle = _translate_runtime_text(subtitle)
     st.markdown(
         f"""
         <div class="hero-card">
@@ -2248,6 +3966,7 @@ def render_hero(title: str, subtitle: str):
 
 
 def render_status_pill(message: str, variant: str = "success"):
+    message = _translate_runtime_text(message)
     st.markdown(
         f'<div class="status-pill {variant}">{message}</div>',
         unsafe_allow_html=True,
@@ -2271,31 +3990,22 @@ def _file_version_token(relative_paths: list[str]) -> str:
     return "|".join(parts)
 
 
-def _raw_data_token() -> str:
-    # 모드 인지: 모드에 해당하는 디렉토리 변경시 토큰 변경 → 캐시 자동 invalidation
-    mode = st.session_state.get("data_mode", "simulator") if hasattr(st, "session_state") else "simulator"
-    base = {
-        "simulator": "data/raw_simulator",
-        "user": "data/raw_user",
-    }.get(mode, "data/raw")
+def _raw_data_token(mode: str | None = None) -> str:
+    mode = mode or _business_mode()
+    base = _domain_paths(mode)["data"]
     return _file_version_token([
         f"{base}/customer_summary.csv",
         f"{base}/cohort_retention.csv",
+        f"{base}/events.csv",
+        f"{base}/orders.csv",
     ])
 
 
-def _result_data_token() -> str:
-    # 모드 인지: 모드별 results 디렉토리 변경 시 토큰 변경 → 캐시 자동 invalidation
-    mode = st.session_state.get("data_mode", "simulator") if hasattr(st, "session_state") else "simulator"
-    base = {
-        "simulator": "results_simulator",
-        "user":      "results_user",
-    }.get(mode, "results")
-    # user 모드에서는 results_user가 아직 비어 있어도 기본 results로 fallback하지 않는다.
-    from pathlib import Path as _P
-    if mode != "user" and not _P(base).exists():
-        base = "results"
+def _result_data_token(mode: str | None = None) -> str:
+    mode = mode or _business_mode()
+    base = _domain_paths(mode)["results"]
     return _file_version_token([
+        f"{base}/dataset_metadata.json",
         f"{base}/churn_top10_feature_importance.json",
         f"{base}/optimization_selected_customers.csv",
         f"{base}/personalized_recommendations.csv",
@@ -2317,41 +4027,129 @@ def _result_data_token() -> str:
     ])
 
 
+def _live_seed_metadata_path() -> Path:
+    return _project_root() / DOMAIN_DIRS["user"]["results"] / "live_seed_source.json"
+
+
+def _copy_directory_contents(src: Path, dst: Path) -> dict[str, Any]:
+    """현재 도메인 산출물을 user-live seed가 읽는 표준 경로로 동기화한다."""
+    import shutil
+
+    copied: list[str] = []
+    if not src.exists():
+        return {"source": str(src), "target": str(dst), "copied": copied, "missing": True}
+
+    if src.resolve() == dst.resolve():
+        return {"source": str(src), "target": str(dst), "copied": copied, "missing": False, "skipped_same_path": True}
+
+    dst.mkdir(parents=True, exist_ok=True)
+    for child in src.iterdir():
+        target = dst / child.name
+        try:
+            if target.exists():
+                if target.is_dir():
+                    shutil.rmtree(target)
+                else:
+                    target.unlink()
+            if child.is_dir():
+                shutil.copytree(child, target)
+            else:
+                shutil.copy2(child, target)
+            copied.append(child.name)
+        except Exception as exc:
+            copied.append(f"{child.name}:ERROR:{exc}")
+    return {"source": str(src), "target": str(dst), "copied": copied, "missing": False}
+
+
+def _sync_domain_artifacts_for_live_seed(mode: str) -> dict[str, Any]:
+    """금융/이커머스 모드 산출물을 PostgreSQL user-live seed 입력 경로로 복사한다.
+
+    backend의 seed_user_live_from_artifacts()는 별도 mode 인자를 받지 않으므로,
+    새 학습 결과를 DB에 반영하려면 현재 도메인 산출물을 user 표준 경로
+    (results_user/models_user/data/feature_store_user/data/raw_user)에 먼저 맞춰야 한다.
+    """
+    root = _project_root()
+    source = _domain_paths(mode)
+    target = DOMAIN_DIRS["user"]
+    sync_report: dict[str, Any] = {"mode": mode, "items": {}}
+    for key in ["data", "results", "models", "features"]:
+        sync_report["items"][key] = _copy_directory_contents(root / source[key], root / target[key])
+    return sync_report
+
+
+def _save_live_seed_metadata(mode: str, seed_result: Any, sync_report: dict[str, Any] | None = None) -> None:
+    path = _live_seed_metadata_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "source_mode": mode,
+        "source_raw_token": _raw_data_token(mode),
+        "source_result_token": _result_data_token(mode),
+        "seed_success": bool(isinstance(seed_result, dict) and seed_result.get("success")),
+        "seed_result": seed_result if isinstance(seed_result, dict) else {"raw": str(seed_result)},
+        "sync_report": sync_report or {},
+        "saved_at": pd.Timestamp.now(tz="UTC").isoformat(),
+    }
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+
+
+def _load_live_seed_metadata() -> dict[str, Any]:
+    path = _live_seed_metadata_path()
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _series_id_set(df: pd.DataFrame, column: str = "customer_id") -> set[str]:
+    if df is None or df.empty or column not in df.columns:
+        return set()
+    return {str(value).strip() for value in df[column].dropna().astype(str).tolist() if str(value).strip()}
+
+
+def _live_payload_matches_current_dataset(live_payload: dict[str, Any], customers_df: pd.DataFrame) -> bool:
+    """DB가 현재 선택된 모드/데이터셋으로 seed된 경우에만 DB 값을 사용한다."""
+    if not _is_user_live_mode():
+        return False
+
+    mode = _business_mode()
+    meta = _load_live_seed_metadata()
+    if not meta:
+        return False
+    if meta.get("source_mode") != mode:
+        return False
+    if meta.get("source_raw_token") != _raw_data_token(mode):
+        return False
+    if meta.get("source_result_token") != _result_data_token(mode):
+        return False
+    if not bool(meta.get("seed_success")):
+        return False
+
+    scores_df = live_payload.get("scores", pd.DataFrame()) if isinstance(live_payload, dict) else pd.DataFrame()
+    file_ids = _series_id_set(customers_df)
+    live_ids = _series_id_set(scores_df)
+    if not file_ids or not live_ids:
+        return False
+
+    overlap = len(file_ids & live_ids) / max(min(len(file_ids), len(live_ids)), 1)
+    count_gap = abs(len(file_ids) - len(live_ids)) / max(len(file_ids), 1)
+    return overlap >= 0.80 and count_gap <= 0.20
+
+
 @st.cache_data(show_spinner=False)
 def _load_app_bundle_cached(_token: str, data_dir: str = "data/raw"):
     return load_dashboard_bundle(data_dir=data_dir, include_optional=False)
 
 
 def _resolve_data_dir_for_mode(mode: str) -> str:
-    """모드별 data 디렉토리. 부재 시 기본 data/raw로 fallback."""
-    from pathlib import Path as _P
-    mapping = {
-        "simulator": "data/raw_simulator",
-        "user":      "data/raw_user",
-    }
-    target = mapping.get(mode, "data/raw")
-    if not (_P(target) / "customer_summary.csv").exists():
-        return "data/raw"
-    return target
+    """도메인별 data 디렉토리. 금융/이커머스 모드에서는 다른 도메인 결과로 fallback하지 않는다."""
+    return DOMAIN_DIRS.get(mode, DOMAIN_DIRS["ecommerce"])["data"]
 
 
 def _resolve_result_dir_for_mode(mode: str) -> str:
-    """모드별 results 디렉토리.
-
-    user 모드에서는 results_user가 비어 있어도 기본 results로 떨어지지 않는다.
-    그래야 업로드 CSV 화면이 시뮬레이터 결과를 섞어 보여주는 문제를 막을 수 있다.
-    """
-    from pathlib import Path as _P
-    mapping = {
-        "simulator": "results_simulator",
-        "user":      "results_user",
-    }
-    target = mapping.get(mode, "results")
-    if mode == "user":
-        return target
-    if not _P(target).exists() or not any(_P(target).iterdir()):
-        return "results"
-    return target
+    """도메인별 results 디렉토리. 새 업로드가 과거 결과를 섞어 보이지 않도록 fallback을 막는다."""
+    return DOMAIN_DIRS.get(mode, DOMAIN_DIRS["ecommerce"])["results"]
 
 
 @st.cache_data(show_spinner=False)
@@ -2360,13 +4158,13 @@ def _load_insight_bundle_cached(_raw_token: str, _result_token: str, data_dir: s
 
 
 def load_app_data():
-    mode = st.session_state.get("data_mode", "simulator")
+    mode = _business_mode()
     data_dir = _resolve_data_dir_for_mode(mode)
     return _load_app_bundle_cached(_raw_data_token(), data_dir=data_dir)
 
 
 def load_insight_data():
-    mode = st.session_state.get("data_mode", "simulator")
+    mode = _business_mode()
     data_dir = _resolve_data_dir_for_mode(mode)
     result_dir = _resolve_result_dir_for_mode(mode)
     return _load_insight_bundle_cached(
@@ -2381,17 +4179,22 @@ def clear_dashboard_caches() -> None:
     # user-live score 전체 조회는 별도 cache를 쓰므로, 업로드/학습/seed 직후 함께 비운다.
     try:
         _fetch_user_live_scores_cached.clear()
+        _fetch_user_live_health_cached.clear()
+        _fetch_user_live_seed_status_cached.clear()
+        _fetch_user_live_actions_cached.clear()
+        _fetch_user_live_recommendations_cached.clear()
     except Exception:
         pass
 
 
 def load_training_artifacts_api():
-    mode = st.session_state.get("data_mode", "simulator")
-    if mode == "user":
+    mode = _business_mode()
+    if mode in BUSINESS_UPLOAD_MODES:
+        _paths = _domain_paths(mode)
         artifacts = load_dashboard_artifacts(
-            result_dir=_resolve_result_dir_for_mode("user"),
-            model_dir="models_user",
-            feature_store_dir="data/feature_store_user",
+            result_dir=_paths["results"],
+            model_dir=_paths["models"],
+            feature_store_dir=_paths["features"],
         )
         return {
             "churn_metrics": artifacts.churn_metrics or {},
@@ -2417,10 +4220,9 @@ def load_saved_results_artifacts_api(
     모드 인지 — 사용자 모드면 results_user/에서 직접 파일 읽기 (API 우회).
     시뮬레이터 모드면 기존 API 호출 (results/는 시뮬레이터 결과로 채워져 있음).
     """
-    mode = st.session_state.get("data_mode", "simulator")
-    if mode == "user":
-        # API는 results/만 보므로, 사용자 모드에선 results_user/를 직접 로드
-        return _load_saved_results_from_dir("results_user")
+    mode = _business_mode()
+    if mode in BUSINESS_UPLOAD_MODES:
+        return _load_saved_results_from_dir(_domain_paths(mode)["results"])
     # 시뮬레이터 모드는 기존 API 호출 그대로 (rebuild 등 동적 옵션 활용 가능)
     try:
         return fetch_saved_results_artifacts(
@@ -2549,9 +4351,27 @@ def _artifact_frame(records, max_columns: int | None = None) -> pd.DataFrame:
 def _describe_table_count(df: pd.DataFrame, label: str = "테이블") -> str:
     rows = int(len(df))
     customers = None
-    if isinstance(df, pd.DataFrame) and "customer_id" in df.columns:
-        customers = int(df["customer_id"].nunique())
+    customer_col = None
+    if isinstance(df, pd.DataFrame):
+        for col in df.columns:
+            if _normalize_i18n_key(str(col)) in {"customerid", "고객id", "顧客id"}:
+                customer_col = col
+                break
+    if customer_col is not None:
+        customers = int(df[customer_col].nunique())
 
+    if _language_code() == "en":
+        if customers is not None:
+            if rows == customers:
+                return f"{label}: {customers:,} customers"
+            return f"{label}: {customers:,} customers / {rows:,} rows"
+        return f"{label}: {rows:,} rows"
+    if _language_code() == "ja":
+        if customers is not None:
+            if rows == customers:
+                return f"{label}: 顧客 {customers:,}人"
+            return f"{label}: 顧客 {customers:,}人 / {rows:,}行"
+        return f"{label}: {rows:,}行"
     if customers is not None:
         if rows == customers:
             return f"{label}: 고객 {customers:,}명"
@@ -2600,7 +4420,72 @@ def _normalize_table_cell(value: Any) -> Any:
         return int(value)
     if isinstance(value, np.bool_):
         return bool(value)
+    if isinstance(value, str):
+        return _translate_cell_value(value)
     return value
+
+
+def _translate_column_name(column: str) -> str:
+    code = _language_code()
+    labels = COLUMN_LABELS.get(code, COLUMN_LABELS.get("ko", {}))
+    raw = str(column)
+
+    if raw in labels:
+        return labels[raw]
+
+    normalized = _normalize_i18n_key(raw)
+    for canonical, translated in labels.items():
+        if _normalize_i18n_key(canonical) == normalized:
+            return translated
+        for labels_by_lang in COLUMN_LABELS.values():
+            localized = labels_by_lang.get(canonical)
+            if localized and _normalize_i18n_key(localized) == normalized:
+                return translated
+
+    # 흔한 수동/LLM 생성 컬럼명 보정
+    alias_to_canonical = {
+        "고객id": "customer_id",
+        "고객아이디": "customer_id",
+        "customerid": "customer_id",
+        "고객유형": "persona",
+        "이탈확률": "churn_probability",
+        "이탈점수": "churn_score",
+        "예상roi": "expected_roi",
+        "추천액션": "recommended_action",
+        "선정이유": "selection_reason",
+        "selectionreason": "selection_reason",
+        "watchout": "watchout",
+        "주의사항": "caution",
+        "다음추천액션": "next_best_action",
+        "llm결과요약": "llm_result_summary",
+    }
+    canonical = alias_to_canonical.get(normalized)
+    if canonical and canonical in labels:
+        return labels[canonical]
+
+    return T(raw.replace("_", " "))
+
+
+def _append_term_caption(df: pd.DataFrame, label: str = "") -> None:
+    if df is None or df.empty:
+        return
+    code = _language_code()
+    captions = TERM_CAPTIONS.get(code, TERM_CAPTIONS.get("ko", {}))
+    joined = " ".join([str(label)] + [str(c) for c in df.columns])
+    keys = []
+    if any(token in joined for token in ["CLV", "clv", "생애가치", "生涯価値"]):
+        keys.append("CLV")
+    if any(token in joined for token in ["uplift", "Uplift", "개입 효과", "介入効果"]):
+        keys.append("Uplift")
+    if any(token in joined for token in ["ROI", "roi"]):
+        keys.append("ROI")
+    if any(token in joined for token in ["priority", "Priority", "우선순위", "優先度"]):
+        keys.append("Priority")
+    if not keys:
+        return
+    lines = [captions[k] for k in keys if captions.get(k)]
+    if lines:
+        st.caption(f"{T('용어 설명')}: " + " · ".join(lines))
 
 
 def _sanitize_display_dataframe(df: pd.DataFrame) -> pd.DataFrame:
@@ -2608,7 +4493,8 @@ def _sanitize_display_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame()
 
     safe_df = df.copy().reset_index(drop=True)
-    safe_df.columns = _make_unique_columns([str(col) for col in safe_df.columns])
+    original_columns = _make_unique_columns([str(col) for col in safe_df.columns])
+    safe_df.columns = original_columns
 
     for column in safe_df.columns:
         normalized = safe_df[column].map(_normalize_table_cell)
@@ -2619,6 +4505,7 @@ def _sanitize_display_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         else:
             safe_df[column] = normalized.map(lambda value: "" if value is None else str(value))
 
+    safe_df.columns = _make_unique_columns([_translate_column_name(c) for c in safe_df.columns])
     return safe_df
 
 
@@ -2635,11 +4522,21 @@ def _render_html_table(
     max_height: int = 520,
     prefer_static: bool = False,
 ) -> None:
-    safe_df = _sanitize_display_dataframe(df)
+    """Render a compact, scrollable table without Streamlit dataframe JS.
+
+    Previous attempts using st.dataframe could trigger front-end Glide errors such
+    as "Cannot read properties of undefined (reading 'get')" when translated
+    columns, duplicate labels, or rerun-updated schemas reached Streamlit's grid.
+    This renderer converts the table to sanitized HTML and places it inside an
+    iframe with a fixed height. The page stays compact, rows scroll inside the
+    table, and the table is isolated from Streamlit's dataframe JavaScript.
+    """
+    localized_label = T(label)
+    safe_df = _sanitize_display_dataframe(_filter_display_columns_for_label(df, label))
 
     if safe_df.empty:
-        st.caption(_describe_table_count(safe_df, label=label))
-        st.info("표시할 데이터가 없습니다.")
+        st.caption(_describe_table_count(safe_df, label=localized_label))
+        st.info(T("표시할 데이터가 없습니다."))
         return
 
     total_rows = int(len(safe_df))
@@ -2649,8 +4546,8 @@ def _render_html_table(
     if total_rows > 20:
         search_key = _table_widget_key(label, "search")
         _q = st.text_input(
-            f"{label} 검색",
-            placeholder="고객 ID검색",
+            f"{localized_label} {T('검색')}",
+            placeholder=T("고객 ID 검색"),
             key=search_key,
             label_visibility="collapsed",
         )
@@ -2658,7 +4555,11 @@ def _render_html_table(
             _search_active = True
             _ql = _q.strip().lower()
             customer_id_col = next(
-                (col for col in safe_df.columns if str(col).lower() == "customer_id"),
+                (
+                    col for col in safe_df.columns
+                    if str(col).lower() in {"customer_id", "customer id"}
+                    or _normalize_i18n_key(str(col)) in {"customerid", "고객id", "顧客id"}
+                ),
                 None,
             )
             if customer_id_col is None:
@@ -2673,22 +4574,51 @@ def _render_html_table(
                 view_df = safe_df[mask].reset_index(drop=True)
 
     if _search_active:
-        st.caption(f"{label}: 전체 {total_rows:,}건 중 {len(view_df):,}건 일치")
+        st.caption(
+            f"{localized_label}: {T('전체')} {total_rows:,}{T('건')} "
+            f"{T('중')} {len(view_df):,}{T('건')} {T('일치')}"
+        )
     else:
-        st.caption(_describe_table_count(safe_df, label=label))
+        st.caption(_describe_table_count(safe_df, label=localized_label))
 
-    # st.dataframe(
-    #     view_df,
-    #     use_container_width=True,
-    #     hide_index=hide_index,
-    #     height=max(280, int(max_height)),
-    # )
+    try:
+        _requested_height = int(max_height)
+    except Exception:
+        _requested_height = 420
+    _table_height = min(420, max(220, _requested_height))
 
-    html_table = view_df.to_html(index=not hide_index, classes=["oai-data-table"], border=0, escape=True)
-    st.markdown(
-        f"<div class='oai-table-wrapper' style='max-height:{max(280, int(max_height))}px'>{html_table}</div>",
-        unsafe_allow_html=True,
-    )
+    # Ensure duplicate translated headers cannot break rendering or search.
+    view_df = view_df.copy().reset_index(drop=True)
+    view_df.columns = _make_unique_columns([str(c) for c in view_df.columns])
+    html_table = view_df.to_html(index=not hide_index, classes="oai-data-table", border=0, escape=True)
+    table_doc = f"""
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  html, body {{ margin: 0; padding: 0; background: transparent; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }}
+  .table-frame {{
+    height: {_table_height}px;
+    overflow: auto;
+    border: 1px solid rgba(148,163,184,0.32);
+    border-radius: 14px;
+    background: rgba(255,255,255,0.98);
+  }}
+  table.oai-data-table {{ width: max-content; min-width: 100%; border-collapse: collapse; font-size: 14px; line-height: 1.42; color: #0f172a; }}
+  thead th {{ position: sticky; top: 0; z-index: 2; background: #f8fafc; color: #0f172a; text-align: left; font-weight: 800; border-bottom: 1px solid #cbd5e1; }}
+  th, td {{ padding: 10px 12px; border-bottom: 1px solid #e2e8f0; vertical-align: top; white-space: nowrap; }}
+  tbody tr:nth-child(even) {{ background: rgba(248,250,252,0.92); }}
+  tbody tr:hover {{ background: rgba(219,234,254,0.40); }}
+</style>
+</head>
+<body>
+<div class="table-frame">{html_table}</div>
+</body>
+</html>
+"""
+    components.html(table_doc, height=_table_height + 22, scrolling=False)
+    _append_term_caption(safe_df, label=localized_label)
 
 
 def _render_dataframe_with_count(
@@ -2796,15 +4726,17 @@ def get_session_cached_summary(
     api_key: str,
     model_name: str,
 ) -> str:
-    cache_key = f"summary::{_payload_hash(view_title, payload_json, model_name)}"
+    payload_json = _wrap_llm_payload(payload_json)
+    language = _llm_language_name()
+    cache_key = f"summary::{_payload_hash(view_title, payload_json, model_name, language)}"
     if cache_key not in st.session_state:
         st.session_state[cache_key] = generate_dashboard_summary(
-            view_title=view_title,
+            view_title=f"{view_title} | Answer language: {language} | {_llm_strict_language_instruction()}",
             payload_json=payload_json,
             user_api_key=api_key,
             model_name=model_name,
         )
-    return sanitize_llm_markdown(st.session_state[cache_key])
+    return _translate_runtime_text(sanitize_llm_markdown(st.session_state[cache_key]))
 
 
 def get_session_cached_answer(
@@ -2814,16 +4746,19 @@ def get_session_cached_answer(
     api_key: str,
     model_name: str,
 ) -> str:
-    cache_key = f"qa::{_payload_hash(view_title, payload_json, question, model_name)}"
+    payload_json = _wrap_llm_payload(payload_json)
+    question = _wrap_llm_question(question)
+    language = _llm_language_name()
+    cache_key = f"qa::{_payload_hash(view_title, payload_json, question, model_name, language)}"
     if cache_key not in st.session_state:
         st.session_state[cache_key] = answer_dashboard_question(
-            view_title=view_title,
+            view_title=f"{view_title} | Answer language: {language} | {_llm_strict_language_instruction()}",
             payload_json=payload_json,
             question=question,
             user_api_key=api_key,
             model_name=model_name,
         )
-    return sanitize_llm_markdown(st.session_state[cache_key])
+    return _translate_runtime_text(sanitize_llm_markdown(st.session_state[cache_key]))
 
 
 def get_chat_history_key(view_key: str) -> str:
@@ -2899,17 +4834,17 @@ def render_llm_summary(
     model_name: str,
 ):
     st.divider()
-    st.subheader("LLM 결과 요약")
-    st.caption("현재 화면의 지표·표·그래프에서 추린 요약 컨텍스트만 바탕으로 응답합니다.")
+    st.subheader(T("LLM 결과 요약"))
+    st.caption(T("현재 화면의 지표·표·그래프에서 추린 요약 컨텍스트만 바탕으로 응답합니다."))
 
     ready, status_message = get_llm_status(api_key)
     payload_json = build_payload_json(payload)
 
     if not ready:
-        st.info(status_message)
+        st.info(_translate_runtime_text(status_message))
         return
 
-    with st.spinner("AI가 현재 화면의 결과를 요약하는 중입니다..."):
+    with st.spinner(T("AI가 현재 화면의 결과를 요약하는 중입니다...")):
         try:
             summary = get_session_cached_summary(
                 view_title=view_title,
@@ -2918,11 +4853,11 @@ def render_llm_summary(
                 model_name=model_name,
             )
         except Exception as exc:
-            st.error(f"AI 요약 생성 중 오류가 발생했습니다: {exc}")
+            st.error(f"{T('AI 요약 생성 중 오류가 발생했습니다')}: {exc}")
             return
 
-    st.markdown(sanitize_llm_markdown(summary))
-    st.caption("추가 질문은 사이드바의 AI 챗봇 버튼을 눌러 이어서 대화할 수 있습니다.")
+    st.markdown(_translate_runtime_text(sanitize_llm_markdown(summary)))
+    st.caption(T("추가 질문은 사이드바의 AI 챗봇 버튼을 눌러 이어서 대화할 수 있습니다."))
 
 
 @st.fragment
@@ -2942,7 +4877,7 @@ def render_sidebar_chatbot_launcher(
     다른 화면으로 이동해도 챗봇이 초기화되거나 새 화면 데이터로 자동 갱신되지 않게 한다.
     """
     st.divider()
-    st.subheader("🤖 AI 챗봇")
+    st.subheader(f"🤖 {T('AI 챗봇')}")
 
     ready, status_message = get_llm_status(api_key)
     is_open = bool(st.session_state.get("llm_chat_open", False))
@@ -2955,7 +4890,7 @@ def render_sidebar_chatbot_launcher(
         st.session_state["llm_chat_payload"] = payload
         st.session_state["llm_chat_model_name"] = model_name
 
-    btn_label = "❌ 챗봇 닫기" if is_open else "💬 챗봇 열기"
+    btn_label = f"❌ {T('챗봇 닫기')}" if is_open else f"💬 {T('챗봇 열기')}"
     if st.button(
         btn_label,
         key="toggle_chatbot",
@@ -2974,14 +4909,14 @@ def render_sidebar_chatbot_launcher(
         st.rerun(scope="fragment")
 
     if not llm_enabled:
-        st.caption("⚠️ LLM 기능이 꺼져 있어 챗봇을 열 수 없습니다.")
+        st.caption(f"⚠️ {T('LLM 기능이 꺼져 있어 챗봇을 열 수 없습니다.')}")
         return
     if not ready:
-        st.caption(f"⚠️ {status_message}")
+        st.caption(f"⚠️ {_translate_runtime_text(status_message)}")
         return
     if not st.session_state.get("llm_chat_open", False):
-        st.caption(f"📍 현재 화면: **{view_title}**")
-        st.caption("화면의 표·그래프를 보면서 질문할 수 있습니다.")
+        st.caption(f"📍 {T('현재 화면')}: **{view_title}**")
+        st.caption(T("화면의 표·그래프를 보면서 질문할 수 있습니다."))
         return
 
     active_view_key = st.session_state.get("llm_chat_view_key") or view_key
@@ -2989,10 +4924,10 @@ def render_sidebar_chatbot_launcher(
     active_payload = st.session_state.get("llm_chat_payload") or payload or {}
     active_model_name = st.session_state.get("llm_chat_model_name") or model_name
 
-    st.caption(f"📌 고정된 챗봇 컨텍스트: **{active_view_title}**")
+    st.caption(f"📌 {T('고정된 챗봇 컨텍스트')}: **{active_view_title}**")
     if active_view_key != view_key:
-        st.caption("화면을 이동해도 챗봇은 처음 열었던 화면의 데이터로 유지됩니다.")
-        if st.button("현재 화면으로 컨텍스트 갱신", key="refresh_chatbot_context", use_container_width=True):
+        st.caption(T("화면을 이동해도 챗봇은 처음 열었던 화면의 데이터로 유지됩니다."))
+        if st.button(T("현재 화면으로 컨텍스트 갱신"), key="refresh_chatbot_context", use_container_width=True):
             st.session_state["llm_chat_view_key"] = view_key
             st.session_state["llm_chat_view_title"] = view_title
             st.session_state["llm_chat_payload"] = payload or {}
@@ -3022,10 +4957,10 @@ def _render_sidebar_chatbot_inline(
     if history_key not in st.session_state:
         st.session_state[history_key] = []
 
-    st.caption(f"📍 컨텍스트: **{view_title}**")
+    st.caption(f"📍 {T('컨텍스트')}: **{view_title}**")
 
     # 대화 지우기 버튼
-    if st.button("🗑 대화 지우기", key=f"clear_sidebar_chat_{view_key}", use_container_width=True):
+    if st.button(f"🗑 {T('대화 지우기')}", key=f"clear_sidebar_chat_{view_key}", use_container_width=True):
         st.session_state[history_key] = []
         st.rerun(scope="fragment")
 
@@ -3037,20 +4972,20 @@ def _render_sidebar_chatbot_inline(
         if not history:
             with st.chat_message("assistant", avatar="🤖"):
                 st.markdown(
-                    "안녕하세요. 현재 보고 있는 화면 기준으로 답해드릴게요.\n\n"
-                    "- 왜 이 지표가 높/낮은지\n"
-                    "- 어떤 고객/세그먼트가 핵심인지\n"
-                    "- 예산·threshold에서 뭘 바꾸면 좋을지"
+                    f"{T('안녕하세요. 현재 보고 있는 화면 기준으로 답해드릴게요.')}\n\n"
+                    f"- {T('왜 이 지표가 높/낮은지')}\n"
+                    f"- {T('어떤 고객/세그먼트가 핵심인지')}\n"
+                    f"- {T('예산·threshold에서 뭘 바꾸면 좋을지')}"
                 )
         for item in history:
             role = item.get("role", "assistant")
             avatar = "🧑" if role == "user" else "🤖"
             with st.chat_message(role, avatar=avatar):
-                st.markdown(sanitize_llm_markdown(item.get("content", "")))
+                st.markdown(_translate_runtime_text(sanitize_llm_markdown(item.get("content", ""))))
 
     # 입력창
     prompt = st.chat_input(
-        "현재 화면에 대해 질문하세요...",
+        T("현재 화면에 대해 질문하세요..."),
         key=input_key,
     )
 
@@ -3064,7 +4999,7 @@ def _render_sidebar_chatbot_inline(
             latest_question=prompt,
         )
 
-        with st.spinner("AI 답변 생성 중..."):
+        with st.spinner(f"{T('AI 답변 생성 중')}..."):
             try:
                 answer = get_session_cached_answer(
                     view_title=view_title,
@@ -3074,14 +5009,14 @@ def _render_sidebar_chatbot_inline(
                     model_name=model_name,
                 )
             except Exception as exc:
-                answer = f"AI 답변 생성 중 오류가 발생했습니다: {exc}"
+                answer = f"{T('AI 답변 생성 중 오류가 발생했습니다')}: {exc}"
 
         history.append({"role": "assistant", "content": answer})
         st.session_state[history_key] = history
         st.rerun(scope="fragment")
 
 
-@st.dialog("AI 분석 챗봇")
+@st.dialog("AI Chatbot")
 def open_chatbot_dialog(
     view_key: str,
     view_title: str,
@@ -3098,10 +5033,10 @@ def open_chatbot_dialog(
         st.session_state[history_key] = []
 
     st.markdown(
-        """
+        f"""
         <div id="chatbot-drag-handle" class="chatbot-drag-handle">
-            <span>🤖 AI 분석 챗봇</span>
-            <small>드래그해서 이동</small>
+            <span>🤖 {T('AI 분석 챗봇')}</span>
+            <small>{T('드래그해서 이동')}</small>
         </div>
         """,
         unsafe_allow_html=True,
@@ -3110,23 +5045,23 @@ def open_chatbot_dialog(
     st.markdown(
         f"""
         <div class="chatbot-dialog-note">
-            <strong>현재 화면:</strong> {view_title}<br/>
-            현재 화면의 지표·표·그래프 요약 컨텍스트를 바탕으로 답변합니다.
+            <strong>{T('현재 화면')}:</strong> {view_title}<br/>
+            {T('현재 화면의 지표·표·그래프에서 추린 요약 컨텍스트만 바탕으로 응답합니다.')}
         </div>
         """,
         unsafe_allow_html=True,
     )
 
     top_col1, top_col2 = st.columns([1, 1])
-    if top_col1.button("대화 지우기", key=f"clear_chat_{view_key}", use_container_width=True):
+    if top_col1.button(T("대화 지우기"), key=f"clear_chat_{view_key}", use_container_width=True):
         st.session_state[history_key] = []
         st.rerun()
-    if top_col2.button("닫기", key=f"close_chat_{view_key}", use_container_width=True):
+    if top_col2.button(T("닫기"), key=f"close_chat_{view_key}", use_container_width=True):
         close_llm_chat_dialog()
         st.rerun()
 
     if not ready:
-        st.info(status_message)
+        st.info(_translate_runtime_text(status_message))
         return
 
     history = st.session_state[history_key]
@@ -3134,11 +5069,10 @@ def open_chatbot_dialog(
     if not history:
         with st.chat_message("assistant", avatar="🤖"):
             st.markdown(
-                "안녕하세요. 현재 보고 있는 대시보드 화면을 기준으로 설명해드릴게요.\n\n"
-                "- 왜 이 지표가 높거나 낮은지\n"
-                "- 어떤 고객/세그먼트가 핵심인지\n"
-                "- 지금 예산·threshold에서 무엇을 바꾸면 좋을지\n"
-                "같은 질문을 이어서 해보세요."
+                f"{T('안녕하세요. 현재 보고 있는 화면 기준으로 답해드릴게요.')}\n\n"
+                f"- {T('왜 이 지표가 높/낮은지')}\n"
+                f"- {T('어떤 고객/세그먼트가 핵심인지')}\n"
+                f"- {T('예산·threshold에서 뭘 바꾸면 좋을지')}"
             )
 
     for item in history:
@@ -3148,7 +5082,7 @@ def open_chatbot_dialog(
             st.markdown(sanitize_llm_markdown(item.get("content", "")))
 
     prompt = st.chat_input(
-        "현재 화면에 대해 질문하세요.",
+        T("현재 화면에 대해 질문하세요."),
         key=input_key,
     )
 
@@ -3165,7 +5099,7 @@ def open_chatbot_dialog(
         )
 
         with st.chat_message("assistant", avatar="🤖"):
-            with st.spinner("AI가 답변하는 중입니다..."):
+            with st.spinner(T("AI가 답변하는 중입니다...")):
                 try:
                     answer = get_session_cached_answer(
                         view_title=view_title,
@@ -3175,9 +5109,9 @@ def open_chatbot_dialog(
                         model_name=model_name,
                     )
                 except Exception as exc:
-                    answer = f"AI 답변 생성 중 오류가 발생했습니다: {exc}"
+                    answer = f"{T('AI 답변 생성 중 오류가 발생했습니다')}: {exc}"
 
-            st.markdown(sanitize_llm_markdown(answer))
+            st.markdown(_translate_runtime_text(sanitize_llm_markdown(answer)))
 
         history.append({"role": "assistant", "content": answer})
         st.session_state[history_key] = history
@@ -3305,384 +5239,308 @@ def _wizard_nav(step_key: str, can_next: bool = True, can_prev: bool = True, nex
 
 
 def _render_wizard() -> bool:
-    """Main-area wizard. Returns True if wizard is active (dashboard should not render)."""
-    if st.session_state.get("wizard_dismissed"):
+    """산업 도메인 선택 → CSV 업로드 → 매핑 → 학습 실행 마법사.
+
+    기존 시뮬레이터/자사 데이터 선택을 제거하고 금융/이커머스 두 모드로 운영한다.
+    학습 완료 후 mode/dashboard/view를 URL query parameter에 남겨 F5 새로고침 시
+    첫 화면으로 되돌아가지 않도록 한다.
+    """
+    mode = _business_mode()
+    paths = _domain_paths(mode)
+    _root = _project_root()
+    has_domain_data = (_root / paths["data"] / "customer_summary.csv").exists()
+    _result_path = _root / paths["results"]
+    has_domain_results = _result_path.exists() and any(_result_path.iterdir())
+
+    if st.session_state.get("wizard_dismissed") or (st.query_params.get("dashboard") == "1" and (has_domain_data or has_domain_results)):
+        st.session_state["wizard_dismissed"] = True
         return False
 
     st.session_state.setdefault("wizard_step", 0)
-    step = st.session_state["wizard_step"]
+    step = int(st.session_state.get("wizard_step", 0))
 
-    _render_wizard_stepper(step)
-
-    from pathlib import Path as _WizPath
-    _has_user_data = (_WizPath("data/raw_user") / "customer_summary.csv").exists()
-    _has_user_results = _WizPath("results_user").exists() and any(_WizPath("results_user").iterdir()) if _WizPath("results_user").exists() else False
-    if _has_user_data or _has_user_results:
-        st.info("이전에 학습한 결과가 있습니다. 바로 대시보드를 볼 수도 있습니다.")
-        if st.button("📊 기존 결과로 대시보드 보기", key="wizard_skip_btn", type="secondary"):
-            st.session_state["wizard_dismissed"] = True
-            st.session_state["data_mode"] = "user"
-            st.rerun()
-
-    # ── Step 0: 모드 선택 ──
     if step == 0:
-        st.markdown("### Step 1. 분석 모드 선택")
-        st.markdown("어떤 데이터로 분석할지 선택하세요.")
+        st.markdown(f"### {T('분석 모드 선택')}")
+        st.caption(T("어떤 산업 데이터로 분석할지 선택하세요."))
+        col_fin, col_ec = st.columns(2)
 
-        col_sim, col_user = st.columns(2)
-        with col_sim:
+        with col_fin:
             st.markdown(
-                "<div style='border:2px solid #E5E7EB;border-radius:12px;padding:20px;text-align:center;min-height:180px'>"
-                "<div style='font-size:2rem'>🧪</div>"
-                "<div style='font-weight:700;margin:8px 0'>시뮬레이터 데모</div>"
-                "<div style='font-size:0.85rem;color:#6B7280'>내장 샘플 데이터로<br>플랫폼 기능을 체험합니다</div>"
-                "</div>", unsafe_allow_html=True
+                "<div style='border:2px solid #DBEAFE;border-radius:14px;padding:22px;min-height:210px;background:#EFF6FF'>"
+                "<div style='font-size:2.2rem'>🏦</div>"
+                f"<div style='font-weight:800;margin:8px 0'>{T('금융 모드')}</div>"
+                "<div style='font-size:0.88rem;color:#475569;line-height:1.55'>"
+                "예금·대출·카드·거래·잔고·연체·상담 이력 기반 이탈/해지 위험과 캠페인 우선순위를 분석합니다."
+                "</div></div>",
+                unsafe_allow_html=True,
             )
-            if st.button("시뮬레이터로 시작", key="wiz_mode_sim", use_container_width=True):
-                st.session_state["data_mode"] = "simulator"
-                st.session_state["wizard_dismissed"] = True
+            if st.button(T("금융 모드"), key="wiz_mode_finance", use_container_width=True, type="primary"):
+                st.session_state["data_mode"] = "finance"
+                st.session_state["domain_mode"] = "finance"
+                st.session_state["wizard_step"] = 1
+                st.query_params["mode"] = "finance"
+                st.query_params["dashboard"] = "0"
                 clear_dashboard_caches()
                 st.rerun()
 
-        with col_user:
+        with col_ec:
             st.markdown(
-                "<div style='border:2px solid #E5E7EB;border-radius:12px;padding:20px;text-align:center;min-height:180px'>"
-                "<div style='font-size:2rem'>📂</div>"
-                "<div style='font-weight:700;margin:8px 0'>자사 데이터 업로드</div>"
-                "<div style='font-size:0.85rem;color:#6B7280'>CSV 파일을 업로드하여<br>이탈 예측 모델을 학습합니다</div>"
-                "</div>", unsafe_allow_html=True
+                "<div style='border:2px solid #DCFCE7;border-radius:14px;padding:22px;min-height:210px;background:#F0FDF4'>"
+                "<div style='font-size:2.2rem'>🛒</div>"
+                f"<div style='font-weight:800;margin:8px 0'>{T('이커머스 모드')}</div>"
+                "<div style='font-size:0.88rem;color:#475569;line-height:1.55'>"
+                "방문·검색·장바구니·구매·쿠폰·카테고리 선호 기반 이탈 위험과 개인화 추천을 분석합니다."
+                "</div></div>",
+                unsafe_allow_html=True,
             )
-            if st.button("자사 데이터로 시작", key="wiz_mode_user", use_container_width=True, type="primary"):
-                st.session_state["data_mode"] = "user"
+            if st.button(T("이커머스 모드"), key="wiz_mode_ecommerce", use_container_width=True, type="primary"):
+                st.session_state["data_mode"] = "ecommerce"
+                st.session_state["domain_mode"] = "ecommerce"
                 st.session_state["wizard_step"] = 1
+                st.query_params["mode"] = "ecommerce"
+                st.query_params["dashboard"] = "0"
+                clear_dashboard_caches()
                 st.rerun()
 
+        if has_domain_data or has_domain_results:
+            st.divider()
+            st.info(f"{_domain_label(mode)}에 이전 학습 결과가 있습니다.")
+            if st.button(f"📊 {T('기존 결과로 대시보드 보기')}", key="wizard_skip_existing", use_container_width=True):
+                st.session_state["wizard_dismissed"] = True
+                st.query_params["mode"] = mode
+                st.query_params["dashboard"] = "1"
+                st.query_params["view"] = st.session_state.get("dashboard_view", DASHBOARD_VIEW_OPTIONS[0])
+                clear_dashboard_caches()
+                st.rerun()
         return True
 
-    # ── Step 1: CSV 업로드 ──
+    # Step 1: CSV 업로드 및 자동 미리보기
     if step == 1:
         import sys
-        from pathlib import Path as _UpPath
-        st.markdown("### Step 2. CSV 파일 업로드")
-        uploaded_file = st.file_uploader(
-            "분석할 CSV 파일을 선택하세요",
-            type=["csv", "tsv"],
-            key="wizard_csv_upload",
-            help="고객 데이터, 거래 데이터, 이벤트 로그 등",
-        )
+        st.markdown(f"### Step 2. CSV 업로드 — {_domain_label(mode)}")
+        st.caption("금융/이커머스 원천 CSV를 업로드하세요. 고객 스냅샷, 거래, 이벤트 로그 형태를 모두 허용합니다.")
+        if mode == "finance":
+            with st.expander("금융 데이터 권장 컬럼", expanded=False):
+                st.markdown("customer_id, timestamp/transaction_date, event_type/transaction_type, balance, transaction_amount, product_type, loan_amount, delinquency_days, credit_score, tenure_months, channel 등")
+        else:
+            with st.expander("이커머스 데이터 권장 컬럼", expanded=False):
+                st.markdown("customer_id, timestamp/event_time, event_type, order_id, order_amount, category, coupon_used, discount_amount, quantity, channel 등")
+
+        uploaded_file = st.file_uploader("CSV/TSV 파일", type=["csv", "tsv"], key=f"wizard_csv_upload_{mode}")
         if uploaded_file is not None:
-            _project_root = _UpPath(__file__).resolve().parents[1]
-            if str(_project_root) not in sys.path:
-                sys.path.insert(0, str(_project_root))
-            upload_dir = _project_root / "data" / "uploads"
+            import sys
+            from src.ingestion.pipeline import prepare_mapping_preview as _prep
+            root = _project_root()
+            if str(root) not in sys.path:
+                sys.path.insert(0, str(root))
+            upload_dir = root / "data" / "uploads" / mode
             upload_dir.mkdir(parents=True, exist_ok=True)
             upload_path = upload_dir / uploaded_file.name
             with open(upload_path, "wb") as f:
                 f.write(uploaded_file.getbuffer())
             st.session_state["wizard_upload_path"] = str(upload_path)
+            st.session_state["wizard_upload_filename"] = uploaded_file.name
+            st.session_state["active_dataset_filename"] = uploaded_file.name
 
-            if st.session_state.get("wizard_upload_path_prev") != str(upload_path):
-                st.session_state["wizard_upload_path_prev"] = str(upload_path)
+            prev_key = f"{mode}:{upload_path}:{upload_path.stat().st_mtime_ns}:{upload_path.stat().st_size}"
+            if st.session_state.get("wizard_upload_token") != prev_key:
+                st.session_state["wizard_upload_token"] = prev_key
                 st.session_state.pop("wizard_mapping_preview", None)
+                st.session_state.pop("wizard_column_mapping", None)
+                st.session_state.pop("wizard_event_mapping", None)
 
             if "wizard_mapping_preview" not in st.session_state:
-                from src.ingestion.pipeline import prepare_mapping_preview as _prep
-                import threading, time as _t
-                _file_mb = max(upload_path.stat().st_size / (1024 * 1024), 0.1)
-                _est = max(_file_mb * 0.4 + 2.0, 3.0)
-                _box: dict = {"value": None, "error": None}
-
-                def _w():
-                    try:
-                        _box["value"] = _prep(upload_path)
-                    except Exception as _e:
-                        _box["error"] = _e
-
-                _th = threading.Thread(target=_w, daemon=True)
-                _th.start()
-                _pb = st.progress(0, text="🚀 분석 시작...")
-                _el = 0.0
-                while _th.is_alive():
-                    _t.sleep(0.25)
-                    _el += 0.25
-                    _pct = min(int((_el / _est) * 90), 92)
-                    _pb.progress(_pct, text=f"🔍 컬럼 자동 감지 중... {_el:.1f}s")
-                _th.join()
-                if _box["error"]:
-                    _pb.progress(100, text="❌ 오류")
-                    st.error(f"분석 실패: {_box['error']}")
-                else:
-                    _pb.progress(100, text="✅ 완료")
-                    st.session_state["wizard_mapping_preview"] = _box["value"]
-                    st.rerun()
-
-            if "wizard_mapping_preview" in st.session_state:
-                p = st.session_state["wizard_mapping_preview"]
-                v = p.validation
-                if v.is_valid:
-                    st.success(f"✅ 검증 통과 ({v.row_count:,}행 × {v.column_count}열, 관련성 {v.relevance_score:.0%})")
-                else:
-                    for e in v.errors:
-                        st.error(f"⛔ {e}")
-                if v.warnings:
-                    for w in v.warnings:
-                        st.caption(f"⚠️ {w}")
-                if not v.is_valid:
-                    st.warning("검증 오류가 있습니다. 다른 파일을 올리거나 그대로 진행할 수 있습니다.")
-
-        _wizard_nav("step1", can_next="wizard_mapping_preview" in st.session_state)
+                with st.spinner("CSV 구조를 분석하고 자동 매핑하는 중입니다..."):
+                    st.session_state["wizard_mapping_preview"] = _prep(upload_path)
+            preview = st.session_state["wizard_mapping_preview"]
+            st.success(f"업로드 완료: {uploaded_file.name} / {int(preview.total_rows):,}행")
+            if preview.sample_rows is not None and not preview.sample_rows.empty:
+                _render_dataframe_with_count(preview.sample_rows.head(10), label="업로드 샘플", height=360)
+            _wizard_nav("domain_upload", can_next=True)
+        else:
+            st.info("분석할 CSV/TSV 파일을 업로드하면 다음 단계로 이동할 수 있습니다.")
+            _wizard_nav("domain_upload_empty", can_next=False)
         return True
 
-    # ── Step 2: 컬럼 매핑 ──
+    # Step 2: 컬럼 매핑
     if step == 2:
-        st.markdown("### Step 3. 컬럼 매핑 확인")
-        if "wizard_mapping_preview" not in st.session_state:
-            st.warning("먼저 CSV를 업로드해주세요.")
-            _wizard_nav("step2", can_next=False)
+        st.markdown("### Step 3. 컬럼 매핑 검토")
+        preview = st.session_state.get("wizard_mapping_preview")
+        if preview is None:
+            st.error("업로드 파일을 찾지 못했습니다. 이전 단계로 돌아가세요.")
+            _wizard_nav("mapping_missing", can_next=False)
             return True
-
-        preview = st.session_state["wizard_mapping_preview"]
-        from src.ingestion.preprocessor import ROLE_DESCRIPTIONS as _ROLE_DESC
-
-        st.caption("시스템이 자동으로 감지한 컬럼 매핑입니다. 잘못된 부분은 직접 수정하세요.")
-
-        with st.expander("💡 스키마 역할 설명", expanded=False):
-            _h = "<div style='font-size:0.82rem;line-height:1.5'>"
-            for _k, _d in _ROLE_DESC.items():
-                _h += f"<div><b><code>{_k}</code></b> — {_d}</div>"
-            _h += "</div>"
-            st.markdown(_h, unsafe_allow_html=True)
-
-        all_cols = list(preview.validation.column_report and
-            [c["original_name"] for c in preview.validation.column_report]
-            or list(preview.column_mapping.values()))
-        auto_map = dict(preview.column_mapping)
-        options = ["(매핑 안 함)"] + list(all_cols)
-
+        all_cols = list(preview.validation.column_report and [c["original_name"] for c in preview.validation.column_report] or list(preview.column_mapping.values()))
+        options = ["(매핑 안 함)"] + all_cols
+        role_help = {
+            "customer_id": "고객을 식별하는 ID",
+            "timestamp": "이벤트·거래 발생 시각",
+            "event_type": "방문/구매/거래/상담 등 행동 유형",
+            "amount": "주문금액·거래금액·잔고 등 금액성 컬럼",
+        }
         rows = []
-        for role in _ROLE_DESC.keys():
-            detected = auto_map.get(role)
-            rows.append({
-                "시스템 스키마": role,
-                "자사 CSV 컬럼": detected if detected in all_cols else "(매핑 안 함)",
-            })
-        cm_df = pd.DataFrame(rows)
-
-        edited_cm = st.data_editor(
-            cm_df, use_container_width=True, hide_index=True,
-            disabled=["시스템 스키마"],
+        for role in sorted(set(list(preview.column_mapping.keys()) + ["customer_id", "timestamp", "event_type", "amount"])):
+            detected = preview.column_mapping.get(role)
+            rows.append({"시스템 역할": role, "업로드 컬럼": detected if detected in all_cols else "(매핑 안 함)", "설명": role_help.get(role, "분석 피처로 사용할 수 있는 컬럼")})
+        editor_df = pd.DataFrame(rows)
+        edited = st.data_editor(
+            editor_df,
+            use_container_width=True,
+            hide_index=True,
+            disabled=["시스템 역할", "설명"],
             column_config={
-                "시스템 스키마": st.column_config.TextColumn("시스템 스키마 (고정)"),
-                "자사 CSV 컬럼": st.column_config.SelectboxColumn("자사 CSV 컬럼 ▼", options=options, required=True),
+                "시스템 역할": st.column_config.TextColumn("시스템 역할"),
+                "업로드 컬럼": st.column_config.SelectboxColumn("업로드 컬럼", options=options, required=True),
+                "설명": st.column_config.TextColumn("설명"),
             },
-            key="wizard_col_map_editor",
+            key=f"wizard_col_map_editor_{mode}",
         )
-
-        mapping_override: dict = {}
-        for _, r in edited_cm.iterrows():
-            role = str(r["시스템 스키마"])
-            col = str(r["자사 CSV 컬럼"])
-            if col and col != "(매핑 안 함)":
-                mapping_override[role] = col
-        st.session_state["wizard_column_mapping"] = mapping_override
-
-        _wizard_nav("step2")
+        mapping = {}
+        for _, r in edited.iterrows():
+            if str(r["업로드 컬럼"]) != "(매핑 안 함)":
+                mapping[str(r["시스템 역할"])] = str(r["업로드 컬럼"])
+        st.session_state["wizard_column_mapping"] = mapping
+        _wizard_nav("domain_mapping", can_next=bool(mapping.get("customer_id")))
         return True
 
-    # ── Step 3: 이벤트 매핑 ──
+    # Step 3: 이벤트/거래 값 매핑
     if step == 3:
-        st.markdown("### Step 4. 이벤트 타입 매핑")
+        st.markdown("### Step 4. 이벤트·거래 타입 매핑")
         preview = st.session_state.get("wizard_mapping_preview")
-        if not preview:
-            st.warning("먼저 CSV를 업로드해주세요.")
-            _wizard_nav("step3", can_next=False)
+        if preview is None:
+            st.error("업로드 파일을 찾지 못했습니다.")
+            _wizard_nav("event_missing", can_next=False)
             return True
-
-        if preview.has_event_data:
-            from src.ingestion.preprocessor import INTERNAL_EVENT_TYPES as _STD, EVENT_TYPE_DESCRIPTIONS as _EV_DESC
-
-            col_a, col_b = st.columns([3, 1])
-            with col_a:
-                st.caption(f"고유값 {len(preview.event_value_mapping)}개, 자동 커버리지 {preview.coverage_rate:.0%}")
-            with col_b:
-                if preview.coverage_rate >= 0.9:
-                    st.markdown("🟢 **양호**")
-                elif preview.coverage_rate >= 0.7:
-                    st.markdown("🟡 **검토 권장**")
-                else:
-                    st.markdown("🔴 **수정 필요**")
-
-            with st.expander("💡 표준 이벤트 6종 설명", expanded=False):
-                _h = "<div style='font-size:0.82rem;line-height:1.5'>"
-                for _s, _d in _EV_DESC.items():
-                    _h += f"<div><b><code>{_s}</code></b> — {_d}</div>"
-                _h += "</div>"
-                st.markdown(_h, unsafe_allow_html=True)
-
-            if preview.unmapped_values:
-                st.warning(f"⚠️ 매핑 실패 {len(preview.unmapped_values)}개: `{', '.join(preview.unmapped_values)}` → 'other'")
-
+        if preview.has_event_data and preview.event_value_mapping:
+            from src.ingestion.preprocessor import INTERNAL_EVENT_TYPES as _STD
             std_options = list(_STD) + ["other", "ignore"]
             e_rows = []
             for raw, std in sorted(preview.event_value_mapping.items(), key=lambda x: -preview.event_value_counts.get(x[0], 0)):
                 e_rows.append({"원본 값": raw, "빈도": preview.event_value_counts.get(raw, 0), "내부 표준 값": std})
-            e_df = pd.DataFrame(e_rows)
-
             edited_ev = st.data_editor(
-                e_df, use_container_width=True, hide_index=True,
+                pd.DataFrame(e_rows),
+                use_container_width=True,
+                hide_index=True,
                 disabled=["원본 값", "빈도"],
                 column_config={
                     "원본 값": st.column_config.TextColumn("원본 값"),
                     "빈도": st.column_config.NumberColumn("빈도", format="%d"),
                     "내부 표준 값": st.column_config.SelectboxColumn("내부 표준 값", options=std_options, required=True),
                 },
-                key="wizard_ev_map_editor",
+                key=f"wizard_ev_map_editor_{mode}",
             )
             st.session_state["wizard_event_mapping"] = dict(zip(edited_ev["원본 값"].astype(str), edited_ev["내부 표준 값"].astype(str)))
             st.session_state["wizard_synthetic_fallback"] = False
-
-            std_dist: dict = {}
-            for raw, std in st.session_state["wizard_event_mapping"].items():
-                std_dist[std] = std_dist.get(std, 0) + preview.event_value_counts.get(raw, 0)
-            if std_dist:
-                st.markdown("**매핑 후 분포**")
-                cols = st.columns(min(len(std_dist), 4))
-                for idx, (k, v) in enumerate(sorted(std_dist.items(), key=lambda x: -x[1])):
-                    with cols[idx % len(cols)]:
-                        st.metric(label=k, value=f"{v:,}")
+            st.info(f"자동 매핑 커버리지: {float(preview.coverage_rate):.0%}")
         else:
-            st.warning("⚠️ event_type 또는 timestamp 컬럼이 감지되지 않았습니다.")
-            st.markdown("합성 이벤트로 진행하면 이벤트 시퀀스 분석은 신뢰할 수 없습니다.")
-            fallback = st.checkbox("스냅샷 데이터로 진행합니다 (이벤트 기반 분석 제외)", value=False, key="wizard_synthetic_cb")
-            st.session_state["wizard_synthetic_fallback"] = fallback
+            st.warning("event_type/timestamp 조합이 부족합니다. 스냅샷 데이터로 진행하면 일부 실시간·행동 시계열 분석은 제한됩니다.")
             st.session_state["wizard_event_mapping"] = None
-
-        _wizard_nav("step3", can_next=(preview.has_event_data or st.session_state.get("wizard_synthetic_fallback", False)))
+            st.session_state["wizard_synthetic_fallback"] = st.checkbox("스냅샷 데이터로 진행", value=True, key=f"wizard_synthetic_{mode}")
+        _wizard_nav("domain_event", can_next=(preview.has_event_data or st.session_state.get("wizard_synthetic_fallback", False)))
         return True
 
-    # ── Step 4: 이탈 정의 + 학습 설정 ──
-    if step == 4:
-        st.markdown("### Step 5. 이탈 기준 정의 & 학습 설정")
+    # Step 4: 이탈 기준과 학습
+    if step >= 4:
+        st.markdown(f"### {T('Step 5. 이탈 기준·학습')}")
         preview = st.session_state.get("wizard_mapping_preview")
-
-        recommended = int(getattr(preview, "recommended_churn_days", None) or 30) if preview else 30
-        st.caption("마지막 활동 이후 며칠간 비활성이면 '이탈'로 분류할지 정합니다.")
-        if preview and getattr(preview, "recommended_churn_days", None):
-            st.info(f"데이터 분석 기반 추천: **{recommended}일**")
-
-        churn_days = st.slider("이탈 기준 (N일 비활성)", 7, 180, recommended, 1, key="wizard_churn_days")
-        st.caption(f"설정: 마지막 활동 **{churn_days}일** 후 이탈로 간주")
-
-        st.divider()
-        col1, col2 = st.columns(2)
-        with col1:
-            w_budget = st.number_input("마케팅 예산", value=5_000_000, step=100000, key="wizard_budget")
-        with col2:
-            w_threshold = st.slider("이탈 Threshold", 0.10, 0.90, 0.50, 0.01, key="wizard_threshold")
-
-        _wizard_nav("step4")
-        return True
-
-    # ── Step 5: 학습 실행 ──
-    if step == 5:
-        st.markdown("### Step 6. 모델 학습")
-        preview = st.session_state.get("wizard_mapping_preview")
-        if not preview:
-            st.error("데이터가 없습니다. 처음부터 다시 시작하세요.")
-            _wizard_nav("step5", can_next=False)
+        if preview is None:
+            st.error("업로드 파일을 찾지 못했습니다.")
+            _wizard_nav("train_missing", can_next=False)
             return True
+        recommended = int(getattr(preview, "recommended_churn_days", None) or (60 if mode == "finance" else 30))
+        churn_days = st.slider(T("이탈 기준: N일 이상 비활성"), 7, 180, recommended, 1, key=f"wizard_churn_days_{mode}")
+        w_budget = int(st.session_state.get("control_budget", 5_000_000))
+        w_threshold = float(st.session_state.get("control_threshold", 0.50))
+        w_cap = int(st.session_state.get("control_target_cap", 1500))
+        st.info(T("학습 단계에서는 예산과 이탈 임계값을 조절하지 않습니다. 학습이 끝난 뒤 대시보드의 분석 컨트롤에서 운영 조건을 바꿔 비교하세요."))
 
-        col_mapping = st.session_state.get("wizard_column_mapping")
-        ev_mapping = st.session_state.get("wizard_event_mapping")
-        synthetic = st.session_state.get("wizard_synthetic_fallback", False)
-        churn_days = st.session_state.get("wizard_churn_days", 30)
-        w_budget = st.session_state.get("wizard_budget", 5_000_000)
-        w_threshold = st.session_state.get("wizard_threshold", 0.50)
-        upload_path = st.session_state.get("wizard_upload_path")
-
-        st.markdown("**설정 요약**")
-        summary_cols = st.columns(3)
-        with summary_cols[0]:
-            st.metric("이탈 기준", f"{churn_days}일")
-        with summary_cols[1]:
-            st.metric("예산", f"{int(w_budget):,}원")
-        with summary_cols[2]:
-            st.metric("Threshold", f"{w_threshold:.2f}")
-
-        if ev_mapping:
-            st.caption(f"이벤트 매핑: {len(ev_mapping)}개 값 → 표준 분류")
-        elif synthetic:
-            st.caption("⚠️ 합성 이벤트 모드 (스냅샷 데이터)")
-
-        if st.button("🚀 학습 시작", key="wizard_train_btn", use_container_width=True, type="primary"):
+        st.caption(f"{T('학습 대상')}: {_domain_label(mode)} / {T('파일')}: {st.session_state.get('wizard_upload_filename', '-')}")
+        if st.button(f"🚀 {T('학습 시작')}", key=f"wizard_train_{mode}", use_container_width=True, type="primary"):
             from src.ingestion.pipeline import run_ingestion_pipeline as _run_pipeline
-            from pathlib import Path as _TrainPath
             import threading, time as _t
-
-            _project_root = _TrainPath(__file__).resolve().parents[1]
-            progress_bar = st.progress(0, text="시작 중...")
-            _holder: dict = {}
+            root = _project_root()
+            paths = _domain_paths(mode)
+            upload_path = st.session_state.get("wizard_upload_path")
+            filename = st.session_state.get("wizard_upload_filename", Path(str(upload_path)).name)
+            progress_bar = st.progress(0, text=T("시작 중..."))
+            holder: dict[str, Any] = {}
 
             def _train():
                 try:
-                    _holder["result"] = _run_pipeline(
+                    holder["result"] = _run_pipeline(
                         file_path=upload_path,
-                        data_dir=_project_root / "data" / "raw_user",
-                        model_dir=_project_root / "models_user",
-                        result_dir=_project_root / "results_user",
-                        feature_store_dir=_project_root / "data" / "feature_store_user",
+                        data_dir=root / paths["data"],
+                        model_dir=root / paths["models"],
+                        result_dir=root / paths["results"],
+                        feature_store_dir=root / paths["features"],
                         budget=int(w_budget),
                         threshold=float(w_threshold),
-                        column_mapping_override=col_mapping or None,
-                        event_value_mapping=ev_mapping,
-                        allow_synthetic_fallback=synthetic,
+                        max_customers=int(w_cap),
+                        backup_existing=True,
+                        column_mapping_override=st.session_state.get("wizard_column_mapping") or None,
+                        event_value_mapping=st.session_state.get("wizard_event_mapping"),
+                        allow_synthetic_fallback=bool(st.session_state.get("wizard_synthetic_fallback", False)),
                         churn_inactivity_days=int(churn_days),
                     )
-                except Exception as _e:
-                    _holder["error"] = _e
+                except Exception as exc:
+                    holder["error"] = exc
 
-            _th = threading.Thread(target=_train, daemon=True)
-            _th.start()
-
-            _msgs = [
-                "📥 CSV 읽는 중…", "🔍 검증 중…", "⚙️ 매핑 적용…",
-                "🧮 RFM 계산…", "🧠 피처 엔지니어링…", "🏋️ XGBoost 학습…",
-                "🎯 Uplift 학습…", "💰 CLV 모델…", "⏳ Survival 분석…",
-                "📊 세그먼트 분석…", "📈 최적화…", "🔬 설명가능성…",
-            ]
-            _start = _t.time()
-            while _th.is_alive():
-                _el = _t.time() - _start
-                _prog = min(int(95 * (1 - 1 / (1 + _el / 25))), 95)
-                _idx = min(int(_el / 8), len(_msgs) - 1)
-                progress_bar.progress(max(_prog, 3), text=f"{_msgs[_idx]}  ({int(_el)}초)")
-                _t.sleep(0.4)
-            _th.join()
-
-            if "error" in _holder:
-                progress_bar.progress(100, text="❌ 오류")
-                st.error(f"학습 실패: {_holder['error']}")
+            th = threading.Thread(target=_train, daemon=True)
+            th.start()
+            msgs = [T("CSV 검증"), T("전처리"), T("피처 생성"), T("이탈 모델 학습"), T("Uplift/CLV 계산"), T("예산 최적화"), T("추천/설명 생성")]
+            start_time = _t.time()
+            while th.is_alive():
+                elapsed = _t.time() - start_time
+                progress_bar.progress(min(95, max(5, int(elapsed * 2))), text=f"{msgs[min(int(elapsed // 12), len(msgs)-1)]} 중... ({int(elapsed)}초)")
+                _t.sleep(0.5)
+            th.join()
+            if "error" in holder:
+                progress_bar.progress(100, text="오류")
+                st.error(f"{T('학습 실패')}: {holder['error']}")
             else:
-                result = _holder["result"]
+                result = holder["result"]
                 if result.success:
-                    progress_bar.progress(100, text="✅ 학습 완료!")
-                    st.success("🎉 모델 학습이 완료되었습니다! 대시보드로 이동합니다.")
+                    _save_dataset_metadata(mode, filename=filename, upload_path=str(upload_path), row_count=int(getattr(preview, "total_rows", 0) or 0))
+
+                    live_seed_result = None
+                    live_seed_error = None
+                    live_sync_report = None
+                    try:
+                        progress_bar.progress(96, text="PostgreSQL user-live 테이블 초기 적재 준비 중...")
+                        live_sync_report = _sync_domain_artifacts_for_live_seed(mode)
+                        live_seed_result = seed_user_live_from_artifacts(reset=True)
+                        _save_live_seed_metadata(mode, live_seed_result, live_sync_report)
+                        st.session_state["user_live_seed_result"] = live_seed_result
+                        st.session_state.pop("user_live_seed_error", None)
+                    except Exception as seed_exc:
+                        live_seed_error = seed_exc
+                        st.session_state["user_live_seed_error"] = str(seed_exc)
+
+                    progress_bar.progress(100, text="완료")
+                    st.success(T("학습 완료. 대시보드로 이동합니다."))
+                    if isinstance(live_seed_result, dict) and live_seed_result.get("success"):
+                        st.success(T("PostgreSQL user-live DB 초기 적재 완료"))
+                    elif live_seed_error is not None:
+                        st.warning(f"{T('PostgreSQL user-live DB 자동 적재 실패')}: {live_seed_error}")
+                    else:
+                        st.warning(T("PostgreSQL user-live DB 자동 적재 실패"))
                     st.session_state["wizard_dismissed"] = True
-                    st.session_state["data_mode"] = "user"
-                    st.session_state["control_threshold"] = float(w_threshold)
-                    st.session_state["control_budget"] = int(w_budget)
-                    st.session_state["control_budget_text"] = str(int(w_budget))
-                    st.session_state.pop("wizard_mapping_preview", None)
+                    st.session_state["data_mode"] = mode
+                    st.session_state["active_dataset_filename"] = filename
+                    # 학습 단계에서는 예산/임계값을 사용자가 조절하지 않는다. 대시보드 분석 컨트롤의 기존 값을 유지한다.
+                    st.session_state["control_target_cap"] = int(w_cap)
+                    st.session_state["dashboard_view"] = "1. 이탈현황"
+                    st.query_params["mode"] = mode
+                    st.query_params["dashboard"] = "1"
+                    st.query_params["view"] = "1. 이탈현황"
                     clear_dashboard_caches()
-                    _t.sleep(1.5)
+                    _t.sleep(1)
                     st.rerun()
                 else:
-                    progress_bar.progress(100, text="⚠️ 부분 완료")
-                    st.warning(f"일부 실패: {result.error or '확인 필요'}")
-
-        st.divider()
-        if st.button("← 이전 단계로", key="wiz_prev_step5", use_container_width=False):
-            st.session_state["wizard_step"] = 4
+                    progress_bar.progress(100, text="부분 완료")
+                    st.warning(f"일부 단계 실패: {result.error or '산출물을 확인하세요.'}")
+        if st.button("← 이전 단계로", key=f"wizard_train_prev_{mode}"):
+            st.session_state["wizard_step"] = 3
             st.rerun()
         return True
 
@@ -3699,15 +5557,105 @@ CONTROL_DEFAULTS = {
 for _state_key, _state_value in CONTROL_DEFAULTS.items():
     st.session_state.setdefault(_state_key, _state_value)
 
+
+def _get_control_value(*keys: str, default: Any = None) -> Any:
+    for key in keys:
+        if key in st.session_state:
+            return st.session_state.get(key)
+    return default
+
+
+def _snapshot_analysis_controls() -> None:
+    """Persist analysis controls into non-widget shadow keys before language-only reruns.
+
+    Streamlit may drop a widget key when an early st.rerun() happens before the widget is
+    rendered. The shadow keys below are never used as widget keys, so language switching
+    cannot reset threshold/budget/cap/top_n to widget defaults.
+    """
+    st.session_state["control_threshold_shadow"] = float(
+        _get_control_value("control_threshold_widget", "control_threshold", "control_threshold_shadow", default=CONTROL_DEFAULTS["control_threshold"])
+    )
+    st.session_state["control_budget_shadow"] = int(
+        _get_control_value("control_budget", "control_budget_shadow", default=CONTROL_DEFAULTS["control_budget"])
+    )
+    st.session_state["control_target_cap_shadow"] = int(
+        _get_control_value("control_target_cap", "control_target_cap_shadow", default=CONTROL_DEFAULTS["control_target_cap"])
+    )
+    st.session_state["control_top_n_shadow"] = int(
+        _get_control_value("control_top_n", "control_top_n_shadow", default=CONTROL_DEFAULTS["control_top_n"])
+    )
+    st.session_state["control_recommendation_per_customer_shadow"] = int(
+        _get_control_value("control_recommendation_per_customer", "control_recommendation_per_customer_shadow", default=CONTROL_DEFAULTS["control_recommendation_per_customer"])
+    )
+
+
+def _restore_analysis_controls_from_shadow() -> None:
+    if "control_threshold_shadow" in st.session_state and "control_threshold_widget" not in st.session_state:
+        st.session_state["control_threshold_widget"] = float(st.session_state["control_threshold_shadow"])
+    if "control_threshold_shadow" in st.session_state:
+        st.session_state["control_threshold"] = float(st.session_state["control_threshold_shadow"])
+    if "control_budget_shadow" in st.session_state:
+        st.session_state["control_budget"] = int(st.session_state["control_budget_shadow"])
+        st.session_state.setdefault("control_budget_text", str(int(st.session_state["control_budget_shadow"])))
+    if "control_target_cap_shadow" in st.session_state:
+        st.session_state["control_target_cap"] = int(st.session_state["control_target_cap_shadow"])
+        st.session_state.setdefault("control_target_cap_text", str(int(st.session_state["control_target_cap_shadow"])))
+    if "control_top_n_shadow" in st.session_state:
+        st.session_state["control_top_n"] = int(st.session_state["control_top_n_shadow"])
+    if "control_recommendation_per_customer_shadow" in st.session_state:
+        st.session_state["control_recommendation_per_customer"] = int(st.session_state["control_recommendation_per_customer_shadow"])
+
+
+def _init_url_state() -> None:
+    """URL query parameter를 최초 1회만 session_state로 복원한다.
+
+    이전 구현은 매 rerun마다 URL의 old view 값을 session_state에 다시 덮어써서,
+    사용자가 radio에서 2/3/4번 화면을 눌러도 다음 rerun 시작 시 다시 1번으로
+    회귀하는 현상이 발생했다.
+    """
+    try:
+        qp = st.query_params
+    except Exception:
+        return
+
+    already_initialized = bool(st.session_state.get("_url_state_initialized"))
+
+    lang = qp.get("lang")
+    if not already_initialized and lang in LANGUAGE_LABEL_BY_CODE:
+        st.session_state["language_code"] = lang
+    else:
+        st.session_state.setdefault("language_code", "ko")
+
+    mode = qp.get("mode")
+    if not already_initialized and mode in {"finance", "ecommerce", "user"}:
+        st.session_state["data_mode"] = mode
+        st.session_state["domain_mode"] = mode
+    else:
+        st.session_state.setdefault("data_mode", "ecommerce")
+        st.session_state.setdefault("domain_mode", st.session_state.get("data_mode", "ecommerce"))
+
+    view_q = qp.get("view")
+    if not already_initialized and view_q:
+        view_q = LEGACY_VIEW_REDIRECTS.get(view_q, view_q)
+        if view_q in DASHBOARD_VIEW_OPTIONS:
+            st.session_state["dashboard_view"] = view_q
+
+    if not already_initialized and qp.get("dashboard") == "1":
+        st.session_state["wizard_dismissed"] = True
+
+    st.session_state["_url_state_initialized"] = True
+
+
+_init_url_state()
+
 bundle = load_app_data()
 
 customers = bundle.customer_summary
 cohort_df = bundle.cohort_retention
 
 render_hero(
-    "고객 이탈 예측·개입 최적화·ROI 분석 플랫폼",
-    "누가 이탈할 가능성이 높은지뿐 아니라, 언제 개입해야 하는지, 누구에게 예산을 우선 배분할지, " \
-    "어떤 액션을 추천할지까지 연결해 보여주는 운영형 리텐션 분석 플랫폼입니다.",
+    T("고객 이탈 예측·개입 최적화·ROI 분석 플랫폼"),
+    T("누가 이탈할 가능성이 높은지뿐 아니라, 언제 개입해야 하는지, 누구에게 예산을 우선 배분할지, 어떤 액션을 추천할지까지 연결해 보여주는 운영형 리텐션 분석 플랫폼입니다."),
 )
 
 if bundle.used_mock:
@@ -3716,23 +5664,35 @@ if bundle.used_mock:
 _wizard_active = _render_wizard()
 
 with st.sidebar:
-    st.header("제어 패널")
+    st.header(T("제어 패널"))
+    _current_lang_label = LANGUAGE_LABEL_BY_CODE.get(st.session_state.get("language_code", "ko"), "한국어")
+    _selected_lang_label = st.selectbox(T("언어"), options=list(LANGUAGE_OPTIONS.keys()), index=list(LANGUAGE_OPTIONS.keys()).index(_current_lang_label), key="language_selector")
+    _new_lang_code = LANGUAGE_OPTIONS[_selected_lang_label]
+    if _new_lang_code != st.session_state.get("language_code"):
+        # Preserve analysis controls before language-only rerun.
+        _snapshot_analysis_controls()
+        st.session_state["language_code"] = _new_lang_code
+        _set_query_param_if_changed("lang", _new_lang_code)
+        st.rerun()
 
     if _wizard_active:
         uploaded_file = None
-        selected_mode = st.session_state.get("data_mode", "simulator")
+        selected_mode = _business_mode()
     else:
-        # 첫 화면 돌아가기 (최상단)
-        if st.button("🏠 첫 화면으로 돌아가기", key="reset_wizard_btn", use_container_width=True):
+        if st.button(f"🏠 {T('모드/데이터셋 변경')}", key="reset_wizard_btn", use_container_width=True):
             st.session_state["wizard_dismissed"] = False
             st.session_state["wizard_step"] = 0
             st.session_state.pop("wizard_mapping_preview", None)
+            st.query_params["dashboard"] = "0"
             st.rerun()
 
-        selected_mode = st.session_state.get("data_mode", "simulator")
-        _mode_label = "🧪 시뮬레이터 데모" if selected_mode == "simulator" else "📂 자사 데이터"
-        st.subheader(f"현재 분석 모드")
-        st.caption(_mode_label)
+        selected_mode = _business_mode()
+        st.subheader(T("현재 분석 모드"))
+        st.caption(_domain_label(selected_mode))
+        _meta = _load_dataset_metadata(selected_mode)
+        _dataset_name = st.session_state.get("active_dataset_filename") or _meta.get("filename") or T("미선택")
+        st.subheader(T("사용 데이터셋"))
+        st.caption(str(_dataset_name))
 
         uploaded_file = None
 
@@ -4004,14 +5964,12 @@ with st.sidebar:
                     help="체크하면 시스템이 가짜 이벤트를 생성해서 학습합니다. 결과 해석에 주의하세요.",
                 )
 
-            st.markdown("### ⚙️ 학습 설정")
-            col1, col2 = st.columns(2)
-            with col1:
-                upload_budget = st.number_input("학습 예산", value=5_000_000, step=100000, key="upload_budget")
-            with col2:
-                upload_threshold = st.slider("학습 이탈 Threshold", 0.10, 0.90, 0.50, 0.01, key="upload_threshold")
+            st.markdown(f"### ⚙️ {T('학습 설정')}")
+            upload_budget = int(st.session_state.get("control_budget", 5_000_000))
+            upload_threshold = float(st.session_state.get("control_threshold", 0.50))
+            st.info(T("학습 단계에서는 예산과 이탈 임계값을 조절하지 않습니다. 학습이 끝난 뒤 대시보드의 분석 컨트롤에서 운영 조건을 바꿔 비교하세요."))
 
-            st.markdown("### 📛 이탈 고객 정의")
+            st.markdown(f"### 📛 {T('이탈 고객 정의')}")
             recommended_churn_days = int(getattr(preview, "recommended_churn_days", None) or 30)
             st.caption(
                 "마지막 활동(이벤트/주문) 이후 며칠 동안 활동이 없으면 \"이탈\"로 분류할지 정합니다. "
@@ -4049,7 +6007,7 @@ with st.sidebar:
                 import threading
                 import time as _time
 
-                progress_bar = st.progress(0, text="시작 중...")
+                progress_bar = st.progress(0, text=T("시작 중..."))
                 status_text = st.empty()
                 try:
                     _result_holder: dict = {}
@@ -4119,7 +6077,9 @@ with st.sidebar:
                             # 학습 산출물(results_user/models_user/feature_store_user)이 생성된 직후
                             # 이를 PostgreSQL user-live serving table에 자동 적재한다.
                             # 이후 curl로 /api/v1/user-live/events를 호출하면 바로 feature/state/score/action이 갱신된다.
+                            live_sync_report = _sync_domain_artifacts_for_live_seed(_business_mode())
                             live_seed_result = seed_user_live_from_artifacts(reset=True)
+                            _save_live_seed_metadata(_business_mode(), live_seed_result, live_sync_report)
                             st.session_state["user_live_seed_result"] = live_seed_result
                             st.session_state.pop("user_live_seed_error", None)
                         except Exception as _seed_exc:
@@ -4195,6 +6155,8 @@ with st.sidebar:
     if _wizard_active:
         st.stop()
 
+    _restore_analysis_controls_from_shadow()
+
     st.session_state.setdefault("dashboard_view", DASHBOARD_VIEW_OPTIONS[0])
     st.session_state["dashboard_view"] = LEGACY_VIEW_REDIRECTS.get(
         st.session_state.get("dashboard_view", DASHBOARD_VIEW_OPTIONS[0]),
@@ -4224,52 +6186,44 @@ with st.sidebar:
     st.session_state.setdefault("control_target_cap", 1500)
     st.session_state.setdefault("control_recommendation_per_customer", 3)
 
-group_labels = [group for group, _ in DASHBOARD_VIEW_GROUPS]
-
-_group_icons = {
-    "고객 현황": "📊",
-    "타겟팅·예산": "🎯",
-    "운영·리스크": "⚡",
-    "모델 검증·진단": "🧪",
-}
-_group_label_with_icon = lambda g: f"{_group_icons.get(g, '')} {g}"
-
-# 대분류 라디오 (가로)
-selected_group = st.radio(
-    "🗂 분석 분야",
-    options=group_labels,
-    format_func=_group_label_with_icon,
-    horizontal=True,
-    key="dashboard_group",
-)
-
-group_options = list(GROUP_TO_VIEW_OPTIONS.get(selected_group, DASHBOARD_VIEW_OPTIONS))
+selected_group = "핵심 화면"
+group_options = list(DASHBOARD_VIEW_OPTIONS)
 if st.session_state.get("dashboard_view") not in group_options:
     st.session_state["dashboard_view"] = group_options[0]
 
 view = st.radio(
-    f"📌 세부 화면 ({_group_label_with_icon(selected_group)})",
+    f"📌 {T('분석 화면')}",
     options=group_options,
     format_func=_view_title_from_option,
     horizontal=True,
     key="dashboard_view",
 )
+_set_query_param_if_changed("view", view)
+_set_query_param_if_changed("mode", _business_mode())
+_set_query_param_if_changed("dashboard", "1" if st.session_state.get("wizard_dismissed") else st.query_params.get("dashboard", "0"))
+_set_query_param_if_changed("lang", st.session_state.get("language_code", "ko"))
 
 with st.sidebar:
     st.divider()
-    st.markdown("#### ⚙️ 분석 컨트롤")
+    st.markdown(f"#### ⚙️ {T('분석 컨트롤')}")
 
+    if "control_threshold_widget" not in st.session_state:
+        st.session_state["control_threshold_widget"] = float(
+            st.session_state.get("control_threshold", CONTROL_DEFAULTS["control_threshold"])
+        )
     threshold = st.slider(
-        "이탈 Threshold",
+        T("이탈 임계값"),
         min_value=0.10,
         max_value=0.90,
         step=0.01,
-        key="control_threshold",
-        help="이 값 이상인 고객을 이탈 위험군으로 간주합니다. 모든 화면에서 동일하게 유지됩니다.",
+        key="control_threshold_widget",
+        help=T("이 값 이상인 고객을 이탈 위험군으로 간주합니다. 모든 화면에서 동일하게 유지됩니다."),
     )
+    st.session_state["control_threshold"] = float(threshold)
+    st.session_state["control_threshold_shadow"] = float(threshold)
 
     budget_raw = st.text_input(
-        "총 마케팅 예산",
+        T("총 마케팅 예산"),
         key="control_budget_text",
         help="상한 없이 입력 가능합니다. 쉼표 없이 숫자만 입력해도 됩니다.",
     )
@@ -4280,6 +6234,7 @@ with st.sidebar:
         default=int(st.session_state.get("control_budget", 5_000_000)),
     )
         st.session_state["control_budget"] = budget
+        st.session_state["control_budget_shadow"] = int(budget)
     except ValueError:
         st.warning("총 마케팅 예산은 0 이상의 정수로 입력해야 합니다.")
         budget = int(st.session_state.get("control_budget", 5_000_000))
@@ -4290,7 +6245,7 @@ with st.sidebar:
         )
 
     target_cap_raw = st.text_input(
-        "최대 타겟 고객 수",
+        T("최대 타겟 고객 수"),
         key="control_target_cap_text",
         help="상한 없이 입력 가능합니다. 1 이상의 정수만 입력하세요.",
     )
@@ -4303,6 +6258,7 @@ with st.sidebar:
         if target_cap <= 0:
             raise ValueError("최대 타겟 고객 수는 1 이상의 정수여야 합니다.")
         st.session_state["control_target_cap"] = target_cap
+        st.session_state["control_target_cap_shadow"] = int(target_cap)
     except ValueError:
         st.warning("최대 타겟 고객 수는 1 이상의 정수로 입력해야 합니다.")
         target_cap = int(st.session_state.get("control_target_cap", 1500))
@@ -4310,32 +6266,43 @@ with st.sidebar:
     # top_n은 실시간/설명가능성/리스크 화면에서 주로 쓰지만,
     # 화면 이동 시 값이 사라지지 않도록 항상 렌더링한다.
     top_n = st.slider(
-        "차트 기준 표시 고객 수",
+        T("차트 기준 표시 고객 수"),
         min_value=5,
         max_value=200,
         step=5,
         key="control_top_n",
     )
+    st.session_state["control_top_n_shadow"] = int(top_n)
 
     if view == "5. 개인화 추천":
         st.caption("최종 리텐션 타겟 고객군(예산/임계값 적용)에게만 추천을 생성합니다.")
+        if "control_recommendation_per_customer_widget" not in st.session_state:
+            st.session_state["control_recommendation_per_customer_widget"] = int(
+                st.session_state.get("control_recommendation_per_customer", CONTROL_DEFAULTS["control_recommendation_per_customer"])
+            )
         recommendation_per_customer = st.slider(
-            "고객당 추천 개수",
+            T("고객당 추천 개수"),
             min_value=1,
             max_value=5,
             step=1,
-            key="control_recommendation_per_customer",
-            value=3,
+            key="control_recommendation_per_customer_widget",
         )
+        st.session_state["control_recommendation_per_customer"] = int(recommendation_per_customer)
     else:
-        recommendation_per_customer = int(st.session_state["control_recommendation_per_customer"])
+        recommendation_per_customer = int(st.session_state.get("control_recommendation_per_customer", CONTROL_DEFAULTS["control_recommendation_per_customer"]))
 
-    preview_selected_customers, _, _ = get_budget_result(
+    preview_selected_customers, preview_optimize_summary, preview_segment_allocation = get_budget_result(
         customers,
         budget=budget,
         threshold=threshold,
         max_customers=target_cap,
     )
+    st.session_state["_last_preview_budget_key"] = (
+        _business_mode(), float(threshold), int(budget), int(target_cap), _raw_data_token(_business_mode())
+    )
+    st.session_state["_last_preview_selected_customers"] = preview_selected_customers
+    st.session_state["_last_preview_optimize_summary"] = preview_optimize_summary
+    st.session_state["_last_preview_segment_allocation"] = preview_segment_allocation
     st.caption(
         f"현재 공통 조건: threshold={float(threshold):.2f} / "
         f"예산={int(budget):,}원 / 최종 타겟 고객 수={int(len(preview_selected_customers)):,}명"
@@ -4343,13 +6310,13 @@ with st.sidebar:
 
 with st.sidebar:
     st.divider()
-    st.subheader("실행 / 새로고침")
+    st.subheader(T("실행 / 새로고침"))
     if notice := st.session_state.pop("dashboard_refresh_notice", None):
         st.success(notice)
     if warning := st.session_state.pop("dashboard_refresh_warning", None):
         st.warning(warning)
 
-    if st.button("데이터/결과 새로고침", use_container_width=True):
+    if st.button(T("데이터/결과 새로고침"), use_container_width=True):
         refresh_notice = None
         refresh_warning = None
         if view in REALTIME_REFRESH_VIEWS:
@@ -4370,19 +6337,23 @@ with st.sidebar:
             st.session_state["dashboard_refresh_warning"] = refresh_warning
         st.rerun()
 
-    st.caption("실시간 화면에서는 새로고침 시 스트림을 조금씩 더 재생해 수치가 변하도록 했습니다. 나머지 화면은 캐시를 비우고 다시 계산합니다.")
+    st.caption(T("실시간 화면에서는 새로고침 시 스트림을 조금씩 더 재생해 수치가 변하도록 했습니다. 나머지 화면은 캐시를 비우고 다시 계산합니다."))
 
     st.divider()
-    st.subheader("LLM 설정")
-    st.caption("권장: API 키는 코드에 쓰지 말고 환경변수 OPENAI_API_KEY 또는 Streamlit secrets로 관리하세요.")
+    st.subheader(T("LLM 설정"))
+    st.caption(T("권장: API 키는 코드에 쓰지 말고 환경변수 OPENAI_API_KEY 또는 Streamlit secrets로 관리하세요."))
 
-    llm_enabled = st.toggle("LLM 요약/질문 기능 사용", value=True)
-    llm_api_key = st.text_input(
-        "OpenAI API Key (선택)",
-        type="password",
-        help="비워두면 OPENAI_API_KEY 환경변수를 사용합니다.",
+    llm_enabled = st.toggle(
+        T("LLM 요약/질문 기능 사용"),
+        value=bool(os.getenv("OPENAI_API_KEY")),
+        key="llm_enabled",
     )
-    st.caption("모델이 목록에 없으면 '직접 입력'을 선택해서 모델명을 넣어주세요.")
+    llm_api_key = st.text_input(
+        T("OpenAI API Key (선택)"),
+        type="password",
+        help=T("비워두면 OPENAI_API_KEY 환경변수를 사용합니다."),
+    )
+    st.caption(T("모델이 목록에 없으면 '직접 입력'을 선택해서 모델명을 넣어주세요."))
     _llm_presets = [
         ("GPT-4.1 mini (default)", DEFAULT_MODEL_NAME),
         ("GPT-4.1", "gpt-4.1"),
@@ -4395,33 +6366,42 @@ with st.sidebar:
     _llm_preset_labels = [label for label, _ in _llm_presets]
     _llm_preset_models = {label: model for label, model in _llm_presets}
     _default_label = next((label for label, model in _llm_presets if model == DEFAULT_MODEL_NAME), _llm_presets[0][0])
-    llm_model_choice = st.selectbox("LLM 모델 선택", options=_llm_preset_labels, index=_llm_preset_labels.index(_default_label))
+    llm_model_choice = st.selectbox(T("LLM 모델 선택"), options=_llm_preset_labels, index=_llm_preset_labels.index(_default_label))
     _chosen_model = _llm_preset_models.get(llm_model_choice, DEFAULT_MODEL_NAME)
     if _chosen_model == "__custom__":
-        llm_model = st.text_input("LLM 모델명 (직접 입력)", value=DEFAULT_MODEL_NAME)
+        llm_model = st.text_input(T("LLM 모델명 (직접 입력)"), value=DEFAULT_MODEL_NAME)
     else:
         llm_model = _chosen_model
 
     env_key_configured = bool(os.getenv("OPENAI_API_KEY"))
     if env_key_configured and not llm_api_key:
-        st.caption("현재 OPENAI_API_KEY 환경변수를 사용하도록 설정되어 있습니다.")
+        st.caption(T("현재 OPENAI_API_KEY 환경변수를 사용하도록 설정되어 있습니다."))
 
 live_payload = _load_user_live_tables(
     top_n=int(top_n),
     target_cap=int(target_cap),
+    view=view,
 )
+
+_use_live_payload = _live_payload_matches_current_dataset(live_payload, customers)
 
 if _is_user_live_mode():
     _render_user_live_status(live_payload)
+    if not _use_live_payload and not live_payload.get("scores", pd.DataFrame()).empty:
+        st.info(T("현재 데이터셋과 Live DB가 일치하지 않아 CSV/결과 파일 기준으로 표시합니다."))
 
-if _is_user_live_mode() and not live_payload.get("scores", pd.DataFrame()).empty:
+if _use_live_payload and not live_payload.get("scores", pd.DataFrame()).empty:
     customers = _rename_live_score_columns(live_payload["scores"])
 
 churn_summary, risk_customers = get_churn_status(customers, threshold)
-cohort_curve = get_cohort_curve(cohort_df)
-top_customers = get_top_high_value_customers(customers, top_n=None)
+cohort_curve = pd.DataFrame()
+top_customers = pd.DataFrame()
+if view == "2. 코호트 리텐션 분석":
+    cohort_curve = get_cohort_curve(cohort_df)
+if view == "3. Uplift + CLV 상위 고객":
+    top_customers = get_top_high_value_customers(customers, top_n=None)
 
-if _is_user_live_mode() and not live_payload.get("actions", pd.DataFrame()).empty:
+if _use_live_payload and not live_payload.get("actions", pd.DataFrame()).empty:
     selected_customers, optimize_summary, segment_allocation = _build_live_optimize_payload(
         live_payload["actions"],
         budget=budget,
@@ -4430,12 +6410,20 @@ if _is_user_live_mode() and not live_payload.get("actions", pd.DataFrame()).empt
         scores_df=live_payload.get("scores", pd.DataFrame()),
     )
 else:
-    selected_customers, optimize_summary, segment_allocation = get_budget_result(
-        customers,
-        budget=budget,
-        threshold=threshold,
-        max_customers=target_cap,
+    _preview_key = (
+        _business_mode(), float(threshold), int(budget), int(target_cap), _raw_data_token(_business_mode())
     )
+    if st.session_state.get("_last_preview_budget_key") == _preview_key:
+        selected_customers = st.session_state.get("_last_preview_selected_customers", pd.DataFrame())
+        optimize_summary = st.session_state.get("_last_preview_optimize_summary", {})
+        segment_allocation = st.session_state.get("_last_preview_segment_allocation", pd.DataFrame())
+    else:
+        selected_customers, optimize_summary, segment_allocation = get_budget_result(
+            customers,
+            budget=budget,
+            threshold=threshold,
+            max_customers=target_cap,
+        )
 
 # 외부 CSV/user 결과에서는 일부 정렬·표시 컬럼이 없을 수 있으므로
 # 모든 downstream 화면이 같은 스키마를 보도록 즉시 보정한다.
@@ -4443,7 +6431,7 @@ selected_customers = _ensure_retention_target_schema(selected_customers)
 
 baseline_selected_customers, baseline_optimize_summary, baseline_segment_allocation = pd.DataFrame(), {}, pd.DataFrame()
 
-retention_targets = get_retention_targets(customers, threshold)
+retention_targets = pd.DataFrame()
 
 if view == "5. 개인화 추천":
     if _is_user_live_mode():
@@ -4477,7 +6465,7 @@ else:
     recommendation_error = None
 
 if view == "6. 실시간 운영 모니터":
-    if _is_user_live_mode():
+    if _use_live_payload:
         realtime_scores = _live_scores_to_realtime_df(
             live_payload.get("scores", pd.DataFrame()),
             live_payload.get("actions", pd.DataFrame()),
@@ -4500,20 +6488,35 @@ if view == "6. 실시간 운영 모니터":
         }
         realtime_error = live_payload.get("score_summary", {}).get("error") if isinstance(live_payload.get("score_summary"), dict) else None
     else:
-        try:
-            realtime_summary, realtime_scores = fetch_realtime_scores(limit=max(int(top_n), 500))
-        except Exception as exc:
-            realtime_summary, realtime_scores = {}, pd.DataFrame()
-            realtime_error = str(exc)
+        if _is_user_live_mode():
+            try:
+                _bundle = load_insight_data()
+                realtime_scores = _bundle.realtime_scores.copy().head(max(int(top_n), 500))
+                realtime_summary = {
+                    "tracked_customers": int(len(realtime_scores)),
+                    "high_risk_customers": int((pd.to_numeric(realtime_scores.get("realtime_churn_score", realtime_scores.get("churn_score", pd.Series(dtype=float))), errors="coerce") >= threshold).sum()) if not realtime_scores.empty else 0,
+                    "processed_events": 0,
+                    "source": "current_mode_result_files",
+                }
+                realtime_error = None
+            except Exception as exc:
+                realtime_summary, realtime_scores = {}, pd.DataFrame()
+                realtime_error = str(exc)
         else:
-            realtime_error = None
+            try:
+                realtime_summary, realtime_scores = fetch_realtime_scores(limit=max(int(top_n), 500))
+            except Exception as exc:
+                realtime_summary, realtime_scores = {}, pd.DataFrame()
+                realtime_error = str(exc)
+            else:
+                realtime_error = None
 else:
     realtime_summary, realtime_scores = {}, pd.DataFrame()
     realtime_error = None
 
 if view == "9. 이탈 시점 예측 (Survival Analysis)":
-    if st.session_state.get("data_mode", "simulator") == "user":
-        _mode_result_dir = Path(_resolve_result_dir_for_mode("user"))
+    if _business_mode() in BUSINESS_UPLOAD_MODES:
+        _mode_result_dir = Path(_resolve_result_dir_for_mode(_business_mode()))
         _bundle = load_insight_data()
         survival_metrics = {}
         _metrics_path = _mode_result_dir / "survival_metrics.json"
@@ -4555,7 +6558,7 @@ coupon_risk_overview: dict[str, Any] = {}
 data_diagnostics: dict[str, Any] = {}
 customer_explanations = pd.DataFrame()
 
-if view in INSIGHT_HEAVY_VIEWS and not (view == "6. 실시간 운영 모니터" and _is_user_live_mode()):
+if view in INSIGHT_HEAVY_VIEWS and not (view == "6. 실시간 운영 모니터" and _use_live_payload):
     insight_bundle = load_insight_data()
     if recommendation_context_df.empty:
         recommendation_context_df = insight_bundle.personalized_recommendations.copy()
@@ -4587,7 +6590,7 @@ if view in INSIGHT_HEAVY_VIEWS and not (view == "6. 실시간 운영 모니터" 
     if view == "7. 할인·쿠폰 운영 리스크":
         coupon_risk_overview = build_coupon_risk_overview(insight_bundle)
 
-    if view == "11. 설명가능성 / 고객별 개입 이유":
+    if view in {"4. 예산 최적화 및 리텐션 타겟", "11. 설명가능성 / 고객별 개입 이유"}:
         global_feature_table = build_global_feature_table(insight_bundle)
         explanation_limit = max(int(len(selected_customers)) if not selected_customers.empty else int(len(insight_bundle.optimization_selected_customers)), int(top_n), 1)
         customer_explanations = build_customer_explanations(
@@ -4600,10 +6603,10 @@ if view in INSIGHT_HEAVY_VIEWS and not (view == "6. 실시간 운영 모니터" 
         )
 
 c1, c2, c3, c4 = st.columns(4)
-c1.metric("전체 고객 수", f"{churn_summary['total_customers']:,}")
-c2.metric("이탈 위험 고객 수", f"{churn_summary['at_risk_customers']:,}")
-c3.metric("위험 고객 비율", pct(churn_summary["risk_rate"]))
-c4.metric("평균 이탈 확률", pct(churn_summary["avg_churn_prob"]))
+c1.metric(T("전체 고객 수"), f"{churn_summary['total_customers']:,}")
+c2.metric(T("이탈 위험 고객 수"), f"{churn_summary['at_risk_customers']:,}")
+c3.metric(T("위험 고객 비율"), pct(churn_summary["risk_rate"]))
+c4.metric(T("평균 이탈 확률"), pct(churn_summary["avg_churn_prob"]))
 
 st.divider()
 
@@ -4624,57 +6627,40 @@ if view == "1. 이탈현황":
         "시뮬레이터 데모에서는 python src/main.py --mode simulate --force --randomize → features → train 순서로 실행한 뒤 새로고침하세요.",
     ):
         st.stop()
-    st.subheader("이탈현황")
+    st.subheader(T("이탈 현황"))
+    _render_view_intro("1")
 
-    col1, col2 = st.columns([1.2, 1])
+    hist_fig = px.histogram(
+        customers,
+        x="churn_probability",
+        nbins=30,
+        title="고객별 이탈 확률 분포" if _language_code() == "ko" else ("Customer Churn Probability Distribution" if _language_code() == "en" else "顧客別離脱確率分布"),
+    )
+    hist_fig.update_traces(
+        marker_line_color="rgba(255,255,255,0.95)",
+        marker_line_width=1.2,
+        opacity=0.9,
+    )
+    hist_fig.update_layout(bargap=0.02)
+    hist_fig.add_vline(x=threshold, line_dash="dash", annotation_text=f"Threshold={threshold:.2f}")
+    st.plotly_chart(hist_fig, use_container_width=True)
 
-    with col1:
-        hist_fig = px.histogram(
-            customers,
-            x="churn_probability",
-            nbins=30,
-            title="고객별 이탈 확률 분포",
-        )
-        hist_fig.update_traces(
-            marker_line_color="rgba(255,255,255,0.95)",
-            marker_line_width=1.2,
-            opacity=0.9,
-        )
+    # 페르소나별 그래프는 해커톤 발표용 핵심 화면 단순화를 위해 제거했다.
+    # 단, LLM 요약과 내부 해석에는 사용할 수 있도록 집계값은 유지한다.
+    persona_risk = (
+        risk_customers.groupby("persona", as_index=False)
+        .agg(at_risk_count=("customer_id", "count"))
+        .sort_values("at_risk_count", ascending=False)
+    ) if "persona" in risk_customers.columns and not risk_customers.empty else pd.DataFrame()
 
-        hist_fig.update_layout(
-            bargap=0.02,
-        )
-
-        hist_fig.add_vline(
-            x=threshold,
-            line_dash="dash",
-            annotation_text=f"Threshold={threshold:.2f}",
-        )
-        st.plotly_chart(hist_fig, use_container_width=True)
-
-    with col2:
-        persona_risk = (
-            risk_customers.groupby("persona", as_index=False)
-            .agg(at_risk_count=("customer_id", "count"))
-            .sort_values("at_risk_count", ascending=False)
-        )
-
-        bar_fig = px.bar(
-            persona_risk,
-            x="persona",
-            y="at_risk_count",
-            title="페르소나별 이탈 위험 고객 수",
-        )
-        st.plotly_chart(bar_fig, use_container_width=True)
-
-    st.markdown("### 이탈 위험 고객 목록")
+    st.markdown(f"### {T('이탈 위험 고객 목록')}")
     display_df = risk_customers[
         ["customer_id", "persona", "churn_probability", "clv", "uplift_score", "uplift_segment"]
     ].copy()
     display_df["churn_probability"] = display_df["churn_probability"].map(lambda x: f"{x:.3f}")
     display_df["clv"] = display_df["clv"].map(money)
     display_df["uplift_score"] = display_df["uplift_score"].map(lambda x: f"{x:.3f}")
-    _render_dataframe_with_count(display_df, label="이탈 위험 고객 목록")
+    _render_dataframe_with_count(display_df, label=T("이탈 위험 고객 목록"))
 
     llm_payload = {
         "threshold": threshold,
@@ -4978,19 +6964,19 @@ elif view == "4. 예산 최적화 및 리텐션 타겟":
         "예산 최적화 및 리텐션 타겟",
         _opt_has_data,
         "예산 최적화 결과 또는 리텐션 타겟 산출물이 없습니다.",
-        "시뮬레이터 데모에서는 python src/main.py --mode optimize 및 --mode recommend 를 실행한 뒤 새로고침하세요.",
+        "CSV를 업로드해 학습을 실행한 뒤 새로고침하세요.",
     ):
         st.stop()
-    st.subheader("예산 최적화 및 리텐션 타겟")
-    st.caption("기존의 예산 배분, 예상 ROI, 리텐션 대상 고객 목록을 하나로 병합했습니다. 같은 selected_customers/optimize_summary 결과를 반복 표시하지 않도록 탭으로만 구분합니다.")
+    st.subheader(T("예산 최적화 및 리텐션 타겟"))
+    _render_view_intro("4")
+    st.caption(T("예산 배분 후보, 최종 선정 고객, 고객별 선택 이유만 남긴 핵심 운영 화면입니다."))
 
-    m1, m2, m3, m4, m5, m6 = st.columns(6)
-    m1.metric("총 예산", money(optimize_summary.get("budget", budget)))
-    m2.metric("집행 예산", money(optimize_summary.get("spent", 0)))
-    m3.metric("잔여 예산", money(optimize_summary.get("remaining", 0)))
-    m4.metric("타겟 고객 수", f"{int(optimize_summary.get('num_targeted', len(selected_customers))):,}")
-    m5.metric("예상 증분 이익", money(optimize_summary.get("expected_incremental_profit", 0)))
-    m6.metric("예상 ROI", pct(float(optimize_summary.get("overall_roi", 0.0))))
+    m1, m2, m3, m4, m5 = st.columns(5)
+    m1.metric(T("총 예산"), money(optimize_summary.get("budget", budget)))
+    m2.metric(T("집행 예산"), money(optimize_summary.get("spent", 0)))
+    m3.metric(T("잔여 예산"), money(optimize_summary.get("remaining", 0)))
+    m4.metric(T("타겟 고객 수"), f"{int(optimize_summary.get('num_targeted', len(selected_customers))):,}")
+    m5.metric(T("예상 증분 이익"), money(optimize_summary.get("expected_incremental_profit", 0)))
 
     selected_customers = _ensure_retention_target_schema(selected_customers)
     optimized_targets = selected_customers.sort_values(
@@ -4998,142 +6984,141 @@ elif view == "4. 예산 최적화 및 리텐션 타겟":
         ascending=[False, False, False, True],
     ).copy() if not selected_customers.empty else pd.DataFrame()
 
-    tab_budget, tab_roi, tab_targets = st.tabs(["예산 배분", "ROI 분포", "선정 고객"])
-
-    with tab_budget:
-        candidate_by_segment = pd.DataFrame(
-            {
-                "uplift_segment": list(optimize_summary.get("candidate_segment_counts", {}).keys()),
-                "candidate_customer_count": list(optimize_summary.get("candidate_segment_counts", {}).values()),
-            }
+    st.markdown(f"### {T('세그먼트별 예산 배분 후보 고객 수')}")
+    candidate_by_segment = pd.DataFrame(
+        {
+            "uplift_segment": list(optimize_summary.get("candidate_segment_counts", {}).keys()),
+            "candidate_customer_count": list(optimize_summary.get("candidate_segment_counts", {}).values()),
+        }
+    )
+    if candidate_by_segment.empty and not segment_allocation.empty and "uplift_segment" in segment_allocation.columns:
+        candidate_by_segment = (
+            segment_allocation.groupby("uplift_segment", as_index=False)
+            .agg(candidate_customer_count=("customer_count", "sum"))
+            .sort_values("candidate_customer_count", ascending=False)
         )
-        if not candidate_by_segment.empty:
-            cand_fig = px.bar(
-                candidate_by_segment,
-                x="uplift_segment",
-                y="candidate_customer_count",
-                text="candidate_customer_count",
-                title="세그먼트별 예산 배분 후보 고객 수",
-            )
-            st.plotly_chart(cand_fig, use_container_width=True)
+    if not candidate_by_segment.empty:
+        candidate_by_segment = _translate_dataframe_values_for_display(candidate_by_segment)
+        cand_fig = px.bar(
+            candidate_by_segment,
+            x="uplift_segment",
+            y="candidate_customer_count",
+            text="candidate_customer_count",
+            title=T("세그먼트별 예산 배분 후보 고객 수"),
+        )
+        st.plotly_chart(cand_fig, use_container_width=True)
+        _render_dataframe_with_count(candidate_by_segment, label=T("세그먼트별 예산 배분 후보 고객 수"), prefer_static=True)
+    else:
+        st.info(T("세그먼트별 후보 고객 수를 계산할 데이터가 없습니다."))
 
-        if segment_allocation.empty or int(optimize_summary.get("num_targeted", 0)) == 0:
-            st.warning("현재 조건에서 예산 배분 대상 고객이 없습니다.")
-        else:
-            chart_df = segment_allocation.copy()
-            label_threshold = float(chart_df["allocated_budget"].max()) * 0.08 if not chart_df.empty else 0.0
+    if segment_allocation.empty or int(optimize_summary.get("num_targeted", 0)) == 0:
+        st.warning(T("현재 조건에서 예산 배분 대상 고객이 없습니다."))
+    else:
+        st.markdown(f"### {T('세그먼트별 예산 배분 테이블')}")
+        chart_df = _translate_dataframe_values_for_display(segment_allocation.copy())
+        label_threshold = float(chart_df["allocated_budget"].max()) * 0.08 if "allocated_budget" in chart_df.columns and not chart_df.empty else 0.0
+        if "customer_count" in chart_df.columns and "allocated_budget" in chart_df.columns:
             chart_df["customer_count_label"] = np.where(
                 (chart_df["customer_count"] >= 5) | (chart_df["allocated_budget"] >= label_threshold),
                 chart_df["customer_count"].astype(int).astype(str),
                 "",
             )
+        if "allocated_budget" in chart_df.columns:
             if "intervention_intensity" in chart_df.columns and chart_df["intervention_intensity"].nunique() > 1:
                 bar_fig = px.bar(
                     chart_df,
-                    x="uplift_segment",
+                    x="uplift_segment" if "uplift_segment" in chart_df.columns else chart_df.index,
                     y="allocated_budget",
                     color="intervention_intensity",
                     barmode="group",
-                    text="customer_count_label",
-                    hover_data=["customer_count", "expected_profit"],
-                    title="세그먼트·개입 강도별 예산 배분",
+                    text="customer_count_label" if "customer_count_label" in chart_df.columns else None,
+                    hover_data=[c for c in ["customer_count", "expected_profit"] if c in chart_df.columns],
+                    title=T("세그먼트·개입 강도별 예산 배분"),
                 )
-                bar_fig.update_layout(legend_title_text="개입 강도")
+                bar_fig.update_layout(legend_title_text=T("개입 강도"))
             else:
                 bar_fig = px.bar(
                     chart_df,
-                    x="uplift_segment",
+                    x="uplift_segment" if "uplift_segment" in chart_df.columns else chart_df.index,
                     y="allocated_budget",
-                    text="customer_count_label",
-                    hover_data=["customer_count", "expected_profit"],
-                    title="세그먼트별 예산 배분",
+                    text="customer_count_label" if "customer_count_label" in chart_df.columns else None,
+                    hover_data=[c for c in ["customer_count", "expected_profit"] if c in chart_df.columns],
+                    title=T("세그먼트별 예산 배분"),
                 )
             bar_fig.update_traces(textposition="outside", cliponaxis=False)
             st.plotly_chart(bar_fig, use_container_width=True)
+        display_df = _translate_dataframe_values_for_display(segment_allocation.copy())
+        if "allocated_budget" in display_df.columns:
+            display_df["allocated_budget"] = display_df["allocated_budget"].map(money)
+        if "expected_profit" in display_df.columns:
+            display_df["expected_profit"] = display_df["expected_profit"].map(money)
+        _render_dataframe_with_count(display_df, label=T("세그먼트별 예산 배분 테이블"))
 
-            display_df = segment_allocation.copy()
-            if "allocated_budget" in display_df.columns:
-                display_df["allocated_budget"] = display_df["allocated_budget"].map(money)
-            if "expected_profit" in display_df.columns:
-                display_df["expected_profit"] = display_df["expected_profit"].map(money)
-            _render_dataframe_with_count(display_df, label="세그먼트별 예산 배분 테이블")
+    st.markdown(f"### {T('최종 리텐션 타겟 고객 테이블')}")
+    if optimized_targets.empty:
+        st.warning(T("현재 조건에서 리텐션 타겟 고객이 없습니다."))
+    else:
+        display_columns = [
+            "customer_id",
+            "persona",
+            "uplift_segment",
+            "churn_probability",
+            "uplift_score",
+            "clv",
+            "intervention_intensity",
+            "recommended_action",
+            "coupon_cost",
+            "expected_incremental_profit",
+            "expected_roi",
+            "priority_score",
+            "recommended_intervention_window",
+        ]
+        display_df = optimized_targets[[col for col in display_columns if col in optimized_targets.columns]].copy()
+        if "churn_probability" in display_df.columns:
+            display_df["churn_probability"] = display_df["churn_probability"].map(lambda x: f"{float(x):.3f}" if pd.notna(x) else "")
+        if "uplift_score" in display_df.columns:
+            display_df["uplift_score"] = display_df["uplift_score"].map(lambda x: f"{float(x):.3f}" if pd.notna(x) else "")
+        if "clv" in display_df.columns:
+            display_df["clv"] = display_df["clv"].map(lambda x: money(float(x)) if pd.notna(x) else "")
+        if "coupon_cost" in display_df.columns:
+            display_df["coupon_cost"] = display_df["coupon_cost"].map(lambda x: money(float(x)) if pd.notna(x) else "")
+        if "expected_incremental_profit" in display_df.columns:
+            display_df["expected_incremental_profit"] = display_df["expected_incremental_profit"].map(lambda x: money(float(x)) if pd.notna(x) else "")
+        if "expected_roi" in display_df.columns:
+            display_df["expected_roi"] = display_df["expected_roi"].map(lambda x: f"{float(x):.2%}" if pd.notna(x) else "")
+        if "priority_score" in display_df.columns:
+            display_df["priority_score"] = display_df["priority_score"].map(lambda x: f"{float(x):.3f}" if pd.notna(x) else "")
+        _render_dataframe_with_count(
+            display_df,
+            label=T("최종 리텐션 타겟 고객 테이블"),
+            height=min(1100, 180 + 32 * len(display_df)),
+        )
 
-    with tab_roi:
-        if selected_customers.empty:
-            st.warning("현재 조건에서 ROI 계산 대상이 없습니다.")
-        else:
-            roi_fig = px.histogram(
-                selected_customers,
-                x="expected_roi",
-                nbins=25,
-                title="선정 고객의 예상 ROI 분포",
-            )
-            roi_fig.update_traces(marker_line_color="rgba(255,255,255,0.95)", marker_line_width=1.2, opacity=0.9)
-            roi_fig.update_layout(bargap=0.02)
-            st.plotly_chart(roi_fig, use_container_width=True)
-
-            roi_summary = selected_customers[[col for col in ["expected_roi", "coupon_cost", "expected_incremental_profit"] if col in selected_customers.columns]].describe().T.reset_index()
-            if not roi_summary.empty:
-                _render_dataframe_with_count(roi_summary, label="ROI·비용·기대이익 요약", prefer_static=True)
-
-    with tab_targets:
-        if optimized_targets.empty:
-            st.warning("현재 조건에서 리텐션 타겟 고객이 없습니다.")
-        else:
-            priority_chart_df = optimized_targets.head(min(15, len(optimized_targets))).copy()
-            priority_fig = px.bar(
-                priority_chart_df,
-                x="customer_id",
-                y="priority_score",
-                color="intervention_intensity" if "intervention_intensity" in priority_chart_df.columns else None,
-                hover_data=[col for col in ["churn_probability", "uplift_score", "clv", "expected_incremental_profit", "expected_roi"] if col in priority_chart_df.columns],
-                title="우선순위 상위 리텐션 대상 고객",
-            )
-            st.plotly_chart(priority_fig, use_container_width=True)
-
-            display_columns = [
-                "customer_id",
-                "persona",
-                "uplift_segment",
-                "churn_probability",
-                "uplift_score",
-                "clv",
-                "intervention_intensity",
-                "recommended_action",
-                "coupon_cost",
-                "expected_incremental_profit",
-                "expected_roi",
-                "priority_score",
-                "recommended_intervention_window",
-            ]
-            display_df = optimized_targets[[col for col in display_columns if col in optimized_targets.columns]].copy()
-            if "churn_probability" in display_df.columns:
-                display_df["churn_probability"] = display_df["churn_probability"].map(lambda x: f"{float(x):.3f}")
-            if "uplift_score" in display_df.columns:
-                display_df["uplift_score"] = display_df["uplift_score"].map(lambda x: f"{float(x):.3f}")
-            if "clv" in display_df.columns:
-                display_df["clv"] = display_df["clv"].map(money)
-            if "coupon_cost" in display_df.columns:
-                display_df["coupon_cost"] = display_df["coupon_cost"].map(money)
-            if "expected_incremental_profit" in display_df.columns:
-                display_df["expected_incremental_profit"] = display_df["expected_incremental_profit"].map(money)
-            if "expected_roi" in display_df.columns:
-                display_df["expected_roi"] = display_df["expected_roi"].map(lambda x: f"{float(x):.2%}")
-            if "priority_score" in display_df.columns:
-                display_df["priority_score"] = display_df["priority_score"].map(lambda x: f"{float(x):.3f}")
-            _render_dataframe_with_count(
-                display_df,
-                label="최종 리텐션 타겟 고객 테이블",
-                height=min(1100, 180 + 32 * len(display_df)),
-            )
+    st.markdown(f"### {T('고객별 선택 이유 / 주의사항')}")
+    if not customer_explanations.empty:
+        explain_df = customer_explanations.copy()
+        for col in ["churn_probability", "realtime_churn_score", "uplift_score", "expected_roi", "survival_prob_30d"]:
+            if col in explain_df.columns:
+                explain_df[col] = explain_df[col].map(lambda x: f"{float(x):.3f}" if pd.notna(x) else "")
+        for col in ["clv", "expected_incremental_profit"]:
+            if col in explain_df.columns:
+                explain_df[col] = explain_df[col].map(lambda x: money(float(x)) if pd.notna(x) else "")
+        _render_dataframe_with_count(
+            explain_df,
+            label=T("고객별 선택 이유 / 주의사항"),
+            height=min(760, 220 + 34 * len(explain_df)),
+        )
+    else:
+        st.info(T("고객별 설명 테이블을 만들 데이터가 부족합니다. 학습 파이프라인의 explainability 단계가 생성한 산출물을 확인하세요."))
 
     llm_payload = {
         "threshold": threshold,
         "budget": budget,
         "optimize_summary": optimize_summary,
+        "candidate_by_segment": candidate_by_segment.to_dict(orient="records") if not candidate_by_segment.empty else [],
         "segment_allocation": segment_allocation.round(4).to_dict(orient="records") if not segment_allocation.empty else [],
         "target_count": int(len(optimized_targets)),
-        "persona_distribution": series_distribution(optimized_targets, "persona") if not optimized_targets.empty else {},
+        "customer_explanations": customer_explanations.head(20).to_dict(orient="records") if not customer_explanations.empty else [],
         "segment_distribution": series_distribution(optimized_targets, "uplift_segment") if not optimized_targets.empty else {},
         "target_numeric_summary": numeric_summary(
             optimized_targets,
@@ -5254,8 +7239,9 @@ elif view == "5. 개인화 추천":
         "시뮬레이터 데모에서는 python src/main.py --mode recommend 를 실행한 뒤 새로고침하세요.",
     ):
         st.stop()
-    st.subheader("최종 타겟 고객 대상 개인화 추천")
-    st.caption("현재 예산·이탈 임계값으로 선별된 최종 타겟 고객에게만 새 추천을 생성합니다. 추천 점수는 고객 구매 이력, 최근 관심, 세그먼트 인기, 전역 인기를 혼합해 계산합니다.")
+    st.subheader(T("최종 타겟 고객 대상 개인화 추천"))
+    _render_view_intro("5")
+    st.caption(T("현재 예산·이탈 임계값으로 선별된 최종 타겟 고객에게만 새 추천을 생성합니다. 추천 점수는 고객 구매 이력, 최근 관심, 세그먼트 인기, 전역 인기를 혼합해 계산합니다."))
 
     budget_context = recommendation_summary.get('budget_context', {}) if isinstance(recommendation_summary, dict) else {}
     current_target_count = int(
@@ -5270,9 +7256,9 @@ elif view == "5. 개인화 추천":
 
     if isinstance(recommendation_summary, dict):
         st.caption(
-            f"추천 기준: 예산 {money(budget_context.get('budget', budget))}, "
-            f"이탈 임계값 {float(budget_context.get('threshold', threshold)):.2f}, "
-            f"최대 타겟 {int(budget_context.get('max_customers_cap', target_cap) or 0):,}명"
+            f"{T('추천 기준')}: {T('예산')} {money(budget_context.get('budget', budget))}, "
+            f"{T('이탈 임계값')} {float(budget_context.get('threshold', threshold)):.2f}, "
+            f"{T('최대 타겟')} {int(budget_context.get('max_customers_cap', target_cap) or 0):,}{T('명')}"
         )
 
     if recommendation_error:
@@ -5283,23 +7269,23 @@ elif view == "5. 개인화 추천":
             "이탈 임계값을 낮춰야 합니다. 저장된 과거 후보를 현재 추천처럼 표시하지 않습니다."
         )
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric("표시 추천 행 수", "0")
-        m2.metric("추천 대상 고객 수", "0")
-        m3.metric("평균 추천 수/고객", "0.00")
-        m4.metric("현재 최종 타겟 고객 수", f"{current_target_count:,}")
+        m1.metric(T("표시 추천 행 수"), "0")
+        m2.metric(T("추천 대상 고객 수"), "0")
+        m3.metric(T("평균 추천 수/고객"), "0.00")
+        m4.metric(T("현재 최종 타겟 고객 수"), f"{current_target_count:,}")
     else:
         covered_customers = int(recommendation_summary.get('customers_covered', personalized_recommendations['customer_id'].nunique()))
         displayed_rows = int(recommendation_summary.get('rows', len(personalized_recommendations)))
         actual_per_customer = float(recommendation_summary.get('actual_per_customer', displayed_rows / max(covered_customers, 1)))
 
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric("표시 추천 행 수", f"{displayed_rows:,}")
-        m2.metric("추천 대상 고객 수", f"{covered_customers:,}")
-        m3.metric("평균 추천 수/고객", f"{actual_per_customer:.2f}")
-        m4.metric("현재 최종 타겟 고객 수", f"{current_target_count:,}")
+        m1.metric(T("표시 추천 행 수"), f"{displayed_rows:,}")
+        m2.metric(T("추천 대상 고객 수"), f"{covered_customers:,}")
+        m3.metric(T("평균 추천 수/고객"), f"{actual_per_customer:.2f}")
+        m4.metric(T("현재 최종 타겟 고객 수"), f"{current_target_count:,}")
 
         category_counts = (
-            personalized_recommendations.groupby('recommended_category', as_index=False)
+            _translate_dataframe_values_for_display(personalized_recommendations).groupby('recommended_category', as_index=False)
             .agg(recommend_count=('customer_id', 'count'))
             .sort_values('recommend_count', ascending=False)
         )
@@ -5307,11 +7293,11 @@ elif view == "5. 개인화 추천":
             category_counts,
             x='recommended_category',
             y='recommend_count',
-            title='추천 카테고리 분포',
+            title=T('추천 카테고리 분포'),
         )
         st.plotly_chart(fig, use_container_width=True)
 
-        display_df = personalized_recommendations.copy()
+        display_df = _translate_dataframe_values_for_display(personalized_recommendations.copy())
         if 'churn_probability' in display_df.columns:
             display_df['churn_probability'] = display_df['churn_probability'].map(lambda x: f"{x:.3f}")
         if 'uplift_score' in display_df.columns:
@@ -5330,7 +7316,7 @@ elif view == "5. 개인화 추천":
             display_df['target_priority_score'] = display_df['target_priority_score'].map(lambda x: f"{x:.3f}")
         if 'recommendation_score' in display_df.columns:
             display_df['recommendation_score'] = display_df['recommendation_score'].map(lambda x: f"{x:.3f}")
-        _render_dataframe_with_count(display_df, label="개인화 추천 테이블")
+        _render_dataframe_with_count(display_df, label=T("개인화 추천 테이블"))
 
     llm_payload = {
         'recommendation_summary': recommendation_summary,
@@ -5357,8 +7343,9 @@ elif view == "6. 실시간 운영 모니터":
     # 기존 Redis Streams 기반 simulator 실시간 블록으로 내려가지 않는다.
     # 그렇지 않으면 user mode에서도 realtime/scores API를 호출해 Redis 안내/오류가 같이 표시된다.
     if _is_user_live_mode():
-        st.subheader("실시간 운영 모니터")
-        st.caption("자사 데이터 모드: PostgreSQL live DB 기준 운영 모니터입니다.")
+        st.subheader(T("실시간 운영 모니터"))
+        _render_view_intro("6")
+        st.caption(f"{_domain_label()} {T('기준 PostgreSQL live DB 운영 모니터입니다.')}")
 
         from dashboard.services.api_client import (
             fetch_demo_status as _page_fetch_demo_status,
@@ -5372,42 +7359,42 @@ elif view == "6. 실시간 운영 모니터":
             _page_demo = {}
         _page_demo_running = _page_demo.get("running", False)
 
-        st.caption("시연을 시작하면 설정된 간격마다 가상 고객 이벤트(방문, 구매 등)가 자동 생성되고, 이탈 점수 재산정 및 액션 큐가 갱신됩니다.")
+        st.caption(T("시연을 시작하면 설정된 간격마다 가상 고객 이벤트(방문, 구매 등)가 자동 생성되고, 이탈 점수 재산정 및 액션 큐가 갱신됩니다."))
         _demo_bar = st.container()
         with _demo_bar:
             if _page_demo_running:
                 _ev = _page_demo.get("total_events_sent", 0)
                 _new = _page_demo.get("new_customers_created", 0)
                 _exist = _page_demo.get("existing_customers_updated", 0)
-                st.success(f"시연 실행 중  |  이벤트 {_ev}건  |  신규 {_new}명  |  기존 {_exist}명")
+                st.success(f"{T('시연 실행 중')}  |  {T('이벤트 수')} {_ev}{T('건')}  |  {T('신규')} {_new}{T('명')}  |  {T('기존')} {_exist}{T('명')}")
                 _dc1, _dc2, _dc3 = st.columns(3)
                 with _dc1:
-                    if st.button("시연 중지", use_container_width=True, key="pg_demo_stop"):
+                    if st.button(T("시연 중지"), use_container_width=True, key="pg_demo_stop"):
                         _page_stop_demo()
                         clear_dashboard_caches()
                         st.rerun()
                 with _dc2:
-                    if st.button("시연 초기화", use_container_width=True, type="secondary", key="pg_demo_reset_running"):
+                    if st.button(T("시연 초기화"), use_container_width=True, type="secondary", key="pg_demo_reset_running"):
                         _page_reset_demo()
                         clear_dashboard_caches()
                         st.rerun()
                 with _dc3:
-                    st.caption("10초마다 자동 새로고침")
+                    st.caption(T("10초마다 자동 새로고침"))
             else:
                 _dc1, _dc2, _dc3, _dc4 = st.columns([1.5, 1.5, 1, 1])
                 with _dc1:
-                    st.caption("N초마다 이벤트 1건 생성")
-                    _pg_interval = st.number_input("간격(초)", min_value=0.5, max_value=30.0, value=2.0, step=0.5, key="pg_demo_interval")
+                    st.caption(T("N초마다 이벤트 1건 생성"))
+                    _pg_interval = st.number_input(T("간격(초)"), min_value=0.5, max_value=30.0, value=2.0, step=0.5, key="pg_demo_interval")
                 with _dc2:
-                    st.caption("새 고객 vs 기존 고객 비율")
-                    _pg_ratio = st.number_input("신규 비율", min_value=0.0, max_value=1.0, value=0.3, step=0.1, key="pg_demo_ratio")
+                    st.caption(T("새 고객 vs 기존 고객 비율"))
+                    _pg_ratio = st.number_input(T("신규 비율"), min_value=0.0, max_value=1.0, value=0.3, step=0.1, key="pg_demo_ratio")
                 with _dc3:
-                    if st.button("시연 시작", use_container_width=True, type="primary", key="pg_demo_start"):
+                    if st.button(T("시연 시작"), use_container_width=True, type="primary", key="pg_demo_start"):
                         _page_start_demo(interval_seconds=_pg_interval, new_customer_ratio=_pg_ratio)
                         clear_dashboard_caches()
                         st.rerun()
                 with _dc4:
-                    if st.button("시연 초기화", use_container_width=True, type="secondary", key="pg_demo_reset_idle"):
+                    if st.button(T("시연 초기화"), use_container_width=True, type="secondary", key="pg_demo_reset_idle"):
                         _page_reset_demo()
                         clear_dashboard_caches()
                         st.rerun()
@@ -5425,25 +7412,27 @@ elif view == "6. 실시간 운영 모니터":
                     st.session_state["_demo_last_log"] = _merged
                 _log_data = st.session_state.get("_demo_last_log", _page_demo.get("latest_results", []))
                 if _log_data:
-                    _log_label = f"이벤트 로그 ({len(_log_data)}건)" if _page_demo_running else f"이벤트 로그 ({len(_log_data)}건, 중지됨)"
+                    _log_label = f"{T('이벤트 로그')} ({len(_log_data)}{T('건')})" if _page_demo_running else f"{T('이벤트 로그')} ({len(_log_data)}{T('건')}, {T('중지됨')})"
                     with st.expander(_log_label, expanded=True):
                         _lines = []
                         for _r in reversed(_log_data):
-                            _label = "NEW" if _r.get("is_new") else "UPD"
-                            _score_str = f"score={_r['churn_score']:.2f}" if _r.get("churn_score") is not None else ""
-                            _action_str = "-> action queued" if _r.get("action_queued") else ""
-                            _lines.append(f"[{_label}] #{_r['customer_id']}  {_r['event_type']}  {_score_str}  {_action_str}")
-                        st.dataframe(pd.DataFrame({"log": _lines}), height=300, use_container_width=True, hide_index=True)
+                            _label = T("NEW") if _r.get("is_new") else T("UPD")
+                            _score_str = f"risk={_r['churn_score']:.2f}" if _r.get("churn_score") is not None else ""
+                            _action_str = "→ " + T("큐 적재 수") if _r.get("action_queued") else ""
+                            _event = _translate_cell_value(_r.get('event_type', ''))
+                            _lines.append(f"[{_label}] #{_r['customer_id']}  {_event}  {_score_str}  {_action_str}")
+                        _render_dataframe_with_count(pd.DataFrame({"log": _lines}), label=T("이벤트 로그"), height=300, hide_index=True)
             elif st.session_state.get("_demo_last_log"):
                 _log_data = st.session_state["_demo_last_log"]
-                with st.expander(f"이벤트 로그 ({len(_log_data)}건, 중지됨)", expanded=False):
+                with st.expander(f"{T('이벤트 로그')} ({len(_log_data)}{T('건')}, {T('중지됨')})", expanded=False):
                     _lines = []
                     for _r in reversed(_log_data):
-                        _label = "NEW" if _r.get("is_new") else "UPD"
-                        _score_str = f"score={_r['churn_score']:.2f}" if _r.get("churn_score") is not None else ""
-                        _action_str = "-> action queued" if _r.get("action_queued") else ""
-                        _lines.append(f"[{_label}] #{_r['customer_id']}  {_r['event_type']}  {_score_str}  {_action_str}")
-                    st.dataframe(pd.DataFrame({"log": _lines}), height=300, use_container_width=True, hide_index=True)
+                        _label = T("NEW") if _r.get("is_new") else T("UPD")
+                        _score_str = f"risk={_r['churn_score']:.2f}" if _r.get("churn_score") is not None else ""
+                        _action_str = "→ " + T("큐 적재 수") if _r.get("action_queued") else ""
+                        _event = _translate_cell_value(_r.get('event_type', ''))
+                        _lines.append(f"[{_label}] #{_r['customer_id']}  {_event}  {_score_str}  {_action_str}")
+                    _render_dataframe_with_count(pd.DataFrame({"log": _lines}), label=T("이벤트 로그"), height=300, hide_index=True)
 
         st.divider()
 
@@ -5453,46 +7442,50 @@ elif view == "6. 실시간 운영 모니터":
         rec_summary = live_payload.get("recommendation_summary", {}) or {}
 
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("이벤트 수", f"{int(health.get('event_count') or 0):,}")
-        c2.metric("실시간 고객 상태", f"{int(health.get('feature_state_count') or 0):,}")
-        c3.metric("점수 고객 수", f"{int(score_summary.get('scored_customers') or 0):,}")
-        c4.metric("Queued 액션", f"{int(action_summary.get('queued_actions') or 0):,}")
+        c1.metric(T("이벤트 수"), f"{int(health.get('event_count') or 0):,}")
+        c2.metric(T("실시간 고객 상태"), f"{int(health.get('feature_state_count') or 0):,}")
+        c3.metric(T("점수 고객 수"), f"{int(score_summary.get('scored_customers') or 0):,}")
+        c4.metric(T("Queued 액션"), f"{int(action_summary.get('queued_actions') or 0):,}")
 
         c5, c6, c7, c8 = st.columns(4)
-        c5.metric("평균 이탈 점수", pct(float(score_summary.get("avg_churn_score") or 0.0)))
-        c6.metric("고위험 고객", f"{int(score_summary.get('high_risk_customers') or 0):,}")
-        c7.metric("Live 추천", f"{int(rec_summary.get('live_recommendations') or 0):,}")
-        c8.metric("최신 점수 갱신", str(score_summary.get("latest_scored_at") or "-"))
+        c5.metric(T("평균 이탈 점수"), pct(float(score_summary.get("avg_churn_score") or 0.0)))
+        c6.metric(T("고위험 고객"), f"{int(score_summary.get('high_risk_customers') or 0):,}")
+        c7.metric(T("Live 추천"), f"{int(rec_summary.get('live_recommendations') or 0):,}")
+        c8.metric(T("최신 점수 갱신"), str(score_summary.get("latest_scored_at") or "-"))
 
         scores_df = live_payload.get("scores", pd.DataFrame()).copy()
         actions_df = live_payload.get("actions", pd.DataFrame()).copy()
 
         if not scores_df.empty:
-            chart_df = scores_df.head(int(top_n)).copy()
-            if "customer_id" in chart_df.columns:
-                chart_df["customer_id"] = chart_df["customer_id"].astype(str)
-
-            y_col = "churn_score" if "churn_score" in chart_df.columns else "churn_probability"
-
-            fig = px.bar(
-                chart_df,
-                x="customer_id" if "customer_id" in chart_df.columns else chart_df.index,
-                y=y_col,
-                hover_data=[
-                    col for col in [
-                        "clv",
-                        "uplift_score",
-                        "expected_roi",
-                        "risk_segment",
-                        "scored_at",
-                    ]
-                    if col in chart_df.columns
-                ],
-                title="Live 이탈 점수 Top 고객",
+            st.caption(T("실시간 운영 모니터 그래프는 제거하고 표 중심으로 표시합니다."))
+            score_col = "churn_score" if "churn_score" in scores_df.columns else "churn_probability"
+            live_score_cols = [
+                col for col in [
+                    "customer_id",
+                    "persona",
+                    score_col,
+                    "clv",
+                    "uplift_score",
+                    "expected_roi",
+                    "risk_segment",
+                    "updated_at",
+                    "scored_at",
+                ]
+                if col in scores_df.columns
+            ]
+            live_score_display = scores_df.sort_values(score_col, ascending=False, kind="mergesort").head(int(top_n))[live_score_cols].copy()
+            for _col in [score_col, "uplift_score", "expected_roi"]:
+                if _col in live_score_display.columns:
+                    live_score_display[_col] = pd.to_numeric(live_score_display[_col], errors="coerce").map(lambda x: f"{float(x):.3f}" if pd.notna(x) else "")
+            if "clv" in live_score_display.columns:
+                live_score_display["clv"] = pd.to_numeric(live_score_display["clv"], errors="coerce").map(lambda x: money(float(x)) if pd.notna(x) else "")
+            _render_dataframe_with_count(
+                _translate_dataframe_values_for_display(live_score_display),
+                label=T("Live 이탈 점수 Top 고객"),
+                height=min(560, 180 + 30 * len(live_score_display)),
             )
-            st.plotly_chart(fig, use_container_width=True)
         else:
-            st.info("표시할 live score 데이터가 없습니다.")
+            st.info(T("표시할 live score 데이터가 없습니다."))
 
         if not actions_df.empty:
             display_cols = [
@@ -5503,23 +7496,20 @@ elif view == "6. 실시간 운영 모니터":
                     "expected_profit",
                     "expected_incremental_profit",
                     "expected_roi",
-                    "priority_score",
+                    "expected_roi",
                     "action_status",
-                    "source_type",
                     "trigger_reason",
-                    "queued_at",
-                    "updated_at",
                 ]
                 if col in actions_df.columns
             ]
 
             _render_dataframe_with_count(
                 actions_df[display_cols],
-                label="Live Action Queue",
+                label=T("Live Action Queue"),
                 height=520,
             )
         else:
-            st.info("현재 queued action이 없습니다. action_threshold를 낮춰 테스트하거나 새 이벤트를 입력하세요.")
+            st.info(T("현재 queued action이 없습니다. action_threshold를 낮춰 테스트하거나 새 이벤트를 입력하세요."))
 
         llm_payload = {
             "mode": "user_live",
@@ -5557,7 +7547,7 @@ elif view == "6. 실시간 운영 모니터":
         if _page_demo_running:
             import time as _demo_time
             _placeholder = st.empty()
-            _placeholder.caption("다음 자동 새로고침까지 10초...")
+            _placeholder.caption(T("다음 자동 새로고침까지 10초..."))
             _demo_time.sleep(10)
             clear_dashboard_caches()
             st.rerun()
@@ -5576,38 +7566,54 @@ elif view == "6. 실시간 운영 모니터":
         "시뮬레이터 데모에서는 python src/main.py --mode realtime-bootstrap 및 --mode realtime-replay 를 실행한 뒤 새로고침하세요.",
     ):
         st.stop()
-    st.subheader("실시간 운영 모니터")
-    st.caption("Redis Streams로 적재된 이벤트를 조금씩 재생하며 고객별 실시간 위험 점수와 액션 큐 상태를 함께 갱신합니다.")
+    st.subheader(T("실시간 운영 모니터"))
+    _render_view_intro("6")
+    st.caption(T("이벤트 스트림을 재생하며 고객별 실시간 위험 점수와 액션 큐 상태를 함께 갱신합니다."))
 
     if realtime_error:
-        st.error(f"실시간 스코어 API 호출 실패: {realtime_error}")
-        st.info("먼저 Redis를 실행한 뒤 realtime-bootstrap / realtime-produce / realtime-consume(또는 realtime-replay) 명령을 수행하세요.")
+        st.error(f"{T('실시간 스코어 API 호출 실패')}: {realtime_error}")
+        st.info(T("먼저 Redis를 실행한 뒤 realtime-bootstrap / realtime-produce / realtime-consume(또는 realtime-replay) 명령을 수행하세요."))
     elif realtime_scores.empty:
-        st.warning("실시간 스코어 스냅샷이 없습니다. 스트림 소비 결과가 아직 생성되지 않았을 수 있습니다.")
+        st.warning(T("실시간 스코어 스냅샷이 없습니다. 스트림 소비 결과가 아직 생성되지 않았을 수 있습니다."))
     else:
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric("추적 고객 수", f"{int(realtime_summary.get('tracked_customers', 0)):,}")
-        m2.metric("고위험 고객 수", f"{int(realtime_summary.get('high_risk_customers', 0)):,}")
-        m3.metric("재최적화 트리거 수", f"{int(realtime_summary.get('triggered_reoptimizations', 0)):,}")
-        m4.metric("액션 큐 적재 수", f"{int(realtime_summary.get('action_queue_size', 0)):,}")
+        m1.metric(T("추적 고객 수"), f"{int(realtime_summary.get('tracked_customers', 0)):,}")
+        m2.metric(T("고위험 고객"), f"{int(realtime_summary.get('high_risk_customers', 0)):,}")
+        m3.metric(T("재최적화 트리거 수"), f"{int(realtime_summary.get('triggered_reoptimizations', 0)):,}")
+        m4.metric(T("액션 큐 적재 수"), f"{int(realtime_summary.get('action_queue_size', 0)):,}")
 
         q1, q2, q3, q4 = st.columns(4)
-        q1.metric("임계 위험 고객 수", f"{int(realtime_summary.get('critical_risk_customers', 0)):,}")
-        q2.metric("처리 이벤트 수", f"{int(realtime_summary.get('processed_events', 0)):,}")
-        q3.metric("폐쇄루프 예산 사용", money(int(realtime_summary.get('closed_loop_budget_spent', 0))))
-        q4.metric("채널 할당 수", f"{int(realtime_summary.get('daily_channel_allocated', 0)):,} / {int(realtime_summary.get('daily_channel_capacity', 0)):,}")
+        q1.metric(T("임계 위험 고객 수"), f"{int(realtime_summary.get('critical_risk_customers', 0)):,}")
+        q2.metric(T("처리 이벤트 수"), f"{int(realtime_summary.get('processed_events', 0)):,}")
+        q3.metric(T("폐쇄루프 예산 사용"), money(int(realtime_summary.get('closed_loop_budget_spent', 0))))
+        q4.metric(T("채널 할당 수"), f"{int(realtime_summary.get('daily_channel_allocated', 0)):,} / {int(realtime_summary.get('daily_channel_capacity', 0)):,}")
 
-        chart_df = realtime_scores.head(min(len(realtime_scores), 20)).copy()
-        chart_df['customer_id'] = chart_df['customer_id'].astype(str)
-        fig = px.bar(
-            chart_df,
-            x='customer_id',
-            y='realtime_churn_score',
-            color='action_queue_status' if 'action_queue_status' in chart_df.columns else None,
-            hover_data=['base_churn_probability', 'score_delta', 'last_event_type', 'persona', 'latest_trigger_reason', 'queued_recommended_action'],
-            title='실시간 이탈 위험 상위 고객',
+        st.caption(T("실시간 운영 모니터 그래프는 제거하고 표 중심으로 표시합니다."))
+        top_realtime_cols = [
+            col for col in [
+                'customer_id',
+                'persona',
+                'realtime_churn_score',
+                'base_churn_probability',
+                'score_delta',
+                'last_event_type',
+                'action_queue_status',
+                'latest_trigger_reason',
+                'queued_recommended_action',
+            ]
+            if col in realtime_scores.columns
+        ]
+        top_realtime_df = realtime_scores.sort_values('realtime_churn_score', ascending=False, kind='mergesort').head(min(len(realtime_scores), int(top_n))).copy()
+        if top_realtime_cols:
+            top_realtime_df = top_realtime_df[top_realtime_cols]
+        for _col in ['realtime_churn_score', 'base_churn_probability', 'score_delta']:
+            if _col in top_realtime_df.columns:
+                top_realtime_df[_col] = pd.to_numeric(top_realtime_df[_col], errors='coerce').map(lambda x: f"{float(x):.3f}" if pd.notna(x) else "")
+        _render_dataframe_with_count(
+            _translate_dataframe_values_for_display(top_realtime_df),
+            label=T('실시간 이탈 위험 상위 고객'),
+            height=min(560, 180 + 30 * len(top_realtime_df)),
         )
-        st.plotly_chart(fig, use_container_width=True)
 
         queued_df = realtime_scores[realtime_scores.get('action_queue_status', pd.Series(index=realtime_scores.index, dtype=object)).astype(str) == 'queued'].copy() if 'action_queue_status' in realtime_scores.columns else pd.DataFrame()
         if not queued_df.empty:
@@ -5634,7 +7640,7 @@ elif view == "6. 실시간 운영 모니터":
                 queue_display['queued_expected_profit'] = queue_display['queued_expected_profit'].map(money)
             if 'queued_expected_roi' in queue_display.columns:
                 queue_display['queued_expected_roi'] = queue_display['queued_expected_roi'].map(lambda x: f"{float(x):.2%}")
-            _render_dataframe_with_count(queue_display, label="실시간 부분 재최적화 액션 큐", height=min(520, 180 + 32 * len(queue_display)))
+            _render_dataframe_with_count(queue_display, label=T("실시간 부분 재최적화 액션 큐"), height=min(520, 180 + 32 * len(queue_display)))
 
         display_df = realtime_scores.copy()
         for col in ['base_churn_probability', 'realtime_churn_score', 'score_delta', 'behavioral_risk', 'inactivity_signal', 'queued_expected_roi']:
@@ -5646,49 +7652,44 @@ elif view == "6. 실시간 운영 모니터":
                 display_df[money_col] = display_df[money_col].map(money)
         if 'expected_roi' in display_df.columns:
             display_df['expected_roi'] = display_df['expected_roi'].map(lambda x: f"{float(x):.3f}")
-        _render_dataframe_with_count(display_df, label="실시간 이탈 위험 테이블")
+        _render_dataframe_with_count(display_df, label=T("실시간 이탈 위험 테이블"))
 
     realtime_summary_display = realtime_monitor_overview.get("summary", realtime_summary) if realtime_monitor_overview else realtime_summary
-    st.markdown("### 운영 모니터")
+    st.markdown(f"### {T('운영 모니터')}")
     q1, q2, q3, q4, q5 = st.columns(5)
-    q1.metric("처리 이벤트 수", f"{int(realtime_summary_display.get('processed_events', 0) or 0):,}")
-    q2.metric("재최적화 횟수", f"{int(realtime_summary_display.get('triggered_reoptimizations', 0) or 0):,}")
-    q3.metric("큐 적재 수", f"{int(realtime_summary_display.get('queued_actions_total', realtime_summary_display.get('action_queue_size', 0)) or 0):,}")
+    q1.metric(T("처리 이벤트 수"), f"{int(realtime_summary_display.get('processed_events', 0) or 0):,}")
+    q2.metric(T("재최적화 횟수"), f"{int(realtime_summary_display.get('triggered_reoptimizations', 0) or 0):,}")
+    q3.metric(T("큐 적재 수"), f"{int(realtime_summary_display.get('queued_actions_total', realtime_summary_display.get('action_queue_size', 0)) or 0):,}")
     cap = int(realtime_summary_display.get('daily_channel_capacity', 0) or 0)
     alloc = int(realtime_summary_display.get('daily_channel_allocated', 0) or 0)
     utilization = alloc / cap if cap > 0 else 0.0
-    q4.metric("채널 용량 사용률", pct(utilization))
-    q5.metric("고우선순위 큐", f"{int(realtime_summary_display.get('high_priority_queue_size', 0) or 0):,}")
+    q4.metric(T("채널 용량 사용률"), pct(utilization))
+    q5.metric(T("고우선순위 큐"), f"{int(realtime_summary_display.get('high_priority_queue_size', 0) or 0):,}")
 
     if realtime_monitor_overview:
-        tab1, tab2, tab3 = st.tabs(["큐 상태", "트리거 이유", "행동 신호"])
+        tab1, tab2, tab3 = st.tabs([T("큐 상태"), T("트리거 이유"), T("행동 신호")])
         with tab1:
-            status_df = realtime_monitor_overview.get("status_df", pd.DataFrame())
+            status_df = _translate_dataframe_values_for_display(realtime_monitor_overview.get("status_df", pd.DataFrame()))
             queue_df = realtime_monitor_overview.get("queue_df", pd.DataFrame())
             if not status_df.empty:
-                fig = px.pie(status_df, names="status", values="count", title="액션 큐 상태 구성")
-                st.plotly_chart(fig, use_container_width=True)
+                _render_dataframe_with_count(status_df, label=T("액션 큐 상태 구성"), prefer_static=True)
             if not queue_df.empty:
-                display_df = queue_df.copy()
+                display_df = _translate_dataframe_values_for_display(queue_df.copy())
                 for col in ["queued_coupon_cost", "queued_expected_profit"]:
                     if col in display_df.columns:
                         display_df[col] = display_df[col].map(lambda x: money(float(x)) if pd.notna(x) else "")
                 for col in ["queued_expected_roi", "realtime_churn_score"]:
                     if col in display_df.columns:
                         display_df[col] = display_df[col].map(lambda x: f"{float(x):.3f}" if pd.notna(x) else "")
-                _render_dataframe_with_count(display_df, label="실시간 액션 큐 상세", height=min(1200, 220 + 28 * len(display_df)))
+                _render_dataframe_with_count(display_df, label=T("실시간 액션 큐 상세"), height=min(1200, 220 + 28 * len(display_df)))
         with tab2:
-            trigger_df = realtime_monitor_overview.get("trigger_df", pd.DataFrame())
+            trigger_df = _translate_dataframe_values_for_display(realtime_monitor_overview.get("trigger_df", pd.DataFrame()))
             if not trigger_df.empty:
-                fig = px.bar(trigger_df.head(15), x="trigger_reason", y="count", title="주요 트리거 이유", text="count")
-                st.plotly_chart(fig, use_container_width=True)
-                _render_dataframe_with_count(trigger_df, label="트리거 이유 빈도", prefer_static=True)
+                _render_dataframe_with_count(trigger_df.head(15), label=T("트리거 이유 빈도"), prefer_static=True)
         with tab3:
-            signal_df = realtime_monitor_overview.get("signal_df", pd.DataFrame())
+            signal_df = _translate_dataframe_values_for_display(realtime_monitor_overview.get("signal_df", pd.DataFrame()))
             if not signal_df.empty:
-                fig = px.bar(signal_df, x="signal", y="mean_value", title="행동 신호 평균값")
-                st.plotly_chart(fig, use_container_width=True)
-                _render_dataframe_with_count(signal_df, label="행동 신호 평균", prefer_static=True)
+                _render_dataframe_with_count(signal_df, label=T("행동 신호 평균"), prefer_static=True)
 
     llm_payload = {
         'realtime_summary': realtime_summary_display,
@@ -6156,7 +8157,8 @@ elif view == "7. 할인·쿠폰 운영 리스크":
 current_view_key = view.split(".")[0]
 current_model_name = llm_model.strip() or DEFAULT_MODEL_NAME
 
-if llm_enabled:
+_llm_summary_ready, _llm_summary_status = get_llm_status(llm_api_key_value)
+if llm_enabled and _llm_summary_ready:
     render_llm_summary(
         view_key=current_view_key,
         view_title=llm_view_title,
@@ -6164,6 +8166,10 @@ if llm_enabled:
         api_key=llm_api_key_value,
         model_name=current_model_name,
     )
+elif llm_enabled and not _llm_summary_ready:
+    # Do not render the main LLM summary block when the API key is missing.
+    # Keeping the notice in the sidebar prevents it from overlapping tables.
+    pass
 
 with st.sidebar:
     render_sidebar_chatbot_launcher(

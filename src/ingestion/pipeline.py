@@ -52,6 +52,32 @@ class MappingPreview:
     recommended_churn_days: Optional[int] = None # 활동/구매 주기 기반 추천 이탈 기준일
 
 
+
+
+def _safe_reset_directory(path: Path) -> None:
+    """Remove stale outputs before writing a new dataset.
+
+    The dashboard loads whatever CSV/JSON files are present in the selected
+    data/result directory. If a new upload does not regenerate one optional
+    artifact, the old artifact could otherwise remain and be shown as if it
+    belonged to the new dataset. We therefore reset domain-specific output
+    directories before each new training run.
+    """
+    path = Path(path)
+    path.mkdir(parents=True, exist_ok=True)
+    for child in list(path.iterdir()):
+        # Keep Git placeholder files only.
+        if child.name == ".gitkeep":
+            continue
+        if child.is_dir():
+            shutil.rmtree(child, ignore_errors=True)
+        else:
+            try:
+                child.unlink()
+            except FileNotFoundError:
+                pass
+
+
 def _recommend_churn_days_from_activity(
     df: pd.DataFrame,
     *,
@@ -276,6 +302,12 @@ def run_ingestion_pipeline(
             pass  # best effort backup
 
     try:
+        # Critical fix: clear previous domain artifacts before saving/training.
+        # This prevents a new upload from showing stale rows/graphs from an older dataset.
+        _safe_reset_directory(data_dir)
+        _safe_reset_directory(result_dir)
+        _safe_reset_directory(model_dir)
+        _safe_reset_directory(feature_store_dir)
         saved_files = save_preprocessed_data(preprocessing_result, data_dir)
         pipeline_result.output_dir = str(data_dir)
     except Exception as exc:
@@ -306,5 +338,23 @@ def run_ingestion_pipeline(
     except Exception as exc:
         pipeline_result.error = f"학습 파이프라인 실패: {exc}"
         pipeline_result.success = False
+
+    # Persist upload provenance for the dashboard sidebar and cache invalidation.
+    try:
+        metadata = {
+            "source_filename": file_path.name,
+            "source_path": str(file_path),
+            "row_count": int(validation.row_count or 0),
+            "column_count": int(validation.column_count or 0),
+            "generated_at": pd.Timestamp.now().isoformat(),
+            "budget": int(budget),
+            "threshold": float(threshold),
+            "max_customers": int(max_customers),
+            "churn_inactivity_days": int(churn_inactivity_days),
+        }
+        result_dir.mkdir(parents=True, exist_ok=True)
+        (result_dir / "dataset_metadata.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass
 
     return pipeline_result

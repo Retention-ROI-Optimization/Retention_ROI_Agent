@@ -101,14 +101,18 @@ EVENT_VALUE_SYNONYMS: Dict[str, Set[str]] = {
         "payment_fail", "payment_failed", "subscription_start", "subscribe",
         "renewal", "renew", "plan_change", "plan_upgrade", "plan_downgrade",
         "upgrade", "downgrade",
-        "결제", "구매", "주문", "주문완료", "결제완료",
+        "deposit", "withdrawal", "transfer", "wire_transfer", "bank_transfer", "remittance",
+        "card_payment", "card_use", "loan_payment", "repayment", "auto_payment",
+        "investment_order", "fund_purchase", "trade", "securities_trade",
+        "결제", "구매", "주문", "주문완료", "결제완료", "입금", "출금", "이체", "송금", "카드결제", "상환", "투자", "매매",
     },
     "visit": {
         "visit", "visited", "session_start", "session_begin", "session_end",
         "session_close", "login", "logged_in", "logout", "log_out",
         "app_open", "app_close", "app_launch", "site_visit", "launch",
         "sign_in", "signin", "active_session", "push_open", "notification_open",
-        "방문", "로그인", "접속", "세션시작", "세션종료",
+        "balance_check", "account_login", "mobile_banking_login", "statement_view",
+        "방문", "로그인", "접속", "세션시작", "세션종료", "잔고조회", "계좌조회",
     },
     "page_view": {
         "page_view", "pageview", "view", "viewed", "product_view", "viewed_product",
@@ -122,7 +126,8 @@ EVENT_VALUE_SYNONYMS: Dict[str, Set[str]] = {
     },
     "search": {
         "search", "searched", "query", "find", "lookup", "filter", "sort",
-        "검색", "필터",
+        "loan_calculator", "rate_search", "product_compare", "eligibility_check",
+        "검색", "필터", "금리조회", "상품비교", "한도조회",
     },
     "add_to_cart": {
         "add_to_cart", "addtocart", "cart_add", "add_cart", "added_to_cart",
@@ -136,7 +141,8 @@ EVENT_VALUE_SYNONYMS: Dict[str, Set[str]] = {
         "complaint", "report_issue", "nps", "nps_submit", "survey",
         "refund_request", "refund", "return", "returned", "return_request", "cancel_request",
         "cancel", "cancellation", "uninstall", "uninstall_signal", "unsubscribe",
-        "문의", "상담", "고객센터", "신고", "환불", "반품", "취소", "해지",
+        "loan_inquiry", "card_cancel", "account_close", "close_account", "delinquency_notice",
+        "문의", "상담", "고객센터", "신고", "환불", "반품", "취소", "해지", "계좌해지", "연체",
     },
 }
 

@@ -32,13 +32,17 @@ TIMESTAMP_SYNONYMS: Set[str] = {
 
 EVENT_TYPE_SYNONYMS: Set[str] = {
     "event_type", "event", "action", "activity", "action_type", "activity_type",
-    "이벤트유형", "행동유형", "behavior", "behaviour",
+    "transaction_type", "txn_type", "trade_type", "channel_event", "service_event",
+    "이벤트유형", "행동유형", "거래유형", "거래종류", "behavior", "behaviour",
 }
 
 MONETARY_SYNONYMS: Set[str] = {
     "amount", "revenue", "price", "total", "net_amount", "gross_amount",
     "monetary", "spend", "payment", "금액", "매출", "결제금액", "주문금액",
     "transaction_amount", "order_amount", "sales", "net_revenue",
+    "balance", "account_balance", "avg_balance", "deposit_amount", "withdrawal_amount",
+    "loan_amount", "credit_limit", "outstanding_balance", "aum", "asset", "assets",
+    "잔고", "예금", "출금", "입금", "대출금액", "한도", "자산",
 }
 
 CHURN_SYNONYMS: Set[str] = {
@@ -50,6 +54,8 @@ CHURN_SYNONYMS: Set[str] = {
 CATEGORY_SYNONYMS: Set[str] = {
     "category", "item_category", "product_category", "카테고리", "상품분류",
     "product_type", "item_type", "department", "section",
+    "financial_product", "account_type", "card_type", "loan_type", "fund_type",
+    "상품유형", "계좌유형", "카드유형", "대출유형",
 }
 
 QUANTITY_SYNONYMS: Set[str] = {

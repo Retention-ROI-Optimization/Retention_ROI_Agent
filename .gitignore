@@ -26,6 +26,9 @@ models_simulator/*
 !models_simulator/.gitkeep
 models_user/*
 !models_user/.gitkeep
+models_ecommerce/*
+!models_ecommerce/.gitkeep
+
 
 # Generated reports / plots / optimization outputs
 results/*
@@ -34,3 +37,5 @@ results_simulator/*
 !results_simulator/.gitkeep
 results_user/*
 !results_user/.gitkeep
+results_ecommerce/*
+!results_ecommerce/.gitkeep 
