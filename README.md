@@ -22,15 +22,7 @@ The dashboard focuses on four operational views:
 
 The UI supports Korean, English, and Japanese. Dashboard labels, table values, chart axes, and LLM summary instructions are localized for each language mode.
 
-## Images
 
-<img src="assets/dash1.jpeg" width="400"/>
-
-<img src="assets/dash2.jpeg" width="400"/>
-
-<img src="assets/dash3.jpeg" width="400"/>
-
-<img src="assets/dash4.jpeg" width="400"/>
 
 ## Installation
 
