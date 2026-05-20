@@ -1,25 +1,44 @@
-"""LLM output-language policy for dashboard summaries and chatbot answers."""
+"""Language contracts for dashboard LLM summary and chatbot outputs."""
+
 from __future__ import annotations
 
 
-def llm_language_name(lang: str = "ko") -> str:
-    return {"ko": "Korean", "en": "English", "ja": "Japanese"}.get(lang, "Korean")
+LANGUAGE_NAMES = {
+    "ko": "Korean",
+    "en": "English",
+    "ja": "Japanese",
+}
 
 
-def llm_language_instruction(lang: str = "ko") -> str:
-    if lang == "en":
+def llm_language_name(language_code: str | None) -> str:
+    return LANGUAGE_NAMES.get(str(language_code or "ko"), "Korean")
+
+
+def llm_language_instruction(language_code: str | None) -> str:
+    code = str(language_code or "ko")
+    if code == "en":
         return (
-            "You must write the entire response in English. Do not write Korean or Japanese. "
-            "Translate dashboard labels, table-cell explanations, and metric names into clear business English. "
-            "Do not copy Korean or Japanese table values verbatim unless they are proper nouns."
+            "You must write the entire answer in English. "
+            "Do not write Korean or Japanese sentences. "
+            "Keep metric names such as ROI, CLV, and IDs as-is only when necessary."
         )
-    if lang == "ja":
+    if code == "ja":
         return (
-            "必ず回答全体を日本語で書いてください。韓国語や英語の文章を混ぜないでください。"
-            "ダッシュボードのラベル、表のセル内説明、指標名も分かりやすい日本語に言い換えてください。"
-            "固有名詞以外の韓国語・英語の値をそのまま引用しないでください。"
+            "回答全体を必ず日本語で書いてください。"
+            "韓国語や英語の文章を混ぜないでください。"
+            "ROI、CLV、IDなどの指標名は必要な場合だけそのまま残してください。"
         )
     return (
-        "반드시 전체 답변을 한국어로 작성하세요. 영어/일본어 문장을 섞지 말고, "
-        "표·지표·추천 이유도 비즈니스 담당자가 이해하기 쉬운 한국어로 풀어 쓰세요."
+        "반드시 전체 답변을 한국어로 작성하세요. "
+        "영어나 일본어 문장을 섞지 말고, ROI·CLV·ID 같은 지표명만 필요한 경우 그대로 유지하세요."
+    )
+
+
+def llm_language_contract(language_code: str | None) -> str:
+    name = llm_language_name(language_code)
+    instruction = llm_language_instruction(language_code)
+    return (
+        f"USER_SELECTED_LANGUAGE={name}. {instruction} "
+        "This language rule overrides any Korean dashboard labels, backend messages, "
+        "previous cached answers, or table values included in the context."
     )
