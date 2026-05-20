@@ -66,6 +66,15 @@ from dashboard.services.uplift_service import (
     get_top_high_value_customers,
 )
 from dashboard.utils.formatters import money, pct
+from dashboard.ui_budget_formula import budget_formula_html
+from dashboard.ui_labels import (
+    drop_duplicate_metric_columns,
+    localize_plotly_figure,
+    translate_column as friendly_translate_column,
+    translate_text as friendly_translate_text,
+    translate_value as friendly_translate_value,
+)
+from dashboard.ui_llm_language import llm_language_instruction, llm_language_name
 
 
 DASHBOARD_VIEW_ITEMS: tuple[tuple[str, str], ...] = (
@@ -1578,6 +1587,18 @@ def _language_code() -> str:
     return st.session_state.get("language_code", "ko") if hasattr(st, "session_state") else "ko"
 
 
+_ORIGINAL_ST_PLOTLY_CHART = st.plotly_chart
+
+def _plotly_chart_with_i18n(fig, *args, **kwargs):
+    try:
+        fig = localize_plotly_figure(fig, _language_code())
+    except Exception:
+        pass
+    return _ORIGINAL_ST_PLOTLY_CHART(fig, *args, **kwargs)
+
+st.plotly_chart = _plotly_chart_with_i18n
+
+
 def _normalize_i18n_key(text: str) -> str:
     """번역 키 비교용 정규화: 공백/언더스코어/대소문자 차이를 흡수한다."""
     return re.sub(r"[\s_\-:：/\.()\[\]{}]+", "", str(text or "")).lower()
@@ -1608,6 +1629,10 @@ def T(text: str) -> str:
             if localized and _normalize_i18n_key(localized) == normalized:
                 return translated
 
+    friendly = friendly_translate_text(raw, code)
+    if friendly != raw:
+        return friendly
+
     return raw
 
 
@@ -1634,6 +1659,8 @@ def _translate_runtime_text(text: Any) -> str:
 
     api_key_msg = "OpenAI API 키가 설정되지 않았습니다. 사이드바에 키를 입력하거나 OPENAI_API_KEY 환경변수를 설정하세요."
     out = out.replace(api_key_msg, T(api_key_msg))
+    out = friendly_translate_value(out, code)
+    out = friendly_translate_text(out, code)
     return out
 
 
@@ -1652,7 +1679,11 @@ def _translate_cell_value(value: Any) -> str:
         return ""
 
     code = _language_code()
+    friendly_value = friendly_translate_value(stripped, code)
+    if friendly_value != stripped:
+        return str(friendly_value)
     value_labels = VALUE_LABELS.get(code, VALUE_LABELS.get("ko", {}))
+<<<<<<< Updated upstream
     phrase_labels = PHRASE_LABELS.get(code, {})
 
     def _exact_translate(fragment: str) -> str | None:
@@ -1732,6 +1763,23 @@ def _translate_cell_value(value: Any) -> str:
         return "".join(part if re.fullmatch(r"\s*(?:·|\||→|>)\s*", part) else _translate_fragment(part) for part in parts)
 
     return _translate_fragment(stripped)
+=======
+    norm = _normalize_i18n_key(stripped)
+    # Exact code / normalized code match.
+    for src, dst in value_labels.items():
+        if stripped == src or norm == _normalize_i18n_key(src):
+            return dst
+    # Human-readable phrase replacement for generated Korean explanations.
+    out = stripped
+    for src, dst in PHRASE_LABELS.get(code, {}).items():
+        out = out.replace(src, dst)
+    # Replace known snake_case tokens even when embedded in logs/lists.
+    for src, dst in value_labels.items():
+        out = re.sub(rf"(?<![A-Za-z0-9_]){re.escape(src)}(?![A-Za-z0-9_])", dst, out)
+    out = out.replace("-> action queued", "→ " + value_labels.get("queued", "queued"))
+    out = out.replace("score=", "risk=")
+    return str(friendly_translate_value(out, code))
+>>>>>>> Stashed changes
 
 
 
@@ -1858,6 +1906,7 @@ def _filter_display_columns_for_label(df: pd.DataFrame, label: str = "") -> pd.D
     if not isinstance(df, pd.DataFrame) or df.empty:
         return pd.DataFrame() if df is None else df
     label = str(label or "")
+    df = drop_duplicate_metric_columns(df)
     if _label_matches(label, "고객별 선택 이유", "customer level reasons", "reason caution", "顧客別選定理由", "顧客別選定理由注意事項"):
         return _pick_existing_columns(df, ["customer_id", "persona", "selection_reason", "reason_summary", "watchout", "caution", "next_best_action", "recommended_action"])
     if _label_matches(label, "최종 리텐션 타겟", "final retention target", "最終リテンション対象"):
@@ -1873,7 +1922,7 @@ def _filter_display_columns_for_label(df: pd.DataFrame, label: str = "") -> pd.D
     if _label_matches(label, "실시간 이탈 위험", "real time churn risk", "リアルタイム離脱リスク"):
         return _pick_existing_columns(df, ["customer_id", "persona", "realtime_churn_score", "churn_score", "churn_probability", "action_queue_status", "queued_recommended_action", "queued_expected_profit", "latest_trigger_reason"])
     if _label_matches(label, "실시간 액션 큐", "live action queue", "action queue", "アクションキュー"):
-        return _pick_existing_columns(df, ["customer_id", "persona", "recommended_action", "queued_recommended_action", "intervention_intensity", "queued_intervention_intensity", "expected_profit", "queued_expected_profit", "expected_roi", "queued_expected_roi", "action_status", "latest_trigger_reason"])
+        return _pick_existing_columns(df, ["customer_id", "persona", "recommended_action", "intervention_intensity", "expected_profit", "expected_roi", "action_status", "latest_trigger_reason"])
 
     hidden_norms = {
         _normalize_i18n_key(c) for c in [
@@ -1913,31 +1962,11 @@ def _render_view_intro(view_key: str) -> None:
 
 
 def _llm_language_name() -> str:
-    return {"ko": "Korean", "en": "English", "ja": "Japanese"}.get(_language_code(), "Korean")
+    return llm_language_name(_language_code())
 
 
 def _llm_strict_language_instruction() -> str:
-    """Return a hard language instruction for LLM-generated summaries/answers.
-
-    The llm_service prompt may be written in Korean, so passing only translated UI
-    labels is not enough. This instruction is injected into both the title and the
-    JSON payload so the model receives an explicit output-language requirement.
-    """
-    code = _language_code()
-    if code == "en":
-        return (
-            "You must write the entire response in English. Do not write Korean or Japanese. "
-            "Use clear business English and keep technical terms brief."
-        )
-    if code == "ja":
-        return (
-            "必ず回答全体を日本語で書いてください。韓国語や英語の文章を混ぜないでください。"
-            "専門用語は短く説明し、ビジネス担当者にも分かる表現にしてください。"
-        )
-    return (
-        "반드시 전체 답변을 한국어로 작성하세요. 영어/일본어 문장을 섞지 말고, "
-        "비즈니스 담당자가 이해하기 쉬운 표현을 사용하세요."
-    )
+    return llm_language_instruction(_language_code())
 
 
 def _wrap_llm_payload(payload_json: str) -> str:
@@ -4642,6 +4671,9 @@ def _translate_column_name(column: str) -> str:
     if canonical and canonical in labels:
         return labels[canonical]
 
+    friendly = friendly_translate_column(raw, code)
+    if friendly != raw:
+        return friendly
     return T(raw.replace("_", " "))
 
 
@@ -4671,7 +4703,7 @@ def _sanitize_display_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     if not isinstance(df, pd.DataFrame):
         return pd.DataFrame()
 
-    safe_df = df.copy().reset_index(drop=True)
+    safe_df = drop_duplicate_metric_columns(df.copy()).reset_index(drop=True)
     original_columns = _make_unique_columns([str(col) for col in safe_df.columns])
     safe_df.columns = original_columns
 
@@ -7149,6 +7181,7 @@ elif view == "4. 예산 최적화 및 리텐션 타겟":
     st.subheader(T("예산 최적화 및 리텐션 타겟"))
     _render_view_intro("4")
     st.caption(T("예산 배분 후보, 최종 선정 고객, 고객별 선택 이유만 남긴 핵심 운영 화면입니다."))
+    st.markdown(budget_formula_html(_language_code()), unsafe_allow_html=True)
 
     m1, m2, m3, m4, m5 = st.columns(5)
     m1.metric(T("총 예산"), money(optimize_summary.get("budget", budget)))
