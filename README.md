@@ -1,363 +1,240 @@
-# Retention ROI Project
+# Retention ROI Agent
 
 ## Project Overview
 
-Retention ROI Project is a data-driven decision system that covers the full retention workflow: **customer churn prediction, intervention strategy optimization, personalized recommendations, and real-time operations**.  
-Rather than only predicting _who_ will churn, this system estimates **_when_ churn is likely to happen**, **_which_ offer should be given to _which_ customer for maximum ROI**, and **identifies the optimal execution priority under budget constraints**.
+Retention ROI Agent is an operational retention decision platform for **customer churn prediction, budget-aware intervention targeting, personalized recommendations, and real-time monitoring**.
 
-This project supports:
+The platform is organized into two business modes:
 
-- Customer behavior analysis using simulated data
-- Churn modeling and survival analysis for churn timing estimation
-- Uplift, CLV, and segmentation-based targeting with budget optimization
-- Customer-level action recommendations with operational explainability
-- Strategy validation through A/B testing and simulation fidelity checks
-- Pre-deployment validation through real-time replay pipelines
+1. **Finance Mode** — analyzes churn/cancellation risk and campaign priority using deposits, loans, cards, transactions, balances, delinquency, and customer-service history.
+2. **E-commerce Mode** — analyzes churn risk and personalized recommendations using visits, searches, carts, purchases, coupons, categories, and browsing behavior.
 
-In short, this project is an end-to-end **Retention Decision Intelligence Pipeline** that helps marketing and CRM teams execute retention strategies based on data rather than intuition.
+The goal is not only to predict who may leave, but also to decide **who should receive an intervention, what action should be recommended, and how the limited budget should be allocated for better expected ROI**.
 
-## Image
+## Dashboard Screens
+
+The dashboard focuses on four operational views:
+
+1. **Churn Status** — identifies at-risk customers and overall risk scale.
+2. **Budget Allocation & Targets** — selects final retention targets under budget and churn-risk thresholds.
+3. **Personalized Recommendations** — recommends products, benefits, or actions for final targets.
+4. **Real-time Operations** — monitors live customer risk and action queues.
+
+The UI supports Korean, English, and Japanese. Dashboard labels, table values, chart axes, and LLM summary instructions are localized for each language mode.
+
+## Images
 
 <img src="assets/dash1.jpeg" width="400"/>
 
-
 <img src="assets/dash2.jpeg" width="400"/>
-
 
 <img src="assets/dash3.jpeg" width="400"/>
 
 <img src="assets/dash4.jpeg" width="400"/>
 
-
-## Installment
+## Installation
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## Docker Implementation
+## Docker Run
 
 ```bash
 docker compose up --build
 ```
 
-## Simulation Implementation
-
-```bash
-# Generate synthetic customer behavior data
-python src/main.py --mode simulate
-```
-
-## Feature Engineering Implementation
-
-```bash
-# Build customer-level feature store
-python src/main.py --mode features
-```
-
-Outputs:
-
-- `data/feature_store/customer_features.csv`
-- `data/feature_store/customer_features_metadata.json`
-- `results/feature_engineering_summary.json`
-
-## Churn modeling
-
-```bash
-# Train churn prediction models
-python src/main.py --mode train
-```
-
-Outputs:
-
-- `models/churn_model_<best_model>.joblib`
-- `results/churn_auc_roc.png`
-- `results/churn_precision_recall_tradeoff.png`
-- `results/churn_shap_summary.png`
-- `results/churn_shap_local.png`
-- `results/churn_threshold_analysis.json`
-- `results/churn_top10_feature_importance.json`
-- `results/churn_metrics.json`
-
-## Survival Ananlysis
-
-```bash
-# Estimate churn timing (time-to-event)
-python src/main.py --mode survival
-```
-
-Runs the survival analysis pipeline to estimate **_when_ each customer is likely to churn**, not just whether they will churn.
-
-This step produces **time-aware churn signals** such as expected churn timing, hazard-related outputs, and intervention windows that can later be integrated into the _optimization_ and _recommendation_ stages.
-
-## Uplift + CLV / Segmentation / Optimization
-
-```bash
-python src/main.py --mode uplift
-python src/main.py --mode clv
-python src/main.py --mode segment
-python src/main.py --mode optimize --budget 50000000
-```
-
-_you're allowed to write whatever budget you have in your mind._
-
-## Personalization / Recommendation
-
-```bash
-python src/main.py --mode recommend --budget 5000000 --threshold 0.5 --max-customers 1000
-```
-
-_you can change the figures (threshod, max-customers)_
-
-### 🔍 Operational explainability
-
-```bash
-# Generate human-readable explanations for decisions
-python src/main.py --mode explain
-```
-
-Creates **operational explanation artifacts** for selected or high-priority customers.
-This stage summarizes _why_ a customer is risky, _why_ intervention is recommended, and _what_ guardrails should be considered.
-
-Main outputs:
-
-- `results/customer_operational_explanations.csv`
-- `results/customer_operational_explanations_summary.json`
-- `results/customer_operational_explanations.md`
-
-## AB Test
-
-```bash
-python src/main.py --mode abtest
-
-```
-
-## Simulation fidelity audit
-
-```bash
-python src/main.py --mode fidelity
-```
-
-Audits whether the simulator behaves **realistically** enough for downstream experimentation.
-This includes treatment/control balance, funnel consistency, churn-risk alignment, and discount-pressure diagnostics.
-
-Main outputs:
-
-- `results/simulation_fidelity_summary.json`
-- `results/simulation_fidelity_report.md`
-
-## Realtime Bootstrap
-
-```bash
-python src/main.py --mode realtime-bootstrap
-```
-
-Initializes the real-time scoring environment before replaying or consuming streaming events.
-
-This step typically prepares the required state, caches, intermediate artifacts, or message-stream resources so that the real-time pipeline can start from a consistent baseline.
-
-## Realtime Replay
-
-```bash
-python src/main.py --mode realtime-replay --stream-limit 20000 --stream-max-events 20000
-```
-
-Replays simulated or stored customer events through **the real-time pipeline** so the system can update churn-risk-related outputs as if events were arriving live.
-
-Parameter meaning:
-
-`--stream-limit 20000`
-Limits _how many_ customers or records are taken into the replay process.
-
-`--stream-max-events 20000`
-Limits the _total number_ of streamed events processed during replay.
-
-## Detached Docker Run
+Detached mode:
 
 ```bash
 docker compose up -d --build
 ```
 
-Builds the Docker images and starts the services in detached mode, which means the containers run in the background.
+Use detached mode when you want services to keep running in the background.
 
-Difference from:
+## Finance Mode
+
+Finance Mode is designed for banks, card companies, fintech services, and other financial-service businesses. It can use customer-level snapshots, transaction logs, card usage, loan status, balance changes, delinquency indicators, and support history.
+
+Recommended columns include:
+
+- `customer_id`
+- `timestamp` or transaction date
+- `event_type` or transaction type
+- deposit or account balance
+- loan balance or repayment status
+- card usage amount
+- delinquency days
+- support/contact count
+- customer segment or membership tier
+
+Typical use cases:
+
+- Detect likely cancellation or account inactivity.
+- Prioritize high-value customers at risk.
+- Decide whether to offer retention benefits, service recovery, or financial-product guidance.
+- Monitor live customer events in PostgreSQL-backed live mode.
+
+## E-commerce Mode
+
+E-commerce Mode is designed for online stores, subscription commerce, marketplace services, and retail CRM teams. It can use visit logs, search events, cart behavior, orders, coupon usage, category preferences, and purchase history.
+
+Recommended columns include:
+
+- `customer_id`
+- event timestamp
+- event type such as page view, search, cart, purchase, login
+- order amount
+- item category
+- coupon or discount usage
+- customer segment or membership tier
+- browsing or purchase recency
+
+Typical use cases:
+
+- Detect likely churn or purchase inactivity.
+- Prioritize retention targets under a marketing budget.
+- Recommend categories, coupons, or CRM actions.
+- Monitor real-time behavior changes and action queues.
+
+## Dashboard Workflow
+
+### 1. Start services
 
 ```bash
-docker compose up --build
-```
-
-`up --build`: runs in the foreground and shows logs directly in the terminal
-
-`up -d --build`: runs in the background so you can continue using the terminal
-
-## Implementation Order
-
-```bash
-python src/main.py --mode simulate
-python src/main.py --mode features
-python src/main.py --mode train
-python src/main.py --mode survival
-python src/main.py --mode uplift
-python src/main.py --mode clv
-python src/main.py --mode segment
-python src/main.py --mode optimize --budget 50000000
-python src/main.py --mode recommend --budget 5000000 --threshold 0.5 --max-customers 1000
-python src/main.py --mode explain
-python src/main.py --mode abtest
-python src/main.py --mode fidelity
 docker compose up -d --build
-python src/main.py --mode realtime-bootstrap
-python src/main.py --mode realtime-replay --stream-limit 20000 --stream-max-events 20000
 ```
 
-## When You Want To Reimplement
+### 2. Open the dashboard
 
-```bash
-python src/main.py --mode simulate --force --randomize
-python src/main.py --mode features
-python src/main.py --mode train
-python src/main.py --mode survival
-python src/main.py --mode uplift
-python src/main.py --mode clv
-python src/main.py --mode segment
-python src/main.py --mode optimize --budget 50000000
-python src/main.py --mode recommend --budget 5000000 --threshold 0.5 --max-customers 1000
-python src/main.py --mode explain
-python src/main.py --mode abtest
-python src/main.py --mode fidelity
-docker compose up -d --build
-python src/main.py --mode realtime-bootstrap
-python src/main.py --mode realtime-replay --stream-limit 20000 --stream-max-events 20000
+Open the Streamlit dashboard in your browser:
+
+```text
+http://localhost:8501
 ```
 
-## Reimplementation Flags
+### 3. Choose a mode
 
-```bash
-python src/main.py --mode simulate --force --randomize
+Select either:
+
+- **Finance Mode**
+- **E-commerce Mode**
+
+### 4. Upload CSV/TSV data
+
+Upload the company dataset from the first screen. The dashboard analyzes the columns and proposes mappings for customer ID, timestamp, event type, amount, and feature columns.
+
+### 5. Confirm mapping and train
+
+After confirming the mapping, run the training pipeline from the dashboard. The pipeline creates feature stores, churn scores, target candidates, recommendations, explanations, and live-serving artifacts.
+
+### 6. Open existing results
+
+If previous training results exist, you can open the dashboard directly without uploading a new file.
+
+## Budget, Profit, and ROI Logic
+
+The budget optimization view uses the following business logic:
+
+```text
+Expected incremental profit = Customer value × Response potential × Churn risk - Intervention cost
+Expected ROI = Expected incremental profit ÷ Intervention cost
 ```
 
-This command is used when you want to **regenerate the simulation data** from scratch.
+Customers with higher expected incremental profit and ROI are selected first, while respecting the total marketing budget and maximum target-customer constraints.
 
-Parameter meaning:
+## Live DB Mode
 
-`--force`
-
-Overwrites existing generated files or reruns the simulation even if prior outputs already exist.
-
-`--randomize`
-
-Generates **a new randomized simulation** instead of reusing the same deterministic data configuration.
-
-## User Live DB Mode
-
-User Live DB Mode is the production-style path for uploaded company data. It initializes the static user artifacts into PostgreSQL live serving tables, then updates only changed customers when new customer events arrive.
+The platform can serve uploaded business data through PostgreSQL-backed live tables. After training, artifacts can be seeded into live tables and updated when new events arrive.
 
 Core flow:
 
-
 1. Start Docker services.
-2. Upload CSV and generate user artifacts from the dashboard.
-3. The dashboard automatically seeds PostgreSQL live tables from `data/raw_user`, `data/feature_store_user`, and `results_user` after "매핑 확정 후 학습 시작" completes.
-4. Ingest customer events.
-5. Verify `feature_state`, `score`, `recommendation_candidates`, and `action_queue`.
-6. Confirm the dashboard uses User Live DB results in 자사 데이터 mode.
+2. Upload a finance or e-commerce CSV/TSV file.
+3. Confirm column mapping and run training.
+4. Seed generated artifacts into PostgreSQL live tables.
+5. Send customer events to the live API.
+6. Confirm score, recommendation, and action-queue changes in the dashboard.
 
-
-
-### 1. Docker
+Health check:
 
 ```bash
-docker compose up -d --build
-```
-
-
-### 2. Fixed E2E validation routine
-
-Run the whole User Live DB smoke test:
-
-```bash
-./scripts/e2e_user_live_check.sh
-```
-
-Equivalent manual sequence:
-
-```bash
-# 1. live DB 상태 확인
 curl -s "http://localhost:8000/api/v1/user-live/health" | python3 -m json.tool
+```
 
-# 2. seed 결과 확인
+Seed status:
+
+```bash
 curl -s "http://localhost:8000/api/v1/user-live/seed-status" | python3 -m json.tool
+```
 
-# 3. 특정 고객 이벤트 발생
+Example event insertion:
+
+```bash
 curl -X POST "http://localhost:8000/api/v1/user-live/events" \
   -H "Content-Type: application/json" \
   -d '{
     "customer_id": 1001,
-    "event_type": "add_to_cart",
+    "event_type": "purchase",
     "event_time": "2026-05-10T03:30:00+09:00",
     "amount": 35000,
-    "source_event_id": "test-event-1001-001",
-    "item_category": "fashion",
+    "source_event_id": "event-1001-001",
     "channel": "web",
-    "raw_payload": {"test": true}
+    "raw_payload": {"source": "demo"}
   }' | python3 -m json.tool
+```
 
+Check a customer score:
 
-# 4. 해당 고객 feature_state 확인
-curl -s "http://localhost:8000/api/v1/user-live/feature-state?customer_id=1001" | python3 -m json.tool
-
-# 5. 해당 고객 score 확인
+```bash
 curl -s "http://localhost:8000/api/v1/user-live/scores?customer_id=1001" | python3 -m json.tool
+```
 
-# 6. 해당 고객 action_queue 확인
+Check action queue:
+
+```bash
 curl -s "http://localhost:8000/api/v1/user-live/actions?customer_id=1001" | python3 -m json.tool
 ```
 
-All 6 checks should pass consistently before treating the User Live DB MVP as complete.
+## Validation Checklist
 
+Before a demo or submission, verify:
 
-### Continuous mixed event injection for live demo
+- Docker services start successfully.
+- Finance and E-commerce mode selection works.
+- Existing trained results can be opened from the first screen.
+- Analysis-control values do not reset when switching language.
+- Table headers and table-cell values are understandable in Korean, English, and Japanese.
+- Chart axes and titles are localized.
+- Duplicate metric columns such as `expected roi 2` are not shown.
+- LLM summaries are generated in the selected language when an API key is provided.
+- Real-time operations view shows live scores and action queues without unnecessary charts.
 
-This script simulates both existing-customer behavior changes and new-customer acquisition.
+## Repository Structure
 
-- Existing customers are sampled from PostgreSQL `customer_scores`.
-- New customers are assigned new `customer_id` values above the current maximum ID.
-- Existing-customer events are sent to `/api/v1/user-live/events`.
-- New-customer initial behavior sequences are sent to `/api/v1/user-live/events/batch`.
-- Each event updates `customer_events`, `customer_feature_state`, `customer_scores`, `recommendation_candidates`, and `action_queue` when scoring/action flags are enabled.
-
-Run this in a separate terminal:
-
-```bash
-bash scripts/live_demo_mixed_events.sh
+```text
+dashboard/
+  app.py                    # Streamlit app entry point
+  ui_labels.py              # Friendly labels, table-cell translation, chart localization
+  ui_llm_language.py        # LLM output-language instructions
+  ui_budget_formula.py      # Budget/profit/ROI formula UI block
+  services/                 # API, data loading, insight, optimization, LLM clients
+  utils/                    # Formatting helpers
+src/                        # Training and preprocessing pipeline
+data/                       # Raw and feature-store data folders
+results_*/                  # Mode-specific output artifacts
+models_*/                   # Mode-specific model artifacts
+scripts/                    # Validation and live-demo helper scripts
 ```
 
-### 3. Dashboard verification points
+## Notes for Hackathon Demos
 
-In 자사 데이터 mode, verify these before a PR or presentation:
+For a concise demo, focus on:
 
-1. Dashboard reads PostgreSQL `customer_scores` before CSV results.
-2. Posting one event changes only the corresponding `customer_id` score path.
-3. `action_queue` count increases or the existing row is updated.
-4. Refreshing the dashboard preserves values from PostgreSQL.
-5. Simulator mode and user mode do not mix. User mode must not fall back to `results/` or `data/raw` simulator artifacts.
+1. Uploading or opening existing finance/e-commerce results.
+2. Showing churn-risk customers.
+3. Adjusting budget and churn threshold.
+4. Showing final targets and recommended actions.
+5. Demonstrating live event updates in the real-time operations view.
 
-
-Summary:
-
-```markdown
-## Summary
-- Add PostgreSQL-backed user live mode
-- Seed live tables from uploaded user artifacts
-- Ingest customer events into customer_events
-- Update customer_feature_state incrementally
-- Re-score changed customers only
-- Refresh recommendation_candidates and action_queue
-- Expose user-live API endpoints for dashboard integration
-
-## Validation
-- Checked /user-live/health
-- Seeded user artifacts into PostgreSQL
-- Posted customer event for customer_id=1001
-- Verified updated scores and action queue records
-```
+This keeps the presentation focused on business value instead of exposing unnecessary internal pipeline details.
