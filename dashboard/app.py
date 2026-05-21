@@ -66,22 +66,13 @@ from dashboard.services.uplift_service import (
     get_top_high_value_customers,
 )
 from dashboard.utils.formatters import money, pct
-from dashboard.ui_budget_formula import budget_formula_html
-from dashboard.ui_labels import (
-    drop_duplicate_metric_columns,
-    localize_plotly_figure,
-    translate_column as friendly_translate_column,
-    translate_text as friendly_translate_text,
-    translate_value as friendly_translate_value,
-)
-from dashboard.ui_llm_language import llm_language_instruction, llm_language_name
-from dashboard.ui_realtime_tables import prepare_live_action_queue_table, prepare_realtime_queue_table
 
 
 DASHBOARD_VIEW_ITEMS: tuple[tuple[str, str], ...] = (
     # 내부 키는 기존 렌더링 분기와 호환되도록 일부 원래 번호를 유지한다.
-    # 화면에는 CORE_VIEW_DISPLAY_LABELS를 통해 1~4로 재정렬된 번호만 보여준다.
+    # 화면에는 CORE_VIEW_DISPLAY_LABELS를 통해 1~5로 재정렬된 번호만 보여준다.
     ("1", "이탈현황"),
+    ("9", "이탈 시점 예측"),
     ("4", "예산 최적화 및 리텐션 타겟"),
     ("5", "개인화 추천"),
     ("6", "실시간 운영 모니터"),
@@ -90,7 +81,7 @@ DASHBOARD_VIEW_OPTIONS: tuple[str, ...] = tuple(f"{n}. {t}" for n, t in DASHBOAR
 VIEW_OPTION_BY_NUM: dict[str, str] = {num: f"{num}. {title}" for num, title in DASHBOARD_VIEW_ITEMS}
 
 DASHBOARD_VIEW_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("핵심 화면", ("1", "4", "5", "6")),
+    ("핵심 화면", ("1", "9", "4", "5", "6")),
 )
 
 GROUP_TO_VIEW_OPTIONS: dict[str, tuple[str, ...]] = {
@@ -107,21 +98,24 @@ VIEW_TO_GROUP: dict[str, str] = {
 CORE_VIEW_DISPLAY_LABELS: dict[str, dict[str, str]] = {
     "ko": {
         "1. 이탈현황": "① 이탈 현황",
-        "4. 예산 최적화 및 리텐션 타겟": "② 예산 배분·타겟 고객",
-        "5. 개인화 추천": "③ 개인화 추천",
-        "6. 실시간 운영 모니터": "④ 실시간 운영 모니터",
+        "9. 이탈 시점 예측": "② 이탈 시점 예측",
+        "4. 예산 최적화 및 리텐션 타겟": "③ 예산 배분·타겟 고객",
+        "5. 개인화 추천": "④ 개인화 추천",
+        "6. 실시간 운영 모니터": "⑤ 실시간 운영 모니터",
     },
     "en": {
         "1. 이탈현황": "① Churn Status",
-        "4. 예산 최적화 및 리텐션 타겟": "② Budget Allocation & Targets",
-        "5. 개인화 추천": "③ Personalized Recommendations",
-        "6. 실시간 운영 모니터": "④ Real-time Operations",
+        "9. 이탈 시점 예측": "② Churn Timing",
+        "4. 예산 최적화 및 리텐션 타겟": "③ Budget Allocation & Targets",
+        "5. 개인화 추천": "④ Personalized Recommendations",
+        "6. 실시간 운영 모니터": "⑤ Real-time Operations",
     },
     "ja": {
         "1. 이탈현황": "① 離脱状況",
-        "4. 예산 최적화 및 리텐션 타겟": "② 予算配分・対象顧客",
-        "5. 개인화 추천": "③ パーソナライズ推薦",
-        "6. 실시간 운영 모니터": "④ リアルタイム運用",
+        "9. 이탈 시점 예측": "② 離脱時点予測",
+        "4. 예산 최적화 및 리텐션 타겟": "③ 予算配分・対象顧客",
+        "5. 개인화 추천": "④ パーソナライズ推薦",
+        "6. 실시간 운영 모니터": "⑤ リアルタイム運用",
     },
 }
 
@@ -228,7 +222,7 @@ COLUMN_LABELS: dict[str, dict[str, str]] = {
         "allocated_budget": "배정 예산", "customer_count": "선정 고객 수", "candidate_customer_count": "후보 고객 수", "intervention_intensity": "개입 강도", "recommended_action": "추천 액션", "priority_score": "우선순위 점수", "selection_score": "선정 점수", "recommended_intervention_window": "추천 개입 시점",
         "recommended_category": "추천 카테고리", "recommendation_rank": "추천 순위", "recommendation_score": "추천 점수", "recommendation_priority": "추천 우선순위", "target_priority_score": "타겟 우선순위", "reason_tags": "추천 이유", "action_status": "액션 상태", "source_type": "발생 경로", "trigger_reason": "트리거 이유",
         "queued_at": "큐 적재 시각", "updated_at": "갱신 시각", "scored_at": "점수 산출 시각", "latest_trigger_reason": "최근 트리거 이유", "queued_recommended_action": "큐 추천 액션", "queued_intervention_intensity": "큐 개입 강도", "queued_coupon_cost": "큐 쿠폰 비용", "queued_expected_profit": "큐 예상 이익", "queued_expected_roi": "큐 예상 ROI", "reoptimization_count": "재최적화 횟수",
-        "feature": "변수", "feature_display": "변수명", "importance": "중요도", "importance_share": "중요도 비중", "reason_summary": "선정 이유", "caution": "주의사항", "next_best_action": "다음 추천 액션", "survival_prob_30d": "30일 생존확률", "action_queue_status": "액션 큐 상태",
+        "feature": "변수", "feature_display": "변수명", "importance": "중요도", "importance_share": "중요도 비중", "reason_summary": "선정 이유", "caution": "주의사항", "next_best_action": "다음 추천 액션", "survival_prob_30d": "30일 생존확률", "action_queue_status": "액션 큐 상태", "expected_churn_period": "예상 이탈 시점", "expected_churn_date": "예상 이탈 날짜", "expected_loss_30d": "예상 손실액", "churn_within_30d_probability": "30일 내 이탈 가능성",
     },
     "en": {
         "customer_id": "Customer ID", "persona": "Customer Type", "churn_probability": "Churn Probability", "churn_score": "Churn Score", "realtime_churn_score": "Real-time Churn Score", "base_churn_probability": "Base Churn Probability", "score_delta": "Score Delta",
@@ -236,7 +230,7 @@ COLUMN_LABELS: dict[str, dict[str, str]] = {
         "allocated_budget": "Allocated Budget", "customer_count": "Selected Customers", "candidate_customer_count": "Candidate Customers", "intervention_intensity": "Intervention Intensity", "recommended_action": "Recommended Action", "priority_score": "Priority Score", "selection_score": "Selection Score", "recommended_intervention_window": "Recommended Timing",
         "recommended_category": "Recommended Category", "recommendation_rank": "Rank", "recommendation_score": "Recommendation Score", "recommendation_priority": "Recommendation Priority", "target_priority_score": "Target Priority", "reason_tags": "Reason Tags", "action_status": "Action Status", "source_type": "Source Type", "trigger_reason": "Trigger Reason",
         "queued_at": "Queued At", "updated_at": "Updated At", "scored_at": "Scored At", "latest_trigger_reason": "Latest Trigger Reason", "queued_recommended_action": "Queued Action", "queued_intervention_intensity": "Queued Intensity", "queued_coupon_cost": "Queued Coupon Cost", "queued_expected_profit": "Queued Expected Profit", "queued_expected_roi": "Queued Expected ROI", "reoptimization_count": "Re-optimization Count",
-        "feature": "Feature", "feature_display": "Feature", "importance": "Importance", "importance_share": "Importance Share", "reason_summary": "Reason Summary", "caution": "Caution", "next_best_action": "Next Best Action", "survival_prob_30d": "30-day Survival Probability", "action_queue_status": "Action Queue Status",
+        "feature": "Feature", "feature_display": "Feature", "importance": "Importance", "importance_share": "Importance Share", "reason_summary": "Reason Summary", "caution": "Caution", "next_best_action": "Next Best Action", "survival_prob_30d": "30-day Survival Probability", "action_queue_status": "Action Queue Status", "expected_churn_period": "Expected Churn Timing", "expected_churn_date": "Expected Churn Date", "expected_loss_30d": "Expected Loss", "churn_within_30d_probability": "Churn Chance within 30 Days",
     },
     "ja": {
         "customer_id": "顧客ID", "persona": "顧客タイプ", "churn_probability": "離脱確率", "churn_score": "離脱スコア", "realtime_churn_score": "リアルタイム離脱スコア", "base_churn_probability": "基準離脱確率", "score_delta": "スコア変化",
@@ -244,7 +238,7 @@ COLUMN_LABELS: dict[str, dict[str, str]] = {
         "allocated_budget": "配分予算", "customer_count": "選定顧客数", "candidate_customer_count": "候補顧客数", "intervention_intensity": "介入強度", "recommended_action": "推奨アクション", "priority_score": "優先度スコア", "selection_score": "選定スコア", "recommended_intervention_window": "推奨介入時点",
         "recommended_category": "推薦カテゴリ", "recommendation_rank": "推薦順位", "recommendation_score": "推薦スコア", "recommendation_priority": "推薦優先度", "target_priority_score": "対象優先度", "reason_tags": "推薦理由", "action_status": "アクション状態", "source_type": "発生経路", "trigger_reason": "トリガー理由",
         "queued_at": "キュー登録時刻", "updated_at": "更新時刻", "scored_at": "スコア算出時刻", "latest_trigger_reason": "最新トリガー理由", "queued_recommended_action": "キュー推奨アクション", "queued_intervention_intensity": "キュー介入強度", "queued_coupon_cost": "キュー費用", "queued_expected_profit": "キュー予想利益", "queued_expected_roi": "キュー予想ROI", "reoptimization_count": "再最適化回数",
-        "feature": "変数", "feature_display": "変数名", "importance": "重要度", "importance_share": "重要度比率", "reason_summary": "選定理由", "caution": "注意事項", "next_best_action": "次の推奨アクション", "survival_prob_30d": "30日生存確率", "action_queue_status": "アクションキュー状態",
+        "feature": "変数", "feature_display": "変数名", "importance": "重要度", "importance_share": "重要度比率", "reason_summary": "選定理由", "caution": "注意事項", "next_best_action": "次の推奨アクション", "survival_prob_30d": "30日生存確率", "action_queue_status": "アクションキュー状態", "expected_churn_period": "予想離脱時点", "expected_churn_date": "予想離脱日", "expected_loss_30d": "予想損失額", "churn_within_30d_probability": "30日以内の離脱可能性",
     },
 }
 
@@ -598,6 +592,39 @@ for _lang, _mapping in EXTRA_UI_TEXT.items():
 UI_TEXT.setdefault("en", {}).update({"학습 대상": "Training target", "파일": "File", "신규": "New", "기존": "Existing", "학습 시작": "Start training", "NEW": "New", "UPD": "Updated"})
 UI_TEXT.setdefault("ja", {}).update({"학습 대상": "学習対象", "파일": "ファイル", "신규": "新規", "기존": "既存", "학습 시작": "学習開始", "NEW": "新規", "UPD": "更新"})
 
+UI_TEXT.setdefault("en", {}).update({
+    "이탈 시점 예측": "Churn Timing Prediction",
+    "고객별 이탈 시점과 예상 손실": "Customer Churn Timing and Expected Loss",
+    "고객별로 언제쯤 이탈할 가능성이 큰지와 그때 잃을 수 있는 금액만 표로 보여줍니다.": "Shows only when each customer is likely to churn and the potential loss in a table.",
+    "이탈 시점 예측 결과가 없습니다.": "No churn timing prediction results are available.",
+    "survival_predictions.csv가 없거나 survival 분석이 아직 실행되지 않았습니다.": "survival_predictions.csv is missing or survival analysis has not been run yet.",
+    "시뮬레이터 데모에서는 python src/main.py --mode survival 실행 후 대시보드를 새로고침하세요.": "For the simulator demo, run python src/main.py --mode survival and refresh the dashboard.",
+    "예상 손실액은 고객 생애가치(CLV)에 30일 내 이탈 가능성을 곱해 계산합니다. CLV가 없으면 최근 구매금액을 보수적 대체값으로 사용합니다.": "Expected loss is calculated as customer lifetime value (CLV) multiplied by the 30-day churn chance. If CLV is unavailable, recent spend is used as a conservative fallback.",
+    "고객이 언제 이탈할 가능성이 큰지 미리 확인하는 화면입니다.": "Use this view to see when each customer is likely to churn.",
+    "예상 이탈 시점과 예상 손실액만 남겨 긴급 대응이 필요한 고객을 빠르게 찾습니다.": "It keeps only expected timing and expected loss so urgent customers are easy to find.",
+    "예산 배분 전에 먼저 연락해야 할 고객의 시간 우선순위를 정하는 목적입니다.": "Use it to set time-based contact priority before budget allocation.",
+    "약": "about",
+    "일 이내": "days",
+    "알 수 없음": "Unknown",
+    "표시 고객 수": "Displayed customers",
+})
+UI_TEXT.setdefault("ja", {}).update({
+    "이탈 시점 예측": "離脱時点予測",
+    "고객별 이탈 시점과 예상 손실": "顧客別の離脱時点と予想損失",
+    "고객별로 언제쯤 이탈할 가능성이 큰지와 그때 잃을 수 있는 금액만 표로 보여줍니다.": "顧客ごとにいつ離脱しそうか、その時に失う可能性のある金額だけを表で表示します。",
+    "이탈 시점 예측 결과가 없습니다.": "離脱時点予測結果がありません。",
+    "survival_predictions.csv가 없거나 survival 분석이 아직 실행되지 않았습니다.": "survival_predictions.csvがないか、survival分析がまだ実行されていません。",
+    "시뮬레이터 데모에서는 python src/main.py --mode survival 실행 후 대시보드를 새로고침하세요.": "シミュレーターデモでは python src/main.py --mode survival を実行してからダッシュボードを更新してください。",
+    "예상 손실액은 고객 생애가치(CLV)에 30일 내 이탈 가능성을 곱해 계산합니다. CLV가 없으면 최근 구매금액을 보수적 대체값으로 사용합니다.": "予想損失額は顧客生涯価値(CLV)に30日以内の離脱可能性を掛けて計算します。CLVがない場合は最近の購入金額を保守的な代替値として使います。",
+    "고객이 언제 이탈할 가능성이 큰지 미리 확인하는 화면입니다.": "顧客がいつ離脱しそうかを事前に確認する画面です。",
+    "예상 이탈 시점과 예상 손실액만 남겨 긴급 대응이 필요한 고객을 빠르게 찾습니다.": "予想離脱時点と予想損失額だけを残し、緊急対応が必要な顧客を素早く見つけます。",
+    "예산 배분 전에 먼저 연락해야 할 고객의 시간 우선순위를 정하는 목적입니다.": "予算配分の前に、先に連絡すべき顧客の時間優先度を決めるための画面です。",
+    "약": "約",
+    "일 이내": "日以内",
+    "알 수 없음": "不明",
+    "표시 고객 수": "表示顧客数",
+})
+
 
 # ============================================================
 # [PATCH] Remaining visible i18n fragments and real-time no-chart labels
@@ -726,6 +753,11 @@ VIEW_INTRO_LINES: dict[str, list[str]] = {
         "전체 위험 규모와 고객별 위험도를 함께 보며 대응 우선순위를 정합니다.",
         "예산 화면과 추천 화면으로 넘어가기 전에 어떤 고객군이 문제인지 빠르게 파악하는 목적입니다.",
     ],
+    "9": [
+        "고객이 언제 이탈할 가능성이 큰지 미리 확인하는 화면입니다.",
+        "예상 이탈 시점과 예상 손실액만 남겨 긴급 대응이 필요한 고객을 빠르게 찾습니다.",
+        "예산 배분 전에 먼저 연락해야 할 고객의 시간 우선순위를 정하는 목적입니다.",
+    ],
     "4": [
         "한정된 예산을 어떤 고객·세그먼트에 먼저 쓸지 결정하는 화면입니다.",
         "예상 이익, 비용, 고객 반응 가능성을 함께 보며 최종 타겟을 검토합니다.",
@@ -750,7 +782,7 @@ VALUE_LABELS: dict[str, dict[str, str]] = {
         "high_uplift": "개입 반응 높음", "very_high_uplift": "개입 반응 매우 높음", "medium_uplift": "개입 반응 보통", "low_uplift": "개입 반응 낮음", "negative_uplift": "개입 비추천", "unknown_segment": "분류 정보 없음", "live": "실시간 고객", "live_user": "실시간 고객",
         "high": "높음", "medium": "보통", "low": "낮음", "critical": "매우 높음", "queued": "큐에 적재됨", "not_queued": "미적재", "pending": "대기 중", "sent": "발송 완료", "completed": "완료", "failed": "실패",
         "generic_retention_offer": "기본 리텐션 혜택", "coupon_offer": "쿠폰 혜택", "discount_offer": "할인 혜택", "service_recovery": "서비스 회복 안내", "loyalty_reward": "충성 고객 보상", "personalized_coupon": "개인 맞춤 쿠폰", "retention_action": "리텐션 액션",
-        "page_view": "페이지 방문", "purchase": "구매", "cart": "장바구니", "add_to_cart": "장바구니 담기", "search": "검색", "login": "로그인", "NEW": "신규", "UPD": "기존 갱신",
+        "page_view": "페이지 방문", "purchase": "구매", "cart": "장바구니", "add_to_cart": "장바구니 담기", "search": "검색", "login": "로그인", "NEW": "신규", "UPD": "기존 갱신", "High risk": "높은 위험", "Medium risk": "중간 위험", "Low risk": "낮은 위험",
     },
     "en": {
         "sure_things": "Already likely to respond", "sleeping_dogs": "Avoid unnecessary intervention", "lost_causes": "Low expected response", "persuadables": "Likely to respond if contacted",
@@ -758,7 +790,7 @@ VALUE_LABELS: dict[str, dict[str, str]] = {
         "high_uplift": "High response potential", "very_high_uplift": "Very high response potential", "medium_uplift": "Medium response potential", "low_uplift": "Low response potential", "negative_uplift": "Intervention not recommended", "unknown_segment": "No group info", "live": "Live customer", "live_user": "Live customer",
         "high": "High", "medium": "Medium", "low": "Low", "critical": "Critical", "queued": "Queued", "not_queued": "Not queued", "pending": "Pending", "sent": "Sent", "completed": "Completed", "failed": "Failed",
         "generic_retention_offer": "Basic retention offer", "coupon_offer": "Coupon offer", "discount_offer": "Discount offer", "service_recovery": "Service recovery message", "loyalty_reward": "Loyalty reward", "personalized_coupon": "Personalized coupon", "retention_action": "Retention action",
-        "page_view": "Page visit", "purchase": "Purchase", "cart": "Cart", "add_to_cart": "Add to cart", "search": "Search", "login": "Login", "NEW": "New", "UPD": "Updated existing",
+        "page_view": "Page visit", "purchase": "Purchase", "cart": "Cart", "add_to_cart": "Add to cart", "search": "Search", "login": "Login", "NEW": "New", "UPD": "Updated existing", "High risk": "High risk", "Medium risk": "Medium risk", "Low risk": "Low risk",
     },
     "ja": {
         "sure_things": "すでに反応しやすい顧客", "sleeping_dogs": "過度な介入を避ける顧客", "lost_causes": "反応見込みが低い顧客", "persuadables": "介入すると反応しやすい顧客",
@@ -766,7 +798,7 @@ VALUE_LABELS: dict[str, dict[str, str]] = {
         "high_uplift": "反応見込み高", "very_high_uplift": "反応見込み非常に高", "medium_uplift": "反応見込み中", "low_uplift": "反応見込み低", "negative_uplift": "介入非推奨", "unknown_segment": "分類情報なし", "live": "リアルタイム顧客", "live_user": "リアルタイム顧客",
         "high": "高", "medium": "中", "low": "低", "critical": "重大", "queued": "キュー登録済み", "not_queued": "未登録", "pending": "待機中", "sent": "送信済み", "completed": "完了", "failed": "失敗",
         "generic_retention_offer": "基本リテンション特典", "coupon_offer": "クーポン特典", "discount_offer": "割引特典", "service_recovery": "サービス回復メッセージ", "loyalty_reward": "ロイヤル顧客特典", "personalized_coupon": "個別クーポン", "retention_action": "リテンション施策",
-        "page_view": "ページ訪問", "purchase": "購入", "cart": "カート", "add_to_cart": "カート追加", "search": "検索", "login": "ログイン", "NEW": "新規", "UPD": "既存更新",
+        "page_view": "ページ訪問", "purchase": "購入", "cart": "カート", "add_to_cart": "カート追加", "search": "検索", "login": "ログイン", "NEW": "新規", "UPD": "既存更新", "High risk": "高リスク", "Medium risk": "中リスク", "Low risk": "低リスク",
     },
 }
 
@@ -1454,7 +1486,7 @@ LEGACY_VIEW_REDIRECTS: dict[str, str] = {
     "9. 개인화 추천": "5. 개인화 추천",
     "10. 실시간 운영 모니터": "6. 실시간 운영 모니터",
     "10. 실시간 위험 스코어링 / 운영 모니터": "6. 실시간 운영 모니터",
-    "11. 이탈 시점 예측 (Survival Analysis)": "1. 이탈현황",
+    "11. 이탈 시점 예측 (Survival Analysis)": "9. 이탈 시점 예측",
     "12. 의사결정 엔진 비교": "4. 예산 최적화 및 리텐션 타겟",
     "13. 운영 한눈에 보기": "6. 실시간 운영 모니터",
     "14. 증분 성과 / A-B 실험": "4. 예산 최적화 및 리텐션 타겟",
@@ -1463,15 +1495,16 @@ LEGACY_VIEW_REDIRECTS: dict[str, str] = {
     "7. 실시간 운영 모니터": "6. 실시간 운영 모니터",
     "8. 할인·쿠폰 운영 리스크": "4. 예산 최적화 및 리텐션 타겟",
     "9. 학습 결과 아티팩트": "5. 개인화 추천",
-    "10. 이탈 시점 예측 (Survival Analysis)": "1. 이탈현황",
+    "10. 이탈 시점 예측 (Survival Analysis)": "9. 이탈 시점 예측",
     "11. 증분 성과 / A-B 실험": "4. 예산 최적화 및 리텐션 타겟",
     "12. 설명가능성 / 고객별 개입 이유": "4. 예산 최적화 및 리텐션 타겟",
     "6. 개인화 추천": "5. 개인화 추천",
-    "8. 이탈 시점 예측 (Survival Analysis)": "1. 이탈현황",
+    "8. 이탈 시점 예측 (Survival Analysis)": "9. 이탈 시점 예측",
     "9. 의사결정 엔진 비교": "4. 예산 최적화 및 리텐션 타겟",
     "10. 증분 성과 / A-B 실험": "4. 예산 최적화 및 리텐션 타겟",
     "11. 설명가능성 / 고객별 개입 이유": "4. 예산 최적화 및 리텐션 타겟",
     "13. 할인·쿠폰 운영 리스크": "4. 예산 최적화 및 리텐션 타겟",
+    "9. 이탈 시점 예측 (Survival Analysis)": "9. 이탈 시점 예측",
 }
 REALTIME_REFRESH_VIEWS: set[str] = {"6. 실시간 운영 모니터"}
 INSIGHT_HEAVY_VIEWS: set[str] = {"4. 예산 최적화 및 리텐션 타겟", "6. 실시간 운영 모니터"}
@@ -1479,18 +1512,6 @@ INSIGHT_HEAVY_VIEWS: set[str] = {"4. 예산 최적화 및 리텐션 타겟", "6.
 
 def _language_code() -> str:
     return st.session_state.get("language_code", "ko") if hasattr(st, "session_state") else "ko"
-
-
-_ORIGINAL_ST_PLOTLY_CHART = st.plotly_chart
-
-def _plotly_chart_with_i18n(fig, *args, **kwargs):
-    try:
-        fig = localize_plotly_figure(fig, _language_code())
-    except Exception:
-        pass
-    return _ORIGINAL_ST_PLOTLY_CHART(fig, *args, **kwargs)
-
-st.plotly_chart = _plotly_chart_with_i18n
 
 
 def _normalize_i18n_key(text: str) -> str:
@@ -1523,10 +1544,6 @@ def T(text: str) -> str:
             if localized and _normalize_i18n_key(localized) == normalized:
                 return translated
 
-    friendly = friendly_translate_text(raw, code)
-    if friendly != raw:
-        return friendly
-
     return raw
 
 
@@ -1553,8 +1570,6 @@ def _translate_runtime_text(text: Any) -> str:
 
     api_key_msg = "OpenAI API 키가 설정되지 않았습니다. 사이드바에 키를 입력하거나 OPENAI_API_KEY 환경변수를 설정하세요."
     out = out.replace(api_key_msg, T(api_key_msg))
-    out = friendly_translate_value(out, code)
-    out = friendly_translate_text(out, code)
     return out
 
 
@@ -1565,9 +1580,6 @@ def _translate_cell_value(value: Any) -> str:
     if stripped == "":
         return ""
     code = _language_code()
-    friendly_value = friendly_translate_value(stripped, code)
-    if friendly_value != stripped:
-        return str(friendly_value)
     value_labels = VALUE_LABELS.get(code, VALUE_LABELS.get("ko", {}))
     norm = _normalize_i18n_key(stripped)
     # Exact code / normalized code match.
@@ -1583,7 +1595,7 @@ def _translate_cell_value(value: Any) -> str:
         out = re.sub(rf"(?<![A-Za-z0-9_]){re.escape(src)}(?![A-Za-z0-9_])", dst, out)
     out = out.replace("-> action queued", "→ " + value_labels.get("queued", "queued"))
     out = out.replace("score=", "risk=")
-    return str(friendly_translate_value(out, code))
+    return out
 
 
 
@@ -1710,7 +1722,6 @@ def _filter_display_columns_for_label(df: pd.DataFrame, label: str = "") -> pd.D
     if not isinstance(df, pd.DataFrame) or df.empty:
         return pd.DataFrame() if df is None else df
     label = str(label or "")
-    df = drop_duplicate_metric_columns(df)
     if _label_matches(label, "고객별 선택 이유", "customer level reasons", "reason caution", "顧客別選定理由", "顧客別選定理由注意事項"):
         return _pick_existing_columns(df, ["customer_id", "persona", "selection_reason", "reason_summary", "watchout", "caution", "next_best_action", "recommended_action"])
     if _label_matches(label, "최종 리텐션 타겟", "final retention target", "最終リテンション対象"):
@@ -1726,29 +1737,9 @@ def _filter_display_columns_for_label(df: pd.DataFrame, label: str = "") -> pd.D
     if _label_matches(label, "실시간 이탈 위험", "real time churn risk", "リアルタイム離脱リスク"):
         return _pick_existing_columns(df, ["customer_id", "persona", "realtime_churn_score", "churn_score", "churn_probability", "action_queue_status", "queued_recommended_action", "queued_expected_profit", "latest_trigger_reason"])
     if _label_matches(label, "실시간 액션 큐", "live action queue", "action queue", "アクションキュー"):
-        return _pick_existing_columns(
-            df,
-            [
-                "customer_id",
-                "persona",
-                "recommended_action",
-                "queued_recommended_action",
-                "intervention_intensity",
-                "queued_intervention_intensity",
-                "recommended_investment_amount",
-                "coupon_cost",
-                "queued_coupon_cost",
-                "expected_profit",
-                "expected_incremental_profit",
-                "queued_expected_profit",
-                "expected_roi",
-                "queued_expected_roi",
-                "action_status",
-                "action_queue_status",
-                "latest_trigger_reason",
-                "trigger_reason",
-            ],
-        )
+        return _pick_existing_columns(df, ["customer_id", "persona", "recommended_action", "queued_recommended_action", "intervention_intensity", "queued_intervention_intensity", "expected_profit", "queued_expected_profit", "expected_roi", "queued_expected_roi", "action_status", "latest_trigger_reason"])
+    if _label_matches(label, "고객별 이탈 시점", "churn timing", "expected loss", "離脱時点"):
+        return _pick_existing_columns(df, ["customer_id", "persona", "expected_churn_period", "expected_churn_date", "churn_within_30d_probability", "expected_loss_30d"])
 
     hidden_norms = {
         _normalize_i18n_key(c) for c in [
@@ -1787,12 +1778,159 @@ def _render_view_intro(view_key: str) -> None:
     )
 
 
+
+
+def _is_churn_timing_view(current_view: str) -> bool:
+    """True for the customer-level churn timing dashboard view."""
+    normalized = str(current_view or "")
+    return normalized.startswith("9.") and "이탈 시점" in normalized
+
+
+def _format_churn_period(days: Any) -> str:
+    days_num = pd.to_numeric(pd.Series([days]), errors="coerce").iloc[0]
+    if pd.isna(days_num) or not np.isfinite(float(days_num)):
+        return T("알 수 없음")
+    days_int = max(1, int(math.ceil(float(days_num))))
+    code = _language_code()
+    if code == "en":
+        return f"Within about {days_int} days"
+    if code == "ja":
+        return f"約{days_int}日以内"
+    return f"약 {days_int}일 이내"
+
+
+def _format_expected_churn_date(base_date: Any, days: Any) -> str:
+    days_num = pd.to_numeric(pd.Series([days]), errors="coerce").iloc[0]
+    base = pd.to_datetime(base_date, errors="coerce")
+    if pd.isna(base) or pd.isna(days_num) or not np.isfinite(float(days_num)):
+        return "-"
+    return (base + pd.to_timedelta(int(math.ceil(float(days_num))), unit="D")).strftime("%Y-%m-%d")
+
+
+def _merge_customer_value_columns(predictions: pd.DataFrame, customers_df: pd.DataFrame) -> pd.DataFrame:
+    """Attach CLV/spend/persona columns without exposing internal modeling fields."""
+    if not isinstance(predictions, pd.DataFrame) or predictions.empty:
+        return pd.DataFrame() if predictions is None else predictions.copy()
+    out = predictions.copy()
+    if not isinstance(customers_df, pd.DataFrame) or customers_df.empty or "customer_id" not in out.columns or "customer_id" not in customers_df.columns:
+        return out
+
+    candidate_cols = [
+        "customer_id", "persona", "clv", "predicted_clv_12m", "monetary", "expected_incremental_profit"
+    ]
+    lookup_cols = [col for col in candidate_cols if col in customers_df.columns]
+    lookup = customers_df[lookup_cols].copy()
+    if "customer_id" not in lookup.columns:
+        return out
+
+    out["_merge_customer_id"] = out["customer_id"].astype(str)
+    lookup["_merge_customer_id"] = lookup["customer_id"].astype(str)
+    lookup = lookup.drop(columns=["customer_id"]).drop_duplicates("_merge_customer_id")
+    out = out.merge(lookup, on="_merge_customer_id", how="left", suffixes=("", "_from_customer"))
+
+    for col in ["persona", "clv", "predicted_clv_12m", "monetary", "expected_incremental_profit"]:
+        src = f"{col}_from_customer"
+        if src not in out.columns:
+            continue
+        if col not in out.columns:
+            out[col] = out[src]
+        else:
+            out[col] = out[col].where(out[col].notna(), out[src])
+        out = out.drop(columns=[src])
+    return out.drop(columns=["_merge_customer_id"], errors="ignore")
+
+
+def _build_churn_timing_table(
+    predictions: pd.DataFrame,
+    customers_df: pd.DataFrame,
+    metrics: dict[str, Any] | None,
+    *,
+    limit: int,
+) -> pd.DataFrame:
+    """Return a plain-language table: customer, when they may leave, and expected loss."""
+    if not isinstance(predictions, pd.DataFrame) or predictions.empty:
+        return pd.DataFrame()
+
+    df = _merge_customer_value_columns(predictions, customers_df)
+    if "customer_id" not in df.columns:
+        return pd.DataFrame()
+
+    days_col = next(
+        (col for col in ["predicted_median_time_to_churn_days", "expected_time_to_churn_days", "median_time_to_churn_days", "duration_days"] if col in df.columns),
+        None,
+    )
+    if days_col is None:
+        return pd.DataFrame()
+
+    out = df.copy()
+    out["_expected_days"] = pd.to_numeric(out[days_col], errors="coerce")
+
+    if "survival_prob_30d" in out.columns:
+        survival_30 = pd.to_numeric(out["survival_prob_30d"], errors="coerce").clip(lower=0, upper=1)
+        out["_churn_30d"] = (1.0 - survival_30).clip(lower=0, upper=1)
+    elif "churn_probability" in out.columns:
+        out["_churn_30d"] = pd.to_numeric(out["churn_probability"], errors="coerce").clip(lower=0, upper=1)
+    else:
+        out["_churn_30d"] = np.nan
+
+    value_col = next(
+        (col for col in ["clv", "predicted_clv_12m", "monetary", "expected_incremental_profit"] if col in out.columns),
+        None,
+    )
+    if value_col is not None:
+        out["_customer_value"] = pd.to_numeric(out[value_col], errors="coerce")
+    else:
+        out["_customer_value"] = np.nan
+
+    out["_expected_loss"] = (out["_customer_value"].clip(lower=0) * out["_churn_30d"].fillna(1.0)).replace([np.inf, -np.inf], np.nan)
+    landmark_date = (metrics or {}).get("landmark_as_of_date") or (metrics or {}).get("as_of_date")
+
+    if "predicted_hazard_ratio" in out.columns:
+        out["_hazard_sort"] = pd.to_numeric(out["predicted_hazard_ratio"], errors="coerce")
+    else:
+        out["_hazard_sort"] = np.nan
+    out = out.sort_values(
+        ["_expected_days", "_expected_loss", "_churn_30d", "_hazard_sort"],
+        ascending=[True, False, False, False],
+        kind="mergesort",
+    ).head(max(int(limit), 1))
+
+    display = pd.DataFrame({
+        "customer_id": out["customer_id"].astype(str),
+        "persona": out["persona"] if "persona" in out.columns else "-",
+        "expected_churn_period": out["_expected_days"].map(_format_churn_period),
+        "expected_churn_date": out["_expected_days"].map(lambda value: _format_expected_churn_date(landmark_date, value)),
+        "churn_within_30d_probability": out["_churn_30d"].map(lambda value: pct(float(value)) if pd.notna(value) else "-"),
+        "expected_loss_30d": out["_expected_loss"].map(lambda value: money(float(value)) if pd.notna(value) else "-"),
+    })
+    return display.reset_index(drop=True)
+
 def _llm_language_name() -> str:
-    return llm_language_name(_language_code())
+    return {"ko": "Korean", "en": "English", "ja": "Japanese"}.get(_language_code(), "Korean")
 
 
 def _llm_strict_language_instruction() -> str:
-    return llm_language_instruction(_language_code())
+    """Return a hard language instruction for LLM-generated summaries/answers.
+
+    The llm_service prompt may be written in Korean, so passing only translated UI
+    labels is not enough. This instruction is injected into both the title and the
+    JSON payload so the model receives an explicit output-language requirement.
+    """
+    code = _language_code()
+    if code == "en":
+        return (
+            "You must write the entire response in English. Do not write Korean or Japanese. "
+            "Use clear business English and keep technical terms brief."
+        )
+    if code == "ja":
+        return (
+            "必ず回答全体を日本語で書いてください。韓国語や英語の文章を混ぜないでください。"
+            "専門用語は短く説明し、ビジネス担当者にも分かる表現にしてください。"
+        )
+    return (
+        "반드시 전체 답변을 한국어로 작성하세요. 영어/일본어 문장을 섞지 말고, "
+        "비즈니스 담당자가 이해하기 쉬운 표현을 사용하세요."
+    )
 
 
 def _wrap_llm_payload(payload_json: str) -> str:
@@ -1802,22 +1940,11 @@ def _wrap_llm_payload(payload_json: str) -> str:
         payload = json.loads(payload_json) if payload_json else {}
     except Exception:
         payload = {"raw_payload": payload_json}
-
-    language_contract = (
-        f"USER_SELECTED_LANGUAGE={language}. "
-        f"{instruction} "
-        "This language rule is higher priority than any Korean dashboard labels, "
-        "table values, service messages, or previous cached answers inside the payload. "
-        "Do not mix languages except for product names, metric names such as ROI/CLV, or IDs."
-    )
     return json.dumps(
         {
-            "user_selected_language": language,
             "answer_language": language,
-            "must_answer_in_user_selected_language": True,
             "output_language_instruction": instruction,
-            "language_contract": language_contract,
-            "important": language_contract,
+            "important": instruction,
             "dashboard_payload": payload,
         },
         ensure_ascii=False,
@@ -1825,15 +1952,7 @@ def _wrap_llm_payload(payload_json: str) -> str:
 
 
 def _wrap_llm_question(question: str) -> str:
-    language = _llm_language_name()
-    instruction = _llm_strict_language_instruction()
-    return (
-        f"USER_SELECTED_LANGUAGE={language}\n"
-        f"{instruction}\n"
-        "This language requirement overrides Korean labels or prior conversation language. "
-        "Answer only in the selected language.\n\n"
-        f"User question:\n{question}"
-    )
+    return f"{_llm_strict_language_instruction()}\n\nUser question:\n{question}"
 
 
 def _business_mode() -> str:
@@ -4239,15 +4358,6 @@ def clear_dashboard_caches() -> None:
     except Exception:
         pass
 
-def clear_llm_response_caches() -> None:
-    """Remove cached LLM summary/QA texts when language or prompt policy changes."""
-    try:
-        for key in list(st.session_state.keys()):
-            if str(key).startswith(("summary::", "qa::")):
-                del st.session_state[key]
-    except Exception:
-        pass
-
 
 def load_training_artifacts_api():
     mode = _business_mode()
@@ -4525,9 +4635,6 @@ def _translate_column_name(column: str) -> str:
     if canonical and canonical in labels:
         return labels[canonical]
 
-    friendly = friendly_translate_column(raw, code)
-    if friendly != raw:
-        return friendly
     return T(raw.replace("_", " "))
 
 
@@ -4557,7 +4664,7 @@ def _sanitize_display_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     if not isinstance(df, pd.DataFrame):
         return pd.DataFrame()
 
-    safe_df = drop_duplicate_metric_columns(df.copy()).reset_index(drop=True)
+    safe_df = df.copy().reset_index(drop=True)
     original_columns = _make_unique_columns([str(col) for col in safe_df.columns])
     safe_df.columns = original_columns
 
@@ -4795,12 +4902,8 @@ def get_session_cached_summary(
     language = _llm_language_name()
     cache_key = f"summary::{_payload_hash(view_title, payload_json, model_name, language)}"
     if cache_key not in st.session_state:
-        strict_view_title = (
-            f"USER_SELECTED_LANGUAGE={language}. {_llm_strict_language_instruction()} "
-            f"| Dashboard view: {view_title}"
-        )
         st.session_state[cache_key] = generate_dashboard_summary(
-            view_title=strict_view_title,
+            view_title=f"{view_title} | Answer language: {language} | {_llm_strict_language_instruction()}",
             payload_json=payload_json,
             user_api_key=api_key,
             model_name=model_name,
@@ -4820,12 +4923,8 @@ def get_session_cached_answer(
     language = _llm_language_name()
     cache_key = f"qa::{_payload_hash(view_title, payload_json, question, model_name, language)}"
     if cache_key not in st.session_state:
-        strict_view_title = (
-            f"USER_SELECTED_LANGUAGE={language}. {_llm_strict_language_instruction()} "
-            f"| Dashboard view: {view_title}"
-        )
         st.session_state[cache_key] = answer_dashboard_question(
-            view_title=strict_view_title,
+            view_title=f"{view_title} | Answer language: {language} | {_llm_strict_language_instruction()}",
             payload_json=payload_json,
             question=question,
             user_api_key=api_key,
@@ -5745,7 +5844,6 @@ with st.sidebar:
         # Preserve analysis controls before language-only rerun.
         _snapshot_analysis_controls()
         st.session_state["language_code"] = _new_lang_code
-        clear_llm_response_caches()
         _set_query_param_if_changed("lang", _new_lang_code)
         st.rerun()
 
@@ -6299,7 +6397,7 @@ with st.sidebar:
     budget_raw = st.text_input(
         T("총 마케팅 예산"),
         key="control_budget_text",
-        help=T("상한 없이 입력 가능합니다. 쉼표 없이 숫자만 입력해도 됩니다."),
+        help="상한 없이 입력 가능합니다. 쉼표 없이 숫자만 입력해도 됩니다.",
     )
 
     try:
@@ -6310,7 +6408,7 @@ with st.sidebar:
         st.session_state["control_budget"] = budget
         st.session_state["control_budget_shadow"] = int(budget)
     except ValueError:
-        st.warning(T("총 마케팅 예산은 0 이상의 정수로 입력해야 합니다."))
+        st.warning("총 마케팅 예산은 0 이상의 정수로 입력해야 합니다.")
         budget = int(st.session_state.get("control_budget", 5_000_000))
     
     if "control_target_cap_text" not in st.session_state:
@@ -6321,7 +6419,7 @@ with st.sidebar:
     target_cap_raw = st.text_input(
         T("최대 타겟 고객 수"),
         key="control_target_cap_text",
-        help=T("상한 없이 입력 가능합니다. 1 이상의 정수만 입력하세요."),
+        help="상한 없이 입력 가능합니다. 1 이상의 정수만 입력하세요.",
     )
 
     try:
@@ -6334,13 +6432,13 @@ with st.sidebar:
         st.session_state["control_target_cap"] = target_cap
         st.session_state["control_target_cap_shadow"] = int(target_cap)
     except ValueError:
-        st.warning(T("최대 타겟 고객 수는 1 이상의 정수로 입력해야 합니다."))
+        st.warning("최대 타겟 고객 수는 1 이상의 정수로 입력해야 합니다.")
         target_cap = int(st.session_state.get("control_target_cap", 1500))
 
     # top_n은 실시간/설명가능성/리스크 화면에서 주로 쓰지만,
     # 화면 이동 시 값이 사라지지 않도록 항상 렌더링한다.
     top_n = st.slider(
-        T("차트 기준 표시 고객 수"),
+        T("표시 고객 수"),
         min_value=5,
         max_value=200,
         step=5,
@@ -6588,7 +6686,7 @@ else:
     realtime_summary, realtime_scores = {}, pd.DataFrame()
     realtime_error = None
 
-if view == "9. 이탈 시점 예측 (Survival Analysis)":
+if _is_churn_timing_view(view):
     if _business_mode() in BUSINESS_UPLOAD_MODES:
         _mode_result_dir = Path(_resolve_result_dir_for_mode(_business_mode()))
         _bundle = load_insight_data()
@@ -6599,7 +6697,7 @@ if view == "9. 이탈 시점 예측 (Survival Analysis)":
                 survival_metrics = json.loads(_metrics_path.read_text(encoding="utf-8"))
             except json.JSONDecodeError:
                 survival_metrics = {}
-        survival_predictions = _bundle.survival_predictions.copy().head(int(top_n))
+        survival_predictions = _bundle.survival_predictions.copy()
         _coef_path = _mode_result_dir / "survival_top_coefficients.csv"
         survival_coefficients = pd.read_csv(_coef_path) if _coef_path.exists() else pd.DataFrame()
         survival_image_paths = {
@@ -7044,7 +7142,6 @@ elif view == "4. 예산 최적화 및 리텐션 타겟":
     st.subheader(T("예산 최적화 및 리텐션 타겟"))
     _render_view_intro("4")
     st.caption(T("예산 배분 후보, 최종 선정 고객, 고객별 선택 이유만 남긴 핵심 운영 화면입니다."))
-    st.markdown(budget_formula_html(_language_code()), unsafe_allow_html=True)
 
     m1, m2, m3, m4, m5 = st.columns(5)
     m1.metric(T("총 예산"), money(optimize_summary.get("budget", budget)))
@@ -7563,9 +7660,23 @@ elif view == "6. 실시간 운영 모니터":
             st.info(T("표시할 live score 데이터가 없습니다."))
 
         if not actions_df.empty:
-            action_queue_display = prepare_live_action_queue_table(actions_df)
+            display_cols = [
+                col for col in [
+                    "customer_id",
+                    "recommended_action",
+                    "intervention_intensity",
+                    "expected_profit",
+                    "expected_incremental_profit",
+                    "expected_roi",
+                    "expected_roi",
+                    "action_status",
+                    "trigger_reason",
+                ]
+                if col in actions_df.columns
+            ]
+
             _render_dataframe_with_count(
-                action_queue_display,
+                actions_df[display_cols],
                 label=T("Live Action Queue"),
                 height=520,
             )
@@ -7596,10 +7707,6 @@ elif view == "6. 실시간 운영 모니터":
                 columns=[
                     "customer_id",
                     "recommended_action",
-                    "intervention_intensity",
-                    "coupon_cost",
-                    "expected_profit",
-                    "expected_roi",
                     "priority_score",
                     "action_status",
                     "source_type",
@@ -7739,8 +7846,14 @@ elif view == "6. 실시간 운영 모니터":
             if not status_df.empty:
                 _render_dataframe_with_count(status_df, label=T("액션 큐 상태 구성"), prefer_static=True)
             if not queue_df.empty:
-                display_df = prepare_realtime_queue_table(queue_df.copy())
-                _render_dataframe_with_count(display_df, label=T("실시간 액션 큐 상세"), height=min(520, 220 + 28 * len(display_df)))
+                display_df = _translate_dataframe_values_for_display(queue_df.copy())
+                for col in ["queued_coupon_cost", "queued_expected_profit"]:
+                    if col in display_df.columns:
+                        display_df[col] = display_df[col].map(lambda x: money(float(x)) if pd.notna(x) else "")
+                for col in ["queued_expected_roi", "realtime_churn_score"]:
+                    if col in display_df.columns:
+                        display_df[col] = display_df[col].map(lambda x: f"{float(x):.3f}" if pd.notna(x) else "")
+                _render_dataframe_with_count(display_df, label=T("실시간 액션 큐 상세"), height=min(1200, 220 + 28 * len(display_df)))
         with tab2:
             trigger_df = _translate_dataframe_values_for_display(realtime_monitor_overview.get("trigger_df", pd.DataFrame()))
             if not trigger_df.empty:
@@ -7768,79 +7881,49 @@ elif view == "6. 실시간 운영 모니터":
         'queue_preview': dataframe_snapshot(realtime_monitor_overview.get("queue_df", pd.DataFrame()), max_rows=20) if realtime_monitor_overview and not realtime_monitor_overview.get("queue_df", pd.DataFrame()).empty else [],
     }
 
-elif view == "9. 이탈 시점 예측 (Survival Analysis)":
-    st.subheader("이탈 시점 예측 (Survival Analysis)")
-    st.caption('Cox Proportional Hazards 기반으로 landmark 시점 이후 얼마 안에 churn risk 상태로 진입할지를 추정합니다. 분류 모델과 달리 "언제" 위험이 커지는지를 함께 봅니다.')
+elif _is_churn_timing_view(view):
+    st.subheader(T("이탈 시점 예측"))
+    _render_view_intro("9")
+    st.caption(T("고객별로 언제쯤 이탈할 가능성이 큰지와 그때 잃을 수 있는 금액만 표로 보여줍니다."))
 
-    if survival_error or not survival_metrics:
+    if survival_error or survival_predictions.empty:
         _simulator_missing_result_box(
-            "이탈 시점 예측 (Survival Analysis)",
-            survival_error or "survival_metrics.json, survival_predictions.csv 또는 survival 모델 산출물을 찾지 못했습니다.",
-            "시뮬레이터 데모에서는 python src/main.py --mode survival 실행 후 대시보드를 새로고침하세요.",
+            T("이탈 시점 예측 결과가 없습니다."),
+            survival_error or T("survival_predictions.csv가 없거나 survival 분석이 아직 실행되지 않았습니다."),
+            T("시뮬레이터 데모에서는 python src/main.py --mode survival 실행 후 대시보드를 새로고침하세요."),
         )
+        timing_display = pd.DataFrame()
     else:
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("모델", str(survival_metrics.get('model_name', '-')))
-        m2.metric("Test C-index", f"{float(survival_metrics.get('test_concordance_index', 0.0)):.4f}")
-        m3.metric("Horizon", f"{int(survival_metrics.get('horizon_days', 0))}일")
-        m4.metric("Event rate", f"{float(survival_metrics.get('event_rate', 0.0)):.2%}")
-
-        meta_df = pd.DataFrame([
-            {'key': 'landmark_as_of_date', 'value': survival_metrics.get('landmark_as_of_date')},
-            {'key': 'train_rows', 'value': survival_metrics.get('train_rows')},
-            {'key': 'test_rows', 'value': survival_metrics.get('test_rows')},
-            {'key': 'feature_count_before_encoding', 'value': survival_metrics.get('feature_count_before_encoding')},
-            {'key': 'feature_count_after_encoding', 'value': survival_metrics.get('feature_count_after_encoding')},
-            {'key': 'penalizer', 'value': survival_metrics.get('fitted_penalizer')},
-        ])
-        st.markdown("### Survival 메타데이터")
-        _render_artifact_table(meta_df, label="Survival 메타데이터")
-
-        risk_plot = survival_image_paths.get('risk_stratification')
-        if risk_plot and _path_exists(risk_plot):
-            st.image(risk_plot, caption='예측 위험군별 생존 곡선', use_container_width=True)
-
-        if not survival_predictions.empty:
-            chart_df = survival_predictions.head(min(len(survival_predictions), 20)).copy()
-            chart_df['customer_id'] = chart_df['customer_id'].astype(str)
-            if 'survival_prob_30d' in chart_df.columns:
-                fig = px.bar(
-                    chart_df,
-                    x='customer_id',
-                    y='predicted_hazard_ratio',
-                    hover_data=['survival_prob_30d', 'predicted_median_time_to_churn_days', 'persona', 'risk_group'],
-                    title='단기 churn 위험 상위 고객',
-                )
-                st.plotly_chart(fig, use_container_width=True)
-
-            display_df = survival_predictions.copy()
-            for col in ['predicted_hazard_ratio', 'survival_prob_30d', 'survival_prob_60d', 'survival_prob_90d', 'predicted_median_time_to_churn_days', 'risk_percentile']:
-                if col in display_df.columns:
-                    display_df[col] = display_df[col].map(lambda x: f"{float(x):.3f}")
-            _render_dataframe_with_count(display_df, label="Survival 예측 결과")
-
-        if not survival_coefficients.empty:
-            st.markdown("### 주요 hazard coefficient")
-            coef_df = survival_coefficients.copy()
-            for col in ['coef', 'exp(coef)', 'p', 'abs_coef']:
-                if col in coef_df.columns:
-                    coef_df[col] = coef_df[col].map(lambda x: f"{float(x):.4f}")
-            _render_dataframe_with_count(coef_df, label="주요 hazard coefficient")
+        timing_display = _build_churn_timing_table(
+            survival_predictions,
+            customers,
+            survival_metrics,
+            limit=int(top_n),
+        )
+        if timing_display.empty:
+            st.info(T("이탈 시점 예측 결과가 없습니다."))
+        else:
+            st.caption(T("예상 손실액은 고객 생애가치(CLV)에 30일 내 이탈 가능성을 곱해 계산합니다. CLV가 없으면 최근 구매금액을 보수적 대체값으로 사용합니다."))
+            _render_dataframe_with_count(
+                _translate_dataframe_values_for_display(timing_display),
+                label=T("고객별 이탈 시점과 예상 손실"),
+                height=min(720, 220 + 34 * len(timing_display)),
+            )
 
     llm_payload = {
-        'survival_metrics': survival_metrics,
-        'survival_prediction_preview': dataframe_snapshot(
-            survival_predictions,
+        "survival_metrics": survival_metrics,
+        "churn_timing_table": dataframe_snapshot(
+            timing_display,
             columns=[
-                'customer_id',
-                'predicted_hazard_ratio',
-                'survival_prob_30d',
-                'predicted_median_time_to_churn_days',
-                'risk_group',
+                "customer_id",
+                "persona",
+                "expected_churn_period",
+                "expected_churn_date",
+                "churn_within_30d_probability",
+                "expected_loss_30d",
             ],
             max_rows=20,
-        ) if not survival_predictions.empty else [],
-        'survival_coefficients': survival_coefficients.head(15).to_dict(orient='records') if not survival_coefficients.empty else [],
+        ) if isinstance(timing_display, pd.DataFrame) and not timing_display.empty else [],
     }
 
 elif view == "10. 증분 성과 / A-B 실험":
