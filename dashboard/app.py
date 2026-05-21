@@ -4,6 +4,7 @@ import json
 import math
 import os
 import re
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -639,6 +640,20 @@ UI_TEXT.setdefault("ja", {}).update({
     "이탈 기준 설정 안내": "離脱基準の設定案内",
     "이 슬라이더는 고객을 언제부터 이탈로 볼지 정하는 기준입니다. 예를 들어 30일로 두면 마지막 활동 후 30일 이상 지난 고객을 이탈 사례로 학습합니다.": "このスライダーは、顧客をいつから離脱とみなすかを決める基準です。たとえば30日に設定すると、最後の活動から30日以上活動がない顧客を離脱事例として学習します。",
     "이 기준은 이탈 모델 학습, 생존분석, 이탈 시점 예측의 기준이 됩니다. 업종별 방문·구매 주기에 맞게 조절하세요.": "この基準は、離脱モデル学習、生存分析、離脱時点予測の基準になります。業種ごとの訪問・購入サイクルに合わせて調整してください。",
+})
+
+
+UI_TEXT.setdefault("en", {}).update({
+    "0%로 두어도 전체 행을 한 번에 렌더링하지 않고, 운영 우선순위가 높은 고객부터 제한된 수만 빠르게 표시합니다.": "Even at 0%, the view does not render every row at once; it quickly shows a limited preview starting with the highest-priority customers.",
+    "현재 표시는 운영 우선순위 상위 고객만 보여줍니다.": "Current display shows only the top customers by operational priority.",
+    "표시 고객 수 제한": "Displayed row limit",
+    "이 표는 선택한 기준 이상 고객 중 운영 우선순위가 높은 고객부터 빠르게 보여줍니다.": "This table quickly shows eligible customers above the selected threshold, starting from the highest operational priority.",
+})
+UI_TEXT.setdefault("ja", {}).update({
+    "0%로 두어도 전체 행을 한 번에 렌더링하지 않고, 운영 우선순위가 높은 고객부터 제한된 수만 빠르게 표시합니다.": "0%に設定しても全行を一度に描画せず、運用優先度の高い顧客から限定件数だけ高速表示します。",
+    "현재 표시는 운영 우선순위 상위 고객만 보여줍니다.": "現在の表示は運用優先度上位の顧客のみです。",
+    "표시 고객 수 제한": "表示顧客数の上限",
+    "이 표는 선택한 기준 이상 고객 중 운영 우선순위가 높은 고객부터 빠르게 보여줍니다.": "この表は、選択基準以上の顧客のうち運用優先度が高い顧客から高速表示します。",
 })
 
 
@@ -1524,6 +1539,208 @@ for _lang, _mapping in _EXTRA_PHRASE_LABELS_PATCH.items():
 # [/PATCH]
 # ============================================================
 
+
+UI_TEXT.setdefault("ko", {}).update({
+    "Retention Rate": "리텐션율",
+    "Retention": "리텐션",
+    "이탈 기준값": "이탈 기준값",
+    "검색": "검색",
+    "고객 ID 검색": "고객 ID 검색",
+    "전체": "전체",
+    "건": "건",
+    "중": "중",
+    "일치": "일치",
+})
+# ============================================================
+# [PATCH] Human-friendly dashboard wording, table formatting and glossary captions
+# ============================================================
+_HUMAN_COLUMN_LABELS_PATCH: dict[str, dict[str, str]] = {
+    "ko": {
+        "value_score": "고객 가치 점수",
+        "expected_roi_2": "예상 ROI",
+        "avg_expected_roi": "평균 예상 ROI",
+        "avg_churn_probability": "평균 이탈 확률",
+        "avg_coupon_exposure": "평균 쿠폰 노출 횟수",
+        "coupon_exposure_count": "쿠폰 노출 횟수",
+        "redeem_rate": "혜택 사용률",
+        "open_rate": "메시지 확인률",
+        "event_type": "이벤트 유형",
+        "dimension": "분포 기준",
+        "value": "분포 값",
+        "share": "비중",
+        "period": "경과 기간(개월)",
+        "cohort_month": "가입 코호트",
+        "cohort_size": "코호트 고객 수",
+        "retained_customers": "잔존 고객 수",
+        "retention_rate": "리텐션율",
+        "customer_count": "고객 수",
+        "recommend_count": "추천 건수",
+    },
+    "en": {
+        "value_score": "Customer Value Score",
+        "expected_roi_2": "Expected ROI",
+        "avg_expected_roi": "Average Expected ROI",
+        "avg_churn_probability": "Average Churn Probability",
+        "avg_coupon_exposure": "Average Coupon Exposure",
+        "coupon_exposure_count": "Coupon Exposures",
+        "redeem_rate": "Redeem Rate",
+        "open_rate": "Open Rate",
+        "event_type": "Event Type",
+        "dimension": "Dimension",
+        "value": "Value",
+        "share": "Share",
+        "period": "Elapsed Months",
+        "cohort_month": "Signup Cohort",
+        "cohort_size": "Cohort Size",
+        "retained_customers": "Retained Customers",
+        "retention_rate": "Retention Rate",
+        "customer_count": "Customers",
+        "recommend_count": "Recommendations",
+    },
+    "ja": {
+        "value_score": "顧客価値スコア",
+        "expected_roi_2": "予想ROI",
+        "avg_expected_roi": "平均予想ROI",
+        "avg_churn_probability": "平均離脱確率",
+        "avg_coupon_exposure": "平均クーポン露出回数",
+        "coupon_exposure_count": "クーポン露出回数",
+        "redeem_rate": "特典利用率",
+        "open_rate": "メッセージ確認率",
+        "event_type": "イベント種別",
+        "dimension": "分布基準",
+        "value": "分布値",
+        "share": "比率",
+        "period": "経過期間(月)",
+        "cohort_month": "登録コホート",
+        "cohort_size": "コホート顧客数",
+        "retained_customers": "継続顧客数",
+        "retention_rate": "リテンション率",
+        "customer_count": "顧客数",
+        "recommend_count": "推薦数",
+    },
+}
+for _lang, _mapping in _HUMAN_COLUMN_LABELS_PATCH.items():
+    COLUMN_LABELS.setdefault(_lang, {}).update(_mapping)
+
+_HUMAN_VALUE_LABELS_PATCH: dict[str, dict[str, str]] = {
+    "ko": {
+        "new_signup": "가입 초기 고객", "new sign up": "가입 초기 고객", "new signup": "가입 초기 고객",
+        "new_customer": "신규 고객", "new customers": "신규 고객군",
+        "churn_progressing": "이탈 조짐 고객", "churn progressing": "이탈 조짐 고객",
+        "explorer": "탐색 고객", "price_sensitive": "가격 민감 고객", "price sensitive": "가격 민감 고객",
+        "support_issue": "서비스 불편 경험 고객", "support issue": "서비스 불편 경험 고객",
+        "regular_customer": "일반 고객", "vip_customer": "VIP 고객", "vip": "VIP 고객",
+        "dormant_customer": "휴면 고객", "dormant user": "휴면 고객", "loyal_customer": "충성 고객",
+        "at_risk_customer": "이탈 위험 고객", "high_value_customer": "고가치 고객", "low_value_customer": "저가치 고객",
+        "mid": "보통", "middle": "보통", "moderate": "보통", "medium": "보통", "low": "낮음", "high": "높음",
+        "critical": "매우 높음", "very_high": "매우 높음", "very low": "매우 낮음", "very_low": "매우 낮음",
+        "medium_high": "다소 높음", "medium-low": "다소 낮음", "중강도": "보통 수준 개입", "고강도": "높은 수준 개입", "저강도": "낮은 수준 개입",
+        "generic_retention_offer": "기본 리텐션 혜택 제안", "generic retention offer": "기본 리텐션 혜택 제안",
+        "personalized_retention_offer": "개인 맞춤 리텐션 혜택 제안", "personalized retention offer": "개인 맞춤 리텐션 혜택 제안",
+        "light_retention_message": "가벼운 재방문 유도 메시지", "light retention message": "가벼운 재방문 유도 메시지",
+        "service_recovery_message": "서비스 불편 회복 안내", "service recovery message": "서비스 불편 회복 안내",
+        "coupon_offer": "쿠폰 혜택 제안", "discount_offer": "할인 혜택 제안", "loyalty_reward": "충성 고객 보상 제안",
+        "monitor (>60d)": "60일 이후까지 관찰", "monitor(>60d)": "60일 이후까지 관찰", "monitor >60d": "60일 이후까지 관찰", "monitor": "관찰 필요",
+        "follow_up_soon": "빠른 후속 연락 필요", "immediate_contact": "즉시 연락 권장",
+        "own_purchase_history": "고객 본인의 과거 구매 이력", "recent_browse_signal": "최근 둘러본 상품·카테고리 신호",
+        "segment_popularity": "비슷한 고객군에서 인기 있는 항목", "global_popularity": "전체 고객에게 인기 있는 항목",
+        "category_affinity": "관심 카테고리와의 관련성", "recent_interest": "최근 관심 행동", "price_affinity": "가격·할인 반응 가능성",
+        "high_churn_risk": "이탈 위험이 높음", "high_customer_value": "고객 가치가 높음", "good_expected_roi": "예상 ROI가 양호함",
+        "recent_activity_drop": "최근 활동이 줄어듦", "purchase_gap_increase": "구매 간격이 길어짐",
+        "queued": "큐에 적재됨", "not_queued": "큐에 없음", "queued action": "큐에 적재된 액션", "action queued": "액션 큐에 적재됨",
+        "pending": "대기 중", "sent": "발송 완료", "completed": "완료", "failed": "실패",
+    },
+    "en": {
+        "mid": "Medium", "middle": "Medium", "moderate": "Medium",
+        "generic retention offer": "Basic retention offer", "personalized retention offer": "Personalized retention offer",
+        "light retention message": "Light retention message", "monitor (>60d)": "Monitor after 60 days",
+        "own_purchase_history": "Own purchase history", "recent_browse_signal": "Recent browsing signal",
+        "segment_popularity": "Popular with similar customers", "global_popularity": "Popular overall",
+    },
+    "ja": {
+        "mid": "中", "middle": "中", "moderate": "中",
+        "generic retention offer": "基本リテンション特典の提案", "personalized retention offer": "個別リテンション特典の提案",
+        "light retention message": "軽い再訪問促進メッセージ", "monitor (>60d)": "60日後まで観察",
+        "own_purchase_history": "本人の過去購入履歴", "recent_browse_signal": "最近閲覧した商品・カテゴリのシグナル",
+        "segment_popularity": "類似顧客群で人気の項目", "global_popularity": "全体で人気の項目",
+    },
+}
+for _lang, _mapping in _HUMAN_VALUE_LABELS_PATCH.items():
+    VALUE_LABELS.setdefault(_lang, {}).update(_mapping)
+
+_HUMAN_PHRASE_LABELS_PATCH: dict[str, dict[str, str]] = {
+    "ko": {
+        "Generic retention offer": "기본 리텐션 혜택 제안", "generic retention offer": "기본 리텐션 혜택 제안",
+        "Personalized retention offer": "개인 맞춤 리텐션 혜택 제안", "personalized_retention_offer": "개인 맞춤 리텐션 혜택 제안",
+        "Light retention message": "가벼운 재방문 유도 메시지", "Monitor (>60d)": "60일 이후까지 관찰", "Monitor(>60d)": "60일 이후까지 관찰", "Monitor >60d": "60일 이후까지 관찰", "중강도": "보통 수준 개입", "고강도": "높은 수준 개입", "저강도": "낮은 수준 개입",
+        "own_purchase_history": "고객 본인의 과거 구매 이력", "recent_browse_signal": "최근 둘러본 상품·카테고리 신호", "segment_popularity": "비슷한 고객군에서 인기 있는 항목", "global_popularity": "전체 고객에게 인기 있는 항목",
+        "price_sensitive": "가격 민감 고객", "new_signup": "가입 초기 고객", "churn_progressing": "이탈 조짐 고객", "expected roi 2": "예상 ROI", "Expected ROI 2": "예상 ROI",
+        "Retention Rate": "리텐션율", "Retention": "리텐션", "value_score": "고객 가치 점수", "count": "건수",
+    },
+    "en": {}, "ja": {},
+}
+for _lang, _mapping in _HUMAN_PHRASE_LABELS_PATCH.items():
+    PHRASE_LABELS.setdefault(_lang, {}).update(_mapping)
+
+_HUMAN_TERM_CAPTIONS_PATCH: dict[str, dict[str, str]] = {
+    "ko": {
+        "CustomerType": "고객 유형은 고객의 최근 행동·가치·이탈 조짐을 사람이 이해하기 쉽게 묶은 분류입니다.",
+        "ChurnProbability": "이탈 확률은 고객이 설정한 이탈 기준에 가까워지거나 서비스를 떠날 가능성을 0~100%로 표현한 값입니다.",
+        "ChurnTiming": "예상 이탈 시점은 현재 상태가 유지될 때 고객이 이탈 상태에 가까워질 것으로 보는 예상 시기입니다.",
+        "ExpectedLoss": "예상 손실액은 해당 고객이 이탈할 경우 잃을 수 있는 매출·고객가치를 원화로 환산한 값입니다.",
+        "ExpectedProfit": "예상 이익은 이 고객에게 개입했을 때 추가로 얻을 것으로 기대되는 금액입니다.",
+        "ExpectedROI": "예상 ROI는 개입 비용 1원당 기대 이익이 얼마나 되는지 보여주는 효율 지표입니다. 값이 높을수록 비용 대비 효과가 좋습니다.",
+        "InterventionIntensity": "개입 강도는 고객에게 제공할 혜택이나 연락의 세기를 낮음·보통·높음처럼 단순화한 값입니다.",
+        "RecommendedAction": "추천 액션은 고객에게 지금 제안하면 좋을 혜택·메시지·관찰 조치입니다.",
+        "RecommendationReason": "추천 이유는 이 액션이 선택된 근거입니다. 예를 들어 과거 구매 이력, 최근 탐색 행동, 비슷한 고객군의 인기 항목 등이 포함됩니다.",
+        "ActionStatus": "액션 상태는 추천 액션이 아직 대기 중인지, 큐에 적재됐는지, 발송됐는지 같은 처리 상태입니다.",
+        "CustomerValueScore": "고객 가치 점수는 고객 생애가치와 개입 반응 가능성을 함께 반영해 우선순위를 정하기 위한 보조 점수입니다.",
+        "RecommendationScore": "추천 점수는 특정 상품·혜택·메시지가 해당 고객에게 적합하다고 판단한 정도입니다.",
+        "Priority": "우선순위 점수는 이탈 위험, 개입 효과, 고객 가치, 비용을 합쳐 먼저 대응할 고객을 정한 값입니다.",
+        "CLV": "CLV는 고객이 앞으로 가져올 것으로 추정되는 생애가치입니다.",
+        "Uplift": "Uplift는 개입했을 때 이탈 방지·구매 증가가 얼마나 추가로 발생할지 나타내는 점수입니다.",
+    },
+    "en": {
+        "CustomerType": "Customer type is a plain-language group based on recent behavior, value, and churn signs.",
+        "ChurnProbability": "Churn probability shows the likelihood of a customer leaving or reaching the configured churn condition.",
+        "ChurnTiming": "Expected churn timing estimates when the customer may approach churn if the current pattern continues.",
+        "ExpectedLoss": "Expected loss is the revenue or customer value that may be lost if the customer churns.",
+        "ExpectedProfit": "Expected profit is the additional profit expected from intervening with this customer.",
+        "ExpectedROI": "Expected ROI shows how much profit is expected per unit of intervention cost.",
+        "InterventionIntensity": "Intervention intensity simplifies the strength of the benefit or contact into levels such as low, medium, and high.",
+        "RecommendedAction": "Recommended action is the benefit, message, or monitoring action suggested for the customer.",
+        "RecommendationReason": "Recommendation reason explains why the action was selected, such as purchase history, recent browsing, or segment popularity.",
+        "ActionStatus": "Action status shows whether the recommendation is pending, queued, sent, or completed.",
+        "CustomerValueScore": "Customer value score is a helper score combining value and expected response.",
+        "RecommendationScore": "Recommendation score estimates how suitable an item, benefit, or message is for the customer.",
+        "Priority": "Priority score ranks customers by churn risk, intervention effect, value, and cost.",
+        "CLV": "CLV is the estimated lifetime value a customer may generate in the future.",
+        "Uplift": "Uplift estimates the incremental retention or purchase effect caused by an intervention.",
+    },
+    "ja": {
+        "CustomerType": "顧客タイプは最近の行動、価値、離脱兆候を分かりやすくまとめた分類です。",
+        "ChurnProbability": "離脱確率は顧客が設定した離脱条件に近づく、または離脱する可能性を示します。",
+        "ChurnTiming": "予想離脱時点は現在の傾向が続く場合に離脱状態へ近づくと見込まれる時期です。",
+        "ExpectedLoss": "予想損失額は顧客が離脱した場合に失う可能性のある売上・顧客価値です。",
+        "ExpectedProfit": "予想利益はこの顧客に介入した場合に追加で得られると期待される金額です。",
+        "ExpectedROI": "予想ROIは介入費用1単位あたりの期待利益を示す効率指標です。",
+        "InterventionIntensity": "介入強度は特典や連絡の強さを低・中・高のように単純化した値です。",
+        "RecommendedAction": "推奨アクションは顧客に提案する特典、メッセージ、または観察施策です。",
+        "RecommendationReason": "推薦理由は、そのアクションが選ばれた根拠です。",
+        "ActionStatus": "アクション状態は推薦が待機中、キュー登録済み、送信済みなどかを示します。",
+        "CustomerValueScore": "顧客価値スコアは価値と反応見込みを合わせた補助スコアです。",
+        "RecommendationScore": "推薦スコアは項目・特典・メッセージの適合度を示します。",
+        "Priority": "優先度スコアは離脱リスク、介入効果、顧客価値、費用を組み合わせた順位付け指標です。",
+        "CLV": "CLVは顧客が将来もたらすと推定される生涯価値です。",
+        "Uplift": "Upliftは介入によって追加で得られる離脱防止・購買増加効果の推定値です。",
+    },
+}
+for _lang, _mapping in _HUMAN_TERM_CAPTIONS_PATCH.items():
+    TERM_CAPTIONS.setdefault(_lang, {}).update(_mapping)
+# ============================================================
+# [/PATCH]
+# ============================================================
+
 LEGACY_VIEW_REDIRECTS: dict[str, str] = {
     "2. 예산 배분·타겟 고객": "4. 예산 최적화 및 리텐션 타겟",
     "3. 개인화 추천": "5. 개인화 추천",
@@ -1565,6 +1782,41 @@ INSIGHT_HEAVY_VIEWS: set[str] = {"4. 예산 최적화 및 리텐션 타겟", "6.
 
 def _language_code() -> str:
     return st.session_state.get("language_code", "ko") if hasattr(st, "session_state") else "ko"
+
+
+# ============================================================
+# [PERFORMANCE PATCH]
+# Large Streamlit tables become slow when every cell is translated,
+# reformatted, and rendered as HTML on every view switch. Keep the
+# original data untouched, but only sanitize/render the visible slice.
+# The full row/customer counts and customer-ID search still use the full
+# dataframe, so existing analysis semantics are preserved.
+# Override with env var when a demo needs a larger preview.
+# ============================================================
+def _env_int(name: str, default: int, minimum: int = 1) -> int:
+    try:
+        value = int(os.getenv(name, str(default)))
+    except Exception:
+        return default
+    return max(minimum, value)
+
+
+TABLE_DISPLAY_ROW_LIMIT = _env_int("DASHBOARD_TABLE_DISPLAY_ROW_LIMIT", 1000, minimum=50)
+CHURN_TIMING_DISPLAY_ROW_LIMIT = _env_int(
+    "DASHBOARD_CHURN_TIMING_DISPLAY_ROW_LIMIT",
+    min(TABLE_DISPLAY_ROW_LIMIT, 1000),
+    minimum=50,
+)
+
+
+def _collapse_repeated_customer_words(text: str) -> str:
+    """Make value-label translation idempotent: 'VIP 고객 고객' -> 'VIP 고객'."""
+    out = str(text or "")
+    out = re.sub(r"(?<!\S)(고객)(?:\s+\1)+(?!\S)", r"\1", out)
+    out = re.sub(r"(?<![A-Za-z])\b(customer)(?:\s+\1)+\b", r"\1", out, flags=re.IGNORECASE)
+    out = re.sub(r"顧客(?:\s*顧客)+", "顧客", out)
+    out = re.sub(r"\s{2,}", " ", out).strip()
+    return out
 
 
 def _normalize_i18n_key(text: str) -> str:
@@ -1626,31 +1878,120 @@ def _translate_runtime_text(text: Any) -> str:
     return out
 
 
+def _translation_destination_set(mapping: dict[str, str]) -> set[str]:
+    return {str(v).strip() for v in mapping.values() if str(v).strip()}
+
+
+@lru_cache(maxsize=20000)
+def _translate_cell_value_cached(language_code: str, stripped: str) -> str:
+    """Cached, idempotent cell-value translation.
+
+    The previous implementation performed broad substring replacement for every
+    object cell. In Korean mode, a value that was already translated, such as
+    "충성 VIP 고객", could be translated again because the generic key "vip"
+    was replaced with "VIP 고객". Repeated reruns could therefore produce
+    "충성 VIP 고객 고객 고객". This function first detects already-translated
+    destination labels and skips risky short substring keys.
+    """
+    if stripped == "":
+        return ""
+
+    value_labels = VALUE_LABELS.get(language_code, VALUE_LABELS.get("ko", {}))
+    phrase_labels = PHRASE_LABELS.get(language_code, {})
+    norm = _normalize_i18n_key(stripped)
+
+    # Already localized values must be returned as-is. This makes display
+    # translation idempotent even if a dataframe was pre-translated elsewhere.
+    for mapping in (value_labels, phrase_labels):
+        for dst in _translation_destination_set(mapping):
+            if stripped == dst or norm == _normalize_i18n_key(dst):
+                return _collapse_repeated_customer_words(stripped)
+
+    for src, dst in value_labels.items():
+        src_text = str(src)
+        if stripped == src_text or norm == _normalize_i18n_key(src_text):
+            return _collapse_repeated_customer_words(str(dst))
+    for src, dst in phrase_labels.items():
+        src_text = str(src)
+        if stripped == src_text or norm == _normalize_i18n_key(src_text):
+            return _collapse_repeated_customer_words(str(dst))
+
+    out = stripped.replace(" | ", " · ").replace(";", " · ")
+    replacement_items = list(phrase_labels.items()) + list(value_labels.items())
+
+    for src, dst in sorted(replacement_items, key=lambda item: len(str(item[0])), reverse=True):
+        src_text = str(src).strip()
+        dst_text = str(dst).strip()
+        if not src_text or not dst_text:
+            continue
+
+        src_norm = _normalize_i18n_key(src_text)
+        # Exact matches are handled above. For substring replacement, do not use
+        # very short/generic tokens such as "vip", "high", "low". These caused
+        # already-friendly labels to grow suffixes like "고객 고객".
+        if len(src_norm) <= 4:
+            continue
+        if dst_text in out:
+            continue
+
+        variants = {
+            src_text,
+            src_text.replace("_", " "),
+            src_text.replace("_", "-"),
+            src_text.replace("_", " ").title(),
+            src_text.replace("_", " ").capitalize(),
+        }
+        for variant in sorted(variants, key=len, reverse=True):
+            if not variant or variant == dst_text:
+                continue
+            flags = re.IGNORECASE if re.fullmatch(r"[A-Za-z0-9_\-\s()<>/+.]+", variant) else 0
+            try:
+                out = re.sub(rf"(?<![A-Za-z0-9_]){re.escape(variant)}(?![A-Za-z0-9_])", dst_text, out, flags=flags)
+            except re.error:
+                out = out.replace(variant, dst_text)
+
+    if "," in out:
+        parts = [part.strip() for part in out.split(",")]
+        translated_parts = []
+        for part in parts:
+            part_norm = _normalize_i18n_key(part)
+            translated = next((str(dst) for src, dst in value_labels.items() if part_norm == _normalize_i18n_key(str(src))), part)
+            translated_parts.append(translated)
+        out = ", ".join(translated_parts)
+
+    out = out.replace("-> action queued", "→ " + value_labels.get("queued", "queued"))
+    out = out.replace("score=", "위험 점수=")
+    out = re.sub(r"\s+·\s+", " · ", out).strip()
+    return _collapse_repeated_customer_words(out)
+
+
 def _translate_cell_value(value: Any) -> str:
-    """Turn internal segment/action codes into beginner-friendly labels."""
+    """Turn internal segment/action codes and generated phrases into beginner-friendly labels."""
     raw = str(value)
     stripped = raw.strip()
     if stripped == "":
         return ""
-    code = _language_code()
-    value_labels = VALUE_LABELS.get(code, VALUE_LABELS.get("ko", {}))
-    norm = _normalize_i18n_key(stripped)
-    # Exact code / normalized code match.
-    for src, dst in value_labels.items():
-        if stripped == src or norm == _normalize_i18n_key(src):
-            return dst
-    # Human-readable phrase replacement for generated Korean explanations.
-    out = stripped
-    for src, dst in PHRASE_LABELS.get(code, {}).items():
-        out = out.replace(src, dst)
-    # Replace known snake_case tokens even when embedded in logs/lists.
-    for src, dst in value_labels.items():
-        out = re.sub(rf"(?<![A-Za-z0-9_]){re.escape(src)}(?![A-Za-z0-9_])", dst, out)
-    out = out.replace("-> action queued", "→ " + value_labels.get("queued", "queued"))
-    out = out.replace("score=", "risk=")
-    return out
+    return _translate_cell_value_cached(_language_code(), stripped)
 
 
+def _map_object_series_unique(series: pd.Series, translator) -> pd.Series:
+    """Translate/format repeated table-cell strings once per unique value."""
+    if series.empty:
+        return series
+    cache: dict[str, Any] = {}
+
+    def _convert(value: Any) -> Any:
+        try:
+            if pd.isna(value):
+                return value
+        except Exception:
+            pass
+        key = str(value)
+        if key not in cache:
+            cache[key] = translator(value)
+        return cache[key]
+
+    return series.map(_convert)
 
 
 def _translate_dataframe_values_for_display(df: pd.DataFrame) -> pd.DataFrame:
@@ -1659,7 +2000,10 @@ def _translate_dataframe_values_for_display(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     for col in out.columns:
         if pd.api.types.is_object_dtype(out[col]) or pd.api.types.is_string_dtype(out[col]):
-            out[col] = out[col].map(lambda v: _translate_cell_value(v) if not _is_missing_live_value(v) else v)
+            out[col] = _map_object_series_unique(
+                out[col],
+                lambda v: _translate_cell_value(v) if not _is_missing_live_value(v) else v,
+            )
     return out
 
 
@@ -1677,6 +2021,220 @@ def _translate_ui_arg(value: Any) -> Any:
         return {k: (_translate_ui_arg(v) if isinstance(v, str) else v) for k, v in value.items()}
     return value
 
+
+
+
+def _strip_duplicate_suffix(column: str) -> str:
+    """Remove Streamlit/Pandas duplicate suffixes such as _2 or ' 2'."""
+    return re.sub(r"(?:[\s_]+\d+)$", "", str(column or "")).strip()
+
+
+def _is_money_column(column: str) -> bool:
+    norm = _normalize_i18n_key(_strip_duplicate_suffix(column))
+    if "roi" in norm or "rate" in norm or "probability" in norm or "score" in norm:
+        return False
+    money_tokens = ["clv", "customerlifetimevalue", "고객생애가치", "顧客生涯価値", "expectedprofit", "expectedincrementalprofit", "expectedloss", "expectedloss30d", "queuedexpectedprofit", "couponcost", "queuedcouponcost", "allocatedbudget", "budget", "spend", "amount", "revenue", "profit", "loss", "cost", "monetary", "predictedclv12m", "예상이익", "예상증분이익", "예상손실액", "배정예산", "집행예산", "잔여예산", "쿠폰비용", "개입비용", "予想利益", "予想損失", "配分予算", "費用"]
+    return any(token.lower() in norm for token in money_tokens)
+
+
+def _is_probability_column(column: str) -> bool:
+    norm = _normalize_i18n_key(_strip_duplicate_suffix(column))
+    if "roi" in norm:
+        return False
+    probability_tokens = ["probability", "prob", "rate", "share", "survivalprob", "churnwithin30dprobability", "이탈확률", "가능성", "비율", "확률", "리텐션율", "생존확률", "離脱確率", "可能性", "比率", "率", "生存確率"]
+    return any(token.lower() in norm for token in probability_tokens)
+
+
+def _is_roi_column(column: str) -> bool:
+    return "roi" in _normalize_i18n_key(_strip_duplicate_suffix(column))
+
+
+def _coerce_float_for_display(value: Any) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        raw = value.strip()
+        if raw == "" or raw in {"-", "—"}:
+            return None
+        if raw.endswith("%"):
+            try:
+                return float(raw[:-1].replace(",", "")) / 100.0
+            except ValueError:
+                return None
+        raw = re.sub(r"[₩원円$€£,\s]", "", raw).replace("배", "")
+        if raw == "":
+            return None
+        try:
+            return float(raw)
+        except ValueError:
+            return None
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not np.isfinite(numeric):
+        return None
+    return numeric
+
+
+def _format_money_display(value: Any) -> str:
+    numeric = _coerce_float_for_display(value)
+    if numeric is None:
+        return _translate_cell_value(value)
+    return money(float(round(numeric)))
+
+
+def _format_probability_display(value: Any) -> str:
+    if isinstance(value, str) and value.strip().endswith("%"):
+        return value.strip()
+    numeric = _coerce_float_for_display(value)
+    if numeric is None:
+        return _translate_cell_value(value)
+    percent_value = numeric * 100.0 if abs(numeric) <= 1.0 else numeric
+    return f"{percent_value:.1f}%" if abs(percent_value) >= 10 else f"{percent_value:.2f}%"
+
+
+def _format_roi_display(value: Any) -> str:
+    if isinstance(value, str) and (value.strip().endswith("%") or value.strip().endswith("배")):
+        return value.strip()
+    numeric = _coerce_float_for_display(value)
+    if numeric is None:
+        return _translate_cell_value(value)
+    code = _language_code()
+    if code == "en":
+        return f"{numeric:.1f}x"
+    if code == "ja":
+        return f"約{numeric:.1f}倍"
+    return f"약 {numeric:.1f}배"
+
+
+def _format_table_value_by_column(column: str, value: Any) -> Any:
+    if _is_missing_live_value(value):
+        return ""
+    if _is_roi_column(column):
+        return _format_roi_display(value)
+    if _is_money_column(column):
+        return _format_money_display(value)
+    if _is_probability_column(column):
+        return _format_probability_display(value)
+    if isinstance(value, str):
+        return _translate_cell_value(value)
+    return value
+
+
+def _dedupe_display_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Drop backend duplicate display columns before translated headers become '... 2'."""
+    if not isinstance(df, pd.DataFrame) or df.empty:
+        return pd.DataFrame() if df is None else df
+    keep: list[Any] = []
+    seen: set[str] = set()
+    for col in df.columns:
+        raw = str(col)
+        base = _strip_duplicate_suffix(raw)
+        raw_norm = _normalize_i18n_key(raw)
+        base_norm = _normalize_i18n_key(base)
+        if raw_norm in {"expectedroi2", "expectedroi02", "예상roi2"}:
+            continue
+        translated_base = _translate_column_name(base)
+        label_norm = _normalize_i18n_key(translated_base)
+        if base_norm != raw_norm and label_norm in seen:
+            continue
+        if label_norm in seen:
+            continue
+        seen.add(label_norm)
+        keep.append(col)
+    return df.loc[:, keep].copy()
+
+
+_CHART_LABEL_PATCH: dict[str, dict[str, str]] = {
+    "ko": {
+        "retention rate": "리텐션율", "retention": "리텐션", "period": "경과 기간(개월)", "cohort_month": "가입 코호트", "cohort": "코호트", "count": "건수", "value": "값", "customer_count": "고객 수", "candidate_customer_count": "후보 고객 수", "recommend_count": "추천 건수", "uplift_segment": "고객 반응 유형", "intervention_intensity": "개입 강도", "allocated_budget": "배정 예산", "expected_profit": "예상 이익", "expected_roi": "예상 ROI", "churn_probability": "이탈 확률", "clv": "고객 생애가치(CLV)", "uplift_score": "개입 효과 점수", "value_score": "고객 가치 점수", "event_type": "이벤트 유형", "avg_coupon_exposure": "평균 쿠폰 노출 횟수", "recommended_category": "추천 카테고리", "importance": "중요도", "feature_display": "변수명", "persona": "고객 유형", "avg_churn_probability": "평균 이탈 확률", "avg_expected_roi": "평균 예상 ROI",
+    },
+    "en": {}, "ja": {},
+}
+
+
+def _friendly_chart_text(text: Any) -> str:
+    raw = str(text or "").strip()
+    if not raw:
+        return raw
+    code = _language_code()
+    translated_col = _translate_column_name(raw)
+    if translated_col and translated_col != raw.replace("_", " "):
+        return translated_col
+    mapping = _CHART_LABEL_PATCH.get(code, _CHART_LABEL_PATCH.get("ko", {}))
+    norm = raw.lower().strip()
+    if norm in mapping:
+        return mapping[norm]
+    norm_key = _normalize_i18n_key(raw)
+    for src, dst in mapping.items():
+        if _normalize_i18n_key(src) == norm_key:
+            return dst
+    out = _translate_runtime_text(raw)
+    for src, dst in sorted(mapping.items(), key=lambda item: len(str(item[0])), reverse=True):
+        out = re.sub(rf"(?<![A-Za-z0-9_]){re.escape(str(src))}(?![A-Za-z0-9_])", str(dst), out, flags=re.IGNORECASE)
+    return _translate_cell_value(out)
+
+
+def _translate_plotly_values(values: Any) -> Any:
+    try:
+        if values is None:
+            return values
+        if isinstance(values, np.ndarray):
+            if values.dtype.kind in {"U", "S", "O"}:
+                return np.array([_translate_cell_value(v) if isinstance(v, str) else v for v in values], dtype=object)
+            return values
+        if isinstance(values, (list, tuple, pd.Series, pd.Index)):
+            translated = [_translate_cell_value(v) if isinstance(v, str) else v for v in list(values)]
+            return tuple(translated) if isinstance(values, tuple) else translated
+    except Exception:
+        return values
+    return values
+
+
+def _localize_plotly_figure(fig: Any) -> Any:
+    """Translate Plotly axis titles, legend labels, trace names and categorical ticks."""
+    try:
+        layout = getattr(fig, "layout", None)
+        if layout is not None:
+            if getattr(layout, "title", None) is not None and getattr(layout.title, "text", None):
+                layout.title.text = _friendly_chart_text(layout.title.text)
+            if getattr(layout, "legend", None) is not None and getattr(layout.legend, "title", None) is not None and getattr(layout.legend.title, "text", None):
+                layout.legend.title.text = _friendly_chart_text(layout.legend.title.text)
+            for axis in list(fig.select_xaxes()) + list(fig.select_yaxes()):
+                raw_axis_title = getattr(axis.title, "text", None) if getattr(axis, "title", None) is not None else None
+                if raw_axis_title:
+                    if _is_money_column(str(raw_axis_title)):
+                        try:
+                            axis.tickprefix = "₩"
+                            axis.separatethousands = True
+                            axis.tickformat = ",.0f"
+                        except Exception:
+                            pass
+                    axis.title.text = _friendly_chart_text(raw_axis_title)
+                if getattr(axis, "ticktext", None) is not None:
+                    axis.ticktext = _translate_plotly_values(axis.ticktext)
+            if getattr(layout, "coloraxis", None) is not None:
+                colorbar = getattr(layout.coloraxis, "colorbar", None)
+                if colorbar is not None and getattr(colorbar, "title", None) is not None and getattr(colorbar.title, "text", None):
+                    colorbar.title.text = _friendly_chart_text(colorbar.title.text)
+    except Exception:
+        pass
+    try:
+        for trace in getattr(fig, "data", []) or []:
+            if getattr(trace, "name", None):
+                trace.name = _translate_cell_value(trace.name)
+            for attr in ("x", "y", "labels", "text", "hovertext"):
+                if hasattr(trace, attr):
+                    try:
+                        setattr(trace, attr, _translate_plotly_values(getattr(trace, attr)))
+                    except Exception:
+                        pass
+            if getattr(trace, "hovertemplate", None):
+                trace.hovertemplate = _friendly_chart_text(trace.hovertemplate)
+    except Exception:
+        pass
+    return fig
 
 def _install_i18n_runtime_patches() -> None:
     """Translate remaining unwrapped Streamlit and Plotly labels at render time.
@@ -1747,6 +2305,16 @@ def _install_i18n_runtime_patches() -> None:
 
     for _name in ["bar", "line", "pie", "scatter", "histogram", "imshow", "area", "box", "violin"]:
         _wrap_px(_name)
+
+
+    # Plotly figures often inherit raw dataframe column names as axis titles or legend values.
+    # Localize them at the final render boundary so every chart uses dashboard language.
+    _plotly_original = getattr(st, "plotly_chart", None)
+    if _plotly_original is not None and not getattr(_plotly_original, "_retention_i18n_wrapped", False):
+        def _plotly_wrapped(fig: Any, *args: Any, **kwargs: Any):
+            return _plotly_original(_localize_plotly_figure(fig), *args, **kwargs)
+        _plotly_wrapped._retention_i18n_wrapped = True  # type: ignore[attr-defined]
+        st.plotly_chart = _plotly_wrapped  # type: ignore[assignment]
 
     st._retention_i18n_runtime_patched = True  # type: ignore[attr-defined]
 
@@ -1891,6 +2459,38 @@ def _merge_customer_value_columns(predictions: pd.DataFrame, customers_df: pd.Da
             out[col] = out[col].where(out[col].notna(), out[src])
         out = out.drop(columns=[src])
     return out.drop(columns=["_merge_customer_id"], errors="ignore")
+
+
+def _count_churn_timing_candidates(
+    predictions: pd.DataFrame,
+    *,
+    min_churn_probability: float = 0.0,
+) -> int:
+    """Count eligible churn-timing rows without formatting/rendering the full table."""
+    if not isinstance(predictions, pd.DataFrame) or predictions.empty:
+        return 0
+    days_col = next(
+        (col for col in ["predicted_median_time_to_churn_days", "expected_time_to_churn_days", "median_time_to_churn_days", "duration_days"] if col in predictions.columns),
+        None,
+    )
+    if days_col is None:
+        return 0
+    mask = pd.to_numeric(predictions[days_col], errors="coerce").notna()
+    try:
+        probability_threshold = float(min_churn_probability)
+    except (TypeError, ValueError):
+        probability_threshold = 0.0
+    probability_threshold = max(0.0, min(1.0, probability_threshold))
+    if probability_threshold > 0:
+        if "survival_prob_30d" in predictions.columns:
+            survival_30 = pd.to_numeric(predictions["survival_prob_30d"], errors="coerce").clip(lower=0, upper=1)
+            churn_30 = (1.0 - survival_30).clip(lower=0, upper=1)
+        elif "churn_probability" in predictions.columns:
+            churn_30 = pd.to_numeric(predictions["churn_probability"], errors="coerce").clip(lower=0, upper=1)
+        else:
+            churn_30 = pd.Series(np.nan, index=predictions.index)
+        mask = mask & churn_30.notna() & (churn_30 >= probability_threshold)
+    return int(mask.sum())
 
 
 def _build_churn_timing_table(
@@ -4657,7 +5257,7 @@ def _normalize_table_cell(value: Any) -> Any:
     if isinstance(value, np.bool_):
         return bool(value)
     if isinstance(value, str):
-        return _translate_cell_value(value)
+        return _collapse_repeated_customer_words(value.strip())
     return value
 
 
@@ -4702,38 +5302,74 @@ def _translate_column_name(column: str) -> str:
     return T(raw.replace("_", " "))
 
 
+def _term_caption_triggers() -> list[tuple[str, list[str]]]:
+    return [
+        ("CustomerType", ["persona", "customer type", "고객유형", "顧客タイプ"]),
+        ("ChurnProbability", ["churn_probability", "churn score", "이탈확률", "이탈점수", "離脱確率", "離脱スコア"]),
+        ("ChurnTiming", ["expected_churn_period", "expected_churn_date", "예상이탈시점", "예상이탈날짜", "予想離脱"]),
+        ("ExpectedLoss", ["expected_loss", "expected_loss_30d", "예상손실액", "予想損失"]),
+        ("CLV", ["clv", "생애가치", "lifetime value", "生涯価値"]),
+        ("Uplift", ["uplift", "개입효과", "고객반응유형", "介入効果"]),
+        ("ExpectedProfit", ["expected_incremental_profit", "expected_profit", "예상이익", "예상증분이익", "予想利益"]),
+        ("ExpectedROI", ["expected_roi", "roi", "예상roi", "予想roi"]),
+        ("InterventionIntensity", ["intervention_intensity", "개입강도", "介入強度"]),
+        ("RecommendedAction", ["recommended_action", "queued_recommended_action", "추천액션", "큐추천액션", "推奨アクション"]),
+        ("RecommendationReason", ["reason_tags", "selection_reason", "reason_summary", "추천이유", "선정이유", "推薦理由"]),
+        ("ActionStatus", ["action_status", "action_queue_status", "액션상태", "액션큐상태", "アクション状態"]),
+        ("CustomerValueScore", ["value_score", "고객가치점수", "顧客価値スコア"]),
+        ("RecommendationScore", ["recommendation_score", "recommendation_priority", "추천점수", "추천우선순위", "推薦スコア"]),
+        ("Priority", ["priority", "priority_score", "selection_score", "우선순위", "선정점수", "優先度"]),
+    ]
+
+
+@lru_cache(maxsize=512)
+def _term_caption_html_cached(language_code: str, label: str, columns_key: str) -> str:
+    captions = TERM_CAPTIONS.get(language_code, TERM_CAPTIONS.get("ko", {}))
+    joined_norm = _normalize_i18n_key(f"{label} {columns_key}")
+    ordered_keys: list[str] = []
+    for key, aliases in _term_caption_triggers():
+        if any(_normalize_i18n_key(alias) in joined_norm for alias in aliases):
+            if key not in ordered_keys and captions.get(key):
+                ordered_keys.append(key)
+    if not ordered_keys:
+        return ""
+    lines = [captions[key] for key in ordered_keys[:8]]
+    return (
+        "<div style='margin:8px 0 18px 0;padding:12px 14px;border-radius:14px;background:#F8FAFC;border:1px solid #E2E8F0;color:#334155;line-height:1.6;font-size:0.92rem;'>"
+        f"<b>{html.escape(T('용어 설명'))}</b><br/>"
+        + "<br/>".join(f"• {html.escape(line)}" for line in lines)
+        + "</div>"
+    )
+
+
 def _append_term_caption(df: pd.DataFrame, label: str = "") -> None:
+    """Show plain-language explanations for any potentially unfamiliar table terms."""
     if df is None or df.empty:
         return
-    code = _language_code()
-    captions = TERM_CAPTIONS.get(code, TERM_CAPTIONS.get("ko", {}))
-    joined = " ".join([str(label)] + [str(c) for c in df.columns])
-    keys = []
-    if any(token in joined for token in ["CLV", "clv", "생애가치", "生涯価値"]):
-        keys.append("CLV")
-    if any(token in joined for token in ["uplift", "Uplift", "개입 효과", "介入効果"]):
-        keys.append("Uplift")
-    if any(token in joined for token in ["ROI", "roi"]):
-        keys.append("ROI")
-    if any(token in joined for token in ["priority", "Priority", "우선순위", "優先度"]):
-        keys.append("Priority")
-    if not keys:
-        return
-    lines = [captions[k] for k in keys if captions.get(k)]
-    if lines:
-        st.caption(f"{T('용어 설명')}: " + " · ".join(lines))
+    columns_key = "|".join(str(c) for c in df.columns)
+    caption_html = _term_caption_html_cached(_language_code(), str(label), columns_key)
+    if caption_html:
+        st.markdown(caption_html, unsafe_allow_html=True)
+
 
 
 def _sanitize_display_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     if not isinstance(df, pd.DataFrame):
         return pd.DataFrame()
-
-    safe_df = df.copy().reset_index(drop=True)
+    safe_df = _dedupe_display_columns(df.copy().reset_index(drop=True))
     original_columns = _make_unique_columns([str(col) for col in safe_df.columns])
     safe_df.columns = original_columns
 
     for column in safe_df.columns:
-        normalized = safe_df[column].map(_normalize_table_cell)
+        def _format_one(value: Any, column_name: str = column) -> Any:
+            formatted = _format_table_value_by_column(column_name, value)
+            return _normalize_table_cell(formatted)
+
+        if pd.api.types.is_object_dtype(safe_df[column]) or pd.api.types.is_string_dtype(safe_df[column]):
+            normalized = _map_object_series_unique(safe_df[column], _format_one)
+        else:
+            normalized = safe_df[column].map(_format_one)
+
         non_empty = [value for value in normalized.tolist() if value not in ("", None)]
         numeric_only = bool(non_empty) and all(isinstance(value, (int, float, bool, np.integer, np.floating, np.bool_)) for value in non_empty)
         if numeric_only:
@@ -4741,7 +5377,8 @@ def _sanitize_display_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         else:
             safe_df[column] = normalized.map(lambda value: "" if value is None else str(value))
 
-    safe_df.columns = _make_unique_columns([_translate_column_name(c) for c in safe_df.columns])
+    translated_columns = [_translate_column_name(_strip_duplicate_suffix(c)) for c in safe_df.columns]
+    safe_df.columns = _make_unique_columns(translated_columns)
     return safe_df
 
 
@@ -4760,23 +5397,28 @@ def _render_html_table(
 ) -> None:
     """Render a compact, scrollable table without Streamlit dataframe JS.
 
-    Previous attempts using st.dataframe could trigger front-end Glide errors such
-    as "Cannot read properties of undefined (reading 'get')" when translated
-    columns, duplicate labels, or rerun-updated schemas reached Streamlit's grid.
-    This renderer converts the table to sanitized HTML and places it inside an
-    iframe with a fixed height. The page stays compact, rows scroll inside the
-    table, and the table is isolated from Streamlit's dataframe JavaScript.
+    Performance note: the expensive operations are display-value translation,
+    numeric formatting, and HTML serialization. Those now run only on the
+    visible slice. Full row/customer counts and customer-ID search still use
+    the original dataframe.
     """
     localized_label = T(label)
-    safe_df = _sanitize_display_dataframe(_filter_display_columns_for_label(df, label))
 
-    if safe_df.empty:
-        st.caption(_describe_table_count(safe_df, label=localized_label))
+    if not isinstance(df, pd.DataFrame) or df.empty:
+        st.caption(_describe_table_count(pd.DataFrame(), label=localized_label))
         st.info(T("표시할 데이터가 없습니다."))
         return
 
-    total_rows = int(len(safe_df))
-    view_df = safe_df
+    raw_df = _filter_display_columns_for_label(df, label)
+    if not isinstance(raw_df, pd.DataFrame) or raw_df.empty:
+        st.caption(_describe_table_count(pd.DataFrame(), label=localized_label))
+        st.info(T("표시할 데이터가 없습니다."))
+        return
+
+    raw_df = _dedupe_display_columns(raw_df.copy().reset_index(drop=True))
+    total_rows = int(len(raw_df))
+    view_raw = raw_df
+    matched_rows: int | None = None
     _search_active = False
 
     if total_rows > 20:
@@ -4792,30 +5434,61 @@ def _render_html_table(
             _ql = _q.strip().lower()
             customer_id_col = next(
                 (
-                    col for col in safe_df.columns
+                    col for col in raw_df.columns
                     if str(col).lower() in {"customer_id", "customer id"}
                     or _normalize_i18n_key(str(col)) in {"customerid", "고객id", "顧客id"}
                 ),
                 None,
             )
             if customer_id_col is None:
-                view_df = safe_df.iloc[0:0].reset_index(drop=True)
+                view_raw = raw_df.iloc[0:0].reset_index(drop=True)
             else:
                 mask = (
-                    safe_df[customer_id_col]
+                    raw_df[customer_id_col]
                     .astype(str)
                     .str.lower()
                     .str.contains(re.escape(_ql), na=False)
                 )
-                view_df = safe_df[mask].reset_index(drop=True)
+                view_raw = raw_df[mask].reset_index(drop=True)
+            matched_rows = int(len(view_raw))
+
+    display_limit = max(50, int(TABLE_DISPLAY_ROW_LIMIT))
+    truncated = int(len(view_raw)) > display_limit
+    if truncated:
+        view_raw = view_raw.head(display_limit).reset_index(drop=True)
+
+    # Translate and format only the visible rows.
+    safe_df = _sanitize_display_dataframe(view_raw)
 
     if _search_active:
-        st.caption(
-            f"{localized_label}: {T('전체')} {total_rows:,}{T('건')} "
-            f"{T('중')} {len(view_df):,}{T('건')} {T('일치')}"
-        )
+        match_count = matched_rows if matched_rows is not None else int(len(view_raw))
+        if _language_code() == "en":
+            caption = f"{localized_label}: {match_count:,} matched of {total_rows:,} total"
+            if truncated:
+                caption += f" / showing first {len(safe_df):,} rows"
+        elif _language_code() == "ja":
+            caption = f"{localized_label}: 全体 {total_rows:,}件中 {match_count:,}件一致"
+            if truncated:
+                caption += f" / 先頭 {len(safe_df):,}行を表示"
+        else:
+            caption = f"{localized_label}: 전체 {total_rows:,}건 중 {match_count:,}건 일치"
+            if truncated:
+                caption += f" / 상위 {len(safe_df):,}행만 표시"
+        st.caption(caption)
     else:
-        st.caption(_describe_table_count(safe_df, label=localized_label))
+        caption = _describe_table_count(raw_df, label=localized_label)
+        if truncated:
+            if _language_code() == "en":
+                caption += f" / showing first {len(safe_df):,} rows for speed"
+            elif _language_code() == "ja":
+                caption += f" / 速度のため先頭 {len(safe_df):,}行のみ表示"
+            else:
+                caption += f" / 속도 향상을 위해 상위 {len(safe_df):,}행만 표시"
+        st.caption(caption)
+
+    if safe_df.empty:
+        st.info(T("표시할 데이터가 없습니다."))
+        return
 
     try:
         _requested_height = int(max_height)
@@ -4824,9 +5497,9 @@ def _render_html_table(
     _table_height = min(420, max(220, _requested_height))
 
     # Ensure duplicate translated headers cannot break rendering or search.
-    view_df = view_df.copy().reset_index(drop=True)
-    view_df.columns = _make_unique_columns([str(c) for c in view_df.columns])
-    html_table = view_df.to_html(index=not hide_index, classes="oai-data-table", border=0, escape=True)
+    safe_df = safe_df.copy().reset_index(drop=True)
+    safe_df.columns = _make_unique_columns([str(c) for c in safe_df.columns])
+    html_table = safe_df.to_html(index=not hide_index, classes="oai-data-table", border=0, escape=True)
     table_doc = f"""
 <!doctype html>
 <html>
@@ -4854,7 +5527,8 @@ def _render_html_table(
 </html>
 """
     components.html(table_doc, height=_table_height + 22, scrolling=False)
-    _append_term_caption(safe_df, label=localized_label)
+    _append_term_caption(raw_df, label=localized_label)
+
 
 
 def _render_dataframe_with_count(
@@ -6879,7 +7553,7 @@ if view == "1. 이탈현황":
         opacity=0.9,
     )
     hist_fig.update_layout(bargap=0.02)
-    hist_fig.add_vline(x=threshold, line_dash="dash", annotation_text=f"Threshold={threshold:.2f}")
+    hist_fig.add_vline(x=threshold, line_dash="dash", annotation_text=f"{T('이탈 기준값')}={threshold:.2f}")
     st.plotly_chart(hist_fig, use_container_width=True)
 
     # 페르소나별 그래프는 해커톤 발표용 핵심 화면 단순화를 위해 제거했다.
@@ -7022,7 +7696,7 @@ elif view == "2. 코호트 리텐션 곡선":
                 f"{get_activity_definition_label(selected_activity_definition)} / {get_retention_mode_label(selected_retention_mode)}"
             ),
         )
-        line_fig.update_layout(xaxis_title="경과 기간(개월)", yaxis_title="Retention Rate")
+        line_fig.update_layout(xaxis_title=T("경과 기간(개월)"), yaxis_title=T("리텐션율"))
         st.plotly_chart(line_fig, use_container_width=True)
 
         if not heatmap_df.empty:
@@ -7030,7 +7704,7 @@ elif view == "2. 코호트 리텐션 곡선":
                 heatmap_df,
                 text_auto=".0%",
                 aspect="auto",
-                labels={"x": "경과 기간(개월)", "y": "코호트", "color": "Retention"},
+                labels={"x": T("경과 기간(개월)"), "y": T("코호트"), "color": T("리텐션율")},
                 title="코호트 리텐션 히트맵",
             )
             st.plotly_chart(heatmap_fig, use_container_width=True)
@@ -7322,7 +7996,7 @@ elif view == "4. 예산 최적화 및 리텐션 타겟":
         if "expected_incremental_profit" in display_df.columns:
             display_df["expected_incremental_profit"] = display_df["expected_incremental_profit"].map(lambda x: money(float(x)) if pd.notna(x) else "")
         if "expected_roi" in display_df.columns:
-            display_df["expected_roi"] = display_df["expected_roi"].map(lambda x: f"{float(x):.2%}" if pd.notna(x) else "")
+            display_df["expected_roi"] = display_df["expected_roi"].map(lambda x: _format_roi_display(x) if pd.notna(x) else "")
         if "priority_score" in display_df.columns:
             display_df["priority_score"] = display_df["priority_score"].map(lambda x: f"{float(x):.3f}" if pd.notna(x) else "")
         _render_dataframe_with_count(
@@ -7546,7 +8220,7 @@ elif view == "5. 개인화 추천":
         if 'coupon_cost' in display_df.columns:
             display_df['coupon_cost'] = display_df['coupon_cost'].map(money)
         if 'expected_roi' in display_df.columns:
-            display_df['expected_roi'] = display_df['expected_roi'].map(lambda x: f"{x:.3f}")
+            display_df['expected_roi'] = display_df['expected_roi'].map(lambda x: _format_roi_display(x) if pd.notna(x) else '')
         if 'recommendation_priority' in display_df.columns:
             display_df['recommendation_priority'] = display_df['recommendation_priority'].map(lambda x: f"{x:.3f}")
         if 'target_priority_score' in display_df.columns:
@@ -7693,35 +8367,9 @@ elif view == "6. 실시간 운영 모니터":
         scores_df = live_payload.get("scores", pd.DataFrame()).copy()
         actions_df = live_payload.get("actions", pd.DataFrame()).copy()
 
-        if not scores_df.empty:
-            st.caption(T("실시간 운영 모니터 그래프는 제거하고 표 중심으로 표시합니다."))
-            score_col = "churn_score" if "churn_score" in scores_df.columns else "churn_probability"
-            live_score_cols = [
-                col for col in [
-                    "customer_id",
-                    "persona",
-                    score_col,
-                    "clv",
-                    "uplift_score",
-                    "expected_roi",
-                    "risk_segment",
-                    "updated_at",
-                    "scored_at",
-                ]
-                if col in scores_df.columns
-            ]
-            live_score_display = scores_df.sort_values(score_col, ascending=False, kind="mergesort").head(int(top_n))[live_score_cols].copy()
-            for _col in [score_col, "uplift_score", "expected_roi"]:
-                if _col in live_score_display.columns:
-                    live_score_display[_col] = pd.to_numeric(live_score_display[_col], errors="coerce").map(lambda x: f"{float(x):.3f}" if pd.notna(x) else "")
-            if "clv" in live_score_display.columns:
-                live_score_display["clv"] = pd.to_numeric(live_score_display["clv"], errors="coerce").map(lambda x: money(float(x)) if pd.notna(x) else "")
-            _render_dataframe_with_count(
-                _translate_dataframe_values_for_display(live_score_display),
-                label=T("Live 이탈 점수 Top 고객"),
-                height=min(560, 180 + 30 * len(live_score_display)),
-            )
-        else:
+        # 요청 반영: 실시간 운영 모니터의 첫 번째 "Live 이탈 점수 Top 고객" 표는 화면에서 숨긴다.
+        # 점수 데이터는 상단 지표와 LLM 컨텍스트에는 그대로 유지하므로 기존 운영/요약 기능은 훼손하지 않는다.
+        if scores_df.empty:
             st.info(T("표시할 live score 데이터가 없습니다."))
 
         if not actions_df.empty:
@@ -7826,31 +8474,8 @@ elif view == "6. 실시간 운영 모니터":
         q4.metric(T("채널 할당 수"), f"{int(realtime_summary.get('daily_channel_allocated', 0)):,} / {int(realtime_summary.get('daily_channel_capacity', 0)):,}")
 
         st.caption(T("실시간 운영 모니터 그래프는 제거하고 표 중심으로 표시합니다."))
-        top_realtime_cols = [
-            col for col in [
-                'customer_id',
-                'persona',
-                'realtime_churn_score',
-                'base_churn_probability',
-                'score_delta',
-                'last_event_type',
-                'action_queue_status',
-                'latest_trigger_reason',
-                'queued_recommended_action',
-            ]
-            if col in realtime_scores.columns
-        ]
-        top_realtime_df = realtime_scores.sort_values('realtime_churn_score', ascending=False, kind='mergesort').head(min(len(realtime_scores), int(top_n))).copy()
-        if top_realtime_cols:
-            top_realtime_df = top_realtime_df[top_realtime_cols]
-        for _col in ['realtime_churn_score', 'base_churn_probability', 'score_delta']:
-            if _col in top_realtime_df.columns:
-                top_realtime_df[_col] = pd.to_numeric(top_realtime_df[_col], errors='coerce').map(lambda x: f"{float(x):.3f}" if pd.notna(x) else "")
-        _render_dataframe_with_count(
-            _translate_dataframe_values_for_display(top_realtime_df),
-            label=T('실시간 이탈 위험 상위 고객'),
-            height=min(560, 180 + 30 * len(top_realtime_df)),
-        )
+        # 요청 반영: 실시간 운영 모니터의 첫 번째 점수 Top 고객 표는 숨기고,
+        # 아래 액션 큐/상태 테이블 중심으로 운영 화면을 단순화한다.
 
         queued_df = realtime_scores[realtime_scores.get('action_queue_status', pd.Series(index=realtime_scores.index, dtype=object)).astype(str) == 'queued'].copy() if 'action_queue_status' in realtime_scores.columns else pd.DataFrame()
         if not queued_df.empty:
@@ -7876,7 +8501,7 @@ elif view == "6. 실시간 운영 모니터":
             if 'queued_expected_profit' in queue_display.columns:
                 queue_display['queued_expected_profit'] = queue_display['queued_expected_profit'].map(money)
             if 'queued_expected_roi' in queue_display.columns:
-                queue_display['queued_expected_roi'] = queue_display['queued_expected_roi'].map(lambda x: f"{float(x):.2%}")
+                queue_display['queued_expected_roi'] = queue_display['queued_expected_roi'].map(lambda x: _format_roi_display(x) if pd.notna(x) else '')
             _render_dataframe_with_count(queue_display, label=T("실시간 부분 재최적화 액션 큐"), height=min(520, 180 + 32 * len(queue_display)))
 
         display_df = realtime_scores.copy()
@@ -7888,7 +8513,7 @@ elif view == "6. 실시간 운영 모니터":
             if money_col in display_df.columns:
                 display_df[money_col] = display_df[money_col].map(money)
         if 'expected_roi' in display_df.columns:
-            display_df['expected_roi'] = display_df['expected_roi'].map(lambda x: f"{float(x):.3f}")
+            display_df['expected_roi'] = display_df['expected_roi'].map(lambda x: _format_roi_display(x) if pd.notna(x) else '')
         _render_dataframe_with_count(display_df, label=T("실시간 이탈 위험 테이블"))
 
     realtime_summary_display = realtime_monitor_overview.get("summary", realtime_summary) if realtime_monitor_overview else realtime_summary
@@ -7957,9 +8582,13 @@ elif _is_churn_timing_view(view):
         value=int(st.session_state.get("churn_timing_probability_threshold_pct", 0)),
         step=5,
         key="churn_timing_probability_threshold_pct",
-        help=T("이 기준 이상인 고객만 테이블에 표시됩니다. 0%로 두면 모든 고객을 표시합니다."),
+        help=T("0%로 두어도 전체 행을 한 번에 렌더링하지 않고, 운영 우선순위가 높은 고객부터 제한된 수만 빠르게 표시합니다."),
     )
-    st.caption(T("이 표는 선택한 30일 내 이탈 가능성 이상인 고객을 모두 보여줍니다."))
+    _churn_timing_display_limit = int(CHURN_TIMING_DISPLAY_ROW_LIMIT)
+    st.caption(
+        f"{T('이 표는 선택한 기준 이상 고객 중 운영 우선순위가 높은 고객부터 빠르게 보여줍니다.')} "
+        f"{T('표시 고객 수 제한')}: {_churn_timing_display_limit:,}{T('명')}"
+    )
 
     if survival_error or survival_predictions.empty:
         _simulator_missing_result_box(
@@ -7969,17 +8598,26 @@ elif _is_churn_timing_view(view):
         )
         timing_display = pd.DataFrame()
     else:
+        _churn_threshold = float(churn_timing_probability_threshold_pct) / 100.0
+        _churn_candidate_count = _count_churn_timing_candidates(
+            survival_predictions,
+            min_churn_probability=_churn_threshold,
+        )
         timing_display = _build_churn_timing_table(
             survival_predictions,
             customers,
             survival_metrics,
-            min_churn_probability=float(churn_timing_probability_threshold_pct) / 100.0,
-            limit=None,
+            min_churn_probability=_churn_threshold,
+            limit=_churn_timing_display_limit,
         )
         if timing_display.empty:
             st.info(T("이탈 시점 예측 결과가 없습니다."))
         else:
-            st.caption(f"{T('현재 기준 이상 고객')}: {len(timing_display):,}{T('명')}")
+            st.caption(
+                f"{T('현재 기준 이상 고객')}: {_churn_candidate_count:,}{T('명')} / "
+                f"{T('표시 고객 수 제한')}: {len(timing_display):,}{T('명')} "
+                f"({T('현재 표시는 운영 우선순위 상위 고객만 보여줍니다.')})"
+            )
             st.caption(T("예상 손실액은 고객 생애가치(CLV)에 30일 내 이탈 가능성을 곱해 계산합니다. CLV가 없으면 최근 구매금액을 보수적 대체값으로 사용합니다."))
             _render_dataframe_with_count(
                 _translate_dataframe_values_for_display(timing_display),
