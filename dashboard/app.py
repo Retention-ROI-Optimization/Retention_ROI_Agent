@@ -607,6 +607,14 @@ UI_TEXT.setdefault("en", {}).update({
     "일 이내": "days",
     "알 수 없음": "Unknown",
     "표시 고객 수": "Displayed customers",
+    "30일 내 이탈 가능성 기준": "30-day churn chance threshold",
+    "이 기준 이상인 고객만 테이블에 표시됩니다. 0%로 두면 모든 고객을 표시합니다.": "Only customers at or above this threshold appear in the table. Set it to 0% to show every customer.",
+    "이 표는 선택한 30일 내 이탈 가능성 이상인 고객을 모두 보여줍니다.": "This table shows all customers whose 30-day churn chance is at or above the selected threshold.",
+    "현재 기준 이상 고객": "Customers above current threshold",
+    "명": " customers",
+    "이탈 기준 설정 안내": "Churn definition guide",
+    "이 슬라이더는 고객을 언제부터 이탈로 볼지 정하는 기준입니다. 예를 들어 30일로 두면 마지막 활동 후 30일 이상 지난 고객을 이탈 사례로 학습합니다.": "This slider defines when a customer should be treated as churned. For example, if it is set to 30 days, customers with no activity for 30 days after their last activity are learned as churn cases.",
+    "이 기준은 이탈 모델 학습, 생존분석, 이탈 시점 예측의 기준이 됩니다. 업종별 방문·구매 주기에 맞게 조절하세요.": "This setting becomes the basis for churn model training, survival analysis, and churn timing prediction. Adjust it to match the visit or purchase cycle of your business.",
 })
 UI_TEXT.setdefault("ja", {}).update({
     "이탈 시점 예측": "離脱時点予測",
@@ -623,6 +631,14 @@ UI_TEXT.setdefault("ja", {}).update({
     "일 이내": "日以内",
     "알 수 없음": "不明",
     "표시 고객 수": "表示顧客数",
+    "30일 내 이탈 가능성 기준": "30日以内の離脱可能性基準",
+    "이 기준 이상인 고객만 테이블에 표시됩니다. 0%로 두면 모든 고객을 표시합니다.": "この基準以上の顧客だけを表に表示します。0%にするとすべての顧客を表示します。",
+    "이 표는 선택한 30일 내 이탈 가능성 이상인 고객을 모두 보여줍니다.": "この表は、選択した30日以内の離脱可能性以上の顧客をすべて表示します。",
+    "현재 기준 이상 고객": "現在の基準以上の顧客",
+    "명": "人",
+    "이탈 기준 설정 안내": "離脱基準の設定案内",
+    "이 슬라이더는 고객을 언제부터 이탈로 볼지 정하는 기준입니다. 예를 들어 30일로 두면 마지막 활동 후 30일 이상 지난 고객을 이탈 사례로 학습합니다.": "このスライダーは、顧客をいつから離脱とみなすかを決める基準です。たとえば30日に設定すると、最後の活動から30日以上活動がない顧客を離脱事例として学習します。",
+    "이 기준은 이탈 모델 학습, 생존분석, 이탈 시점 예측의 기준이 됩니다. 업종별 방문·구매 주기에 맞게 조절하세요.": "この基準は、離脱モデル学習、生存分析、離脱時点予測の基準になります。業種ごとの訪問・購入サイクルに合わせて調整してください。",
 })
 
 
@@ -801,6 +817,43 @@ VALUE_LABELS: dict[str, dict[str, str]] = {
         "page_view": "ページ訪問", "purchase": "購入", "cart": "カート", "add_to_cart": "カート追加", "search": "検索", "login": "ログイン", "NEW": "新規", "UPD": "既存更新", "High risk": "高リスク", "Medium risk": "中リスク", "Low risk": "低リスク",
     },
 }
+
+
+# Additional plain-language labels for customer types and generated segment names.
+_VALUE_LABEL_SUPPLEMENTS = {
+    "ko": {
+        "new_signup": "가입 초기 고객",
+        "churn_progressing": "이탈 조짐 고객",
+        "explorer": "탐색 고객",
+        "price_sensitive": "가격 민감 고객",
+        "High Value-Lost Causes": "고가치·개입 효과 낮은 고객",
+        "High Value-Persuadables": "고가치·개입 반응 가능 고객",
+        "High Value-Sure Things": "고가치·이미 반응 가능 고객",
+        "New Customers": "신규 고객군",
+    },
+    "en": {
+        "new_signup": "Newly signed-up customer",
+        "churn_progressing": "Showing churn signs",
+        "explorer": "Exploring customer",
+        "price_sensitive": "Price-sensitive customer",
+        "High Value-Lost Causes": "High-value, low response",
+        "High Value-Persuadables": "High-value, likely persuaded",
+        "High Value-Sure Things": "High-value, already responsive",
+        "New Customers": "New customer group",
+    },
+    "ja": {
+        "new_signup": "登録直後の顧客",
+        "churn_progressing": "離脱兆候のある顧客",
+        "explorer": "探索中の顧客",
+        "price_sensitive": "価格重視顧客",
+        "High Value-Lost Causes": "高価値・反応見込み低",
+        "High Value-Persuadables": "高価値・反応見込みあり",
+        "High Value-Sure Things": "高価値・すでに反応しやすい",
+        "New Customers": "新規顧客群",
+    },
+}
+for _lang, _mapping in _VALUE_LABEL_SUPPLEMENTS.items():
+    VALUE_LABELS.setdefault(_lang, {}).update(_mapping)
 
 PHRASE_LABELS: dict[str, dict[str, str]] = {
     "en": {
@@ -1845,7 +1898,8 @@ def _build_churn_timing_table(
     customers_df: pd.DataFrame,
     metrics: dict[str, Any] | None,
     *,
-    limit: int,
+    min_churn_probability: float = 0.0,
+    limit: int | None = None,
 ) -> pd.DataFrame:
     """Return a plain-language table: customer, when they may leave, and expected loss."""
     if not isinstance(predictions, pd.DataFrame) or predictions.empty:
@@ -1882,6 +1936,14 @@ def _build_churn_timing_table(
     else:
         out["_customer_value"] = np.nan
 
+    try:
+        probability_threshold = float(min_churn_probability)
+    except (TypeError, ValueError):
+        probability_threshold = 0.0
+    probability_threshold = max(0.0, min(1.0, probability_threshold))
+    if probability_threshold > 0:
+        out = out[out["_churn_30d"].notna() & (out["_churn_30d"] >= probability_threshold)].copy()
+
     out["_expected_loss"] = (out["_customer_value"].clip(lower=0) * out["_churn_30d"].fillna(1.0)).replace([np.inf, -np.inf], np.nan)
     landmark_date = (metrics or {}).get("landmark_as_of_date") or (metrics or {}).get("as_of_date")
 
@@ -1893,7 +1955,9 @@ def _build_churn_timing_table(
         ["_expected_days", "_expected_loss", "_churn_30d", "_hazard_sort"],
         ascending=[True, False, False, False],
         kind="mergesort",
-    ).head(max(int(limit), 1))
+    )
+    if limit is not None:
+        out = out.head(max(int(limit), 1))
 
     display = pd.DataFrame({
         "customer_id": out["customer_id"].astype(str),
@@ -5620,6 +5684,7 @@ def _render_wizard() -> bool:
             _wizard_nav("train_missing", can_next=False)
             return True
         recommended = int(getattr(preview, "recommended_churn_days", None) or (60 if mode == "finance" else 30))
+        st.info(f"**{T('이탈 기준 설정 안내')}**  \n{T('이 슬라이더는 고객을 언제부터 이탈로 볼지 정하는 기준입니다. 예를 들어 30일로 두면 마지막 활동 후 30일 이상 지난 고객을 이탈 사례로 학습합니다.')}  \n{T('이 기준은 이탈 모델 학습, 생존분석, 이탈 시점 예측의 기준이 됩니다. 업종별 방문·구매 주기에 맞게 조절하세요.')}")
         churn_days = st.slider(T("이탈 기준: N일 이상 비활성"), 7, 180, recommended, 1, key=f"wizard_churn_days_{mode}")
         w_budget = int(st.session_state.get("control_budget", 5_000_000))
         w_threshold = float(st.session_state.get("control_threshold", 0.50))
@@ -6143,17 +6208,14 @@ with st.sidebar:
 
             st.markdown(f"### 📛 {T('이탈 고객 정의')}")
             recommended_churn_days = int(getattr(preview, "recommended_churn_days", None) or 30)
-            st.caption(
-                "마지막 활동(이벤트/주문) 이후 며칠 동안 활동이 없으면 \"이탈\"로 분류할지 정합니다. "
-                "업종에 따라 적절한 값이 다릅니다."
-            )
+            st.info(f"**{T('이탈 기준 설정 안내')}**  \n{T('이 슬라이더는 고객을 언제부터 이탈로 볼지 정하는 기준입니다. 예를 들어 30일로 두면 마지막 활동 후 30일 이상 지난 고객을 이탈 사례로 학습합니다.')}  \n{T('이 기준은 이탈 모델 학습, 생존분석, 이탈 시점 예측의 기준이 됩니다. 업종별 방문·구매 주기에 맞게 조절하세요.')}")
             if getattr(preview, "recommended_churn_days", None):
                 st.info(
                     f"업로드 데이터의 평균 활동/구매 주기를 기준으로 "
                     f"**{recommended_churn_days}일**을 추천합니다."
                 )
             churn_inactivity_days = st.slider(
-                "이탈 기준: N일 이상 비활성",
+                T("이탈 기준: N일 이상 비활성"),
                 min_value=7,
                 max_value=180,
                 value=recommended_churn_days,
@@ -6435,16 +6497,19 @@ with st.sidebar:
         st.warning("최대 타겟 고객 수는 1 이상의 정수로 입력해야 합니다.")
         target_cap = int(st.session_state.get("control_target_cap", 1500))
 
-    # top_n은 실시간/설명가능성/리스크 화면에서 주로 쓰지만,
-    # 화면 이동 시 값이 사라지지 않도록 항상 렌더링한다.
-    top_n = st.slider(
-        T("표시 고객 수"),
-        min_value=5,
-        max_value=200,
-        step=5,
-        key="control_top_n",
-    )
-    st.session_state["control_top_n_shadow"] = int(top_n)
+    # top_n은 실시간/설명가능성/리스크 화면에서 쓰는 표시 개수입니다.
+    # 이탈 시점 예측 화면은 별도의 30일 이탈 가능성 필터로 전체 고객을 걸러 보여주므로 여기서는 숨깁니다.
+    if _is_churn_timing_view(view):
+        top_n = int(st.session_state.get("control_top_n", CONTROL_DEFAULTS["control_top_n"]))
+    else:
+        top_n = st.slider(
+            T("표시 고객 수"),
+            min_value=5,
+            max_value=200,
+            step=5,
+            key="control_top_n",
+        )
+        st.session_state["control_top_n_shadow"] = int(top_n)
 
     if view == "5. 개인화 추천":
         st.caption("최종 리텐션 타겟 고객군(예산/임계값 적용)에게만 추천을 생성합니다.")
@@ -7885,6 +7950,16 @@ elif _is_churn_timing_view(view):
     st.subheader(T("이탈 시점 예측"))
     _render_view_intro("9")
     st.caption(T("고객별로 언제쯤 이탈할 가능성이 큰지와 그때 잃을 수 있는 금액만 표로 보여줍니다."))
+    churn_timing_probability_threshold_pct = st.slider(
+        T("30일 내 이탈 가능성 기준"),
+        min_value=0,
+        max_value=100,
+        value=int(st.session_state.get("churn_timing_probability_threshold_pct", 0)),
+        step=5,
+        key="churn_timing_probability_threshold_pct",
+        help=T("이 기준 이상인 고객만 테이블에 표시됩니다. 0%로 두면 모든 고객을 표시합니다."),
+    )
+    st.caption(T("이 표는 선택한 30일 내 이탈 가능성 이상인 고객을 모두 보여줍니다."))
 
     if survival_error or survival_predictions.empty:
         _simulator_missing_result_box(
@@ -7898,11 +7973,13 @@ elif _is_churn_timing_view(view):
             survival_predictions,
             customers,
             survival_metrics,
-            limit=int(top_n),
+            min_churn_probability=float(churn_timing_probability_threshold_pct) / 100.0,
+            limit=None,
         )
         if timing_display.empty:
             st.info(T("이탈 시점 예측 결과가 없습니다."))
         else:
+            st.caption(f"{T('현재 기준 이상 고객')}: {len(timing_display):,}{T('명')}")
             st.caption(T("예상 손실액은 고객 생애가치(CLV)에 30일 내 이탈 가능성을 곱해 계산합니다. CLV가 없으면 최근 구매금액을 보수적 대체값으로 사용합니다."))
             _render_dataframe_with_count(
                 _translate_dataframe_values_for_display(timing_display),
