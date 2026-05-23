@@ -94,12 +94,13 @@ DASHBOARD_VIEW_ITEMS: tuple[tuple[str, str], ...] = (
     ("13", "반사실 리텐션 실험실"),
     ("5", "개인화 추천"),
     ("6", "실시간 운영 모니터"),
+    ("14", "주간 액션 성과 리뷰"),
 )
 DASHBOARD_VIEW_OPTIONS: tuple[str, ...] = tuple(f"{n}. {t}" for n, t in DASHBOARD_VIEW_ITEMS)
 VIEW_OPTION_BY_NUM: dict[str, str] = {num: f"{num}. {title}" for num, title in DASHBOARD_VIEW_ITEMS}
 
 DASHBOARD_VIEW_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("핵심 화면", ("1", "9", "4", "13", "5", "6")),
+    ("핵심 화면", ("1", "9", "4", "13", "5", "6", "14")),
 )
 
 GROUP_TO_VIEW_OPTIONS: dict[str, tuple[str, ...]] = {
@@ -121,6 +122,7 @@ CORE_VIEW_DISPLAY_LABELS: dict[str, dict[str, str]] = {
         "13. 반사실 리텐션 실험실": "④ 반사실 리텐션 실험실",
         "5. 개인화 추천": "⑤ 개인화 추천",
         "6. 실시간 운영 모니터": "⑥ 실시간 운영 모니터",
+        "14. 주간 액션 성과 리뷰": "⑦ 주간 액션 성과 리뷰",
     },
     "en": {
         "1. 이탈현황": "① Churn Status",
@@ -129,6 +131,7 @@ CORE_VIEW_DISPLAY_LABELS: dict[str, dict[str, str]] = {
         "13. 반사실 리텐션 실험실": "④ Counterfactual Retention Lab",
         "5. 개인화 추천": "⑤ Personalized Recommendations",
         "6. 실시간 운영 모니터": "⑥ Real-time Operations",
+        "14. 주간 액션 성과 리뷰": "⑦ Weekly Action Review",
     },
     "ja": {
         "1. 이탈현황": "① 離脱状況",
@@ -137,6 +140,7 @@ CORE_VIEW_DISPLAY_LABELS: dict[str, dict[str, str]] = {
         "13. 반사실 리텐션 실험실": "④ 反事実リテンション実験室",
         "5. 개인화 추천": "⑤ パーソナライズ推薦",
         "6. 실시간 운영 모니터": "⑥ リアルタイム運用",
+        "14. 주간 액션 성과 리뷰": "⑦ 週次アクション成果レビュー",
     },
 }
 
@@ -347,6 +351,87 @@ UI_TEXT["en"].update({
     "학습 완료. 대시보드로 이동합니다.": "Training completed. Opening the dashboard.",
     "PostgreSQL user-live DB 초기 적재 완료": "PostgreSQL user-live DB seeding completed",
     "PostgreSQL user-live DB 자동 적재 실패": "PostgreSQL user-live DB automatic seeding failed",
+    "주간 액션 성과 리뷰": "Weekly Action Performance Review",
+    "이 화면은 실제 집행 결과가 아닌, 추천 데이터 기반의 시뮬레이션 리뷰입니다. 실행률과 성과 노이즈 슬라이더로 가상 시나리오를 조정할 수 있습니다.": "This is a simulation review based on recommendation data, not actual execution results. Adjust the execution rate and performance noise sliders to explore scenarios.",
+    "전체 실행률": "Overall Execution Rate",
+    "고쿠폰 실행률": "High Coupon Execution Rate",
+    "성과 노이즈": "Performance Noise",
+    "시뮬레이션 시드": "Simulation Seed",
+    "총 추천 건수": "Total Recommendations",
+    "총 집행 건수": "Total Executed",
+    "총 집행 예산": "Total Budget Spent",
+    "기대 이익 합계": "Expected Profit Sum",
+    "실제 이익 합계": "Actual Profit Sum",
+    "손실 액션 수": "Loss Actions",
+    "기대 vs 실제 ROI": "Expected vs Actual ROI",
+    "추천 카테고리별 기대 vs 실제 ROI": "Expected vs Actual ROI by Recommended Category",
+    "세그먼트별 손익": "Segment P&L",
+    "세그먼트별 손익 히트맵": "Segment P&L Heatmap",
+    "손실 Top N": "Top N Losses",
+    "손실 액션 Top 20": "Top 20 Loss Actions",
+    "판정 분포": "Outcome Distribution",
+    "액션 판정 분포": "Action Outcome Distribution",
+    "전체 액션 상세": "Full Action Detail",
+    "주간 액션 성과 리뷰 테이블": "Weekly Action Performance Review Table",
+    "다음 주 정책 조정 제안": "Next Week Policy Adjustment Suggestions",
+    "아래 제안은 이번 주 시뮬레이션 성과를 기반으로 자동 생성된 운영 힌트입니다.": "The suggestions below are auto-generated operational hints based on this week's simulated performance.",
+    "적정 판단": "Good Decision",
+    "기대 미달": "Underperformed",
+    "과잉 투자": "Over-Invested",
+    "타겟 오류": "Wrong Target",
+    "실행 누락": "Missed Opportunity",
+    "기대 이익": "Expected Profit",
+    "실제 이익": "Actual Profit",
+    "손실 액션 상세": "Loss Action Details",
+    "개인화 추천 또는 최적화 선정 고객 산출물이 없습니다.": "No personalized recommendation or optimization result data found.",
+    "실행 여부": "Executed",
+    "판정": "Outcome",
+    "건수": "Count",
+    "과투자 추정 금액": "Estimated Over-Investment",
+    "기대 미달 고객 수": "Underperformed Customer Count",
+    "쿠폰 강도별 실제 전환율": "Conversion Rate by Coupon Intensity",
+    "기대 미달 원인 분포": "Underperformance Cause Distribution",
+    "지난주 리텐션 액션 결과": "Last Week Retention Action Results",
+    "기대 대비": "vs Expected",
+    "원": "",
+    "건": " actions",
+    "예상과 다른 반응을 보인 고객": "Customers with Unexpected Outcomes",
+    "클릭하면 해당 고객의 이벤트 로그, 주문 내역, 쿠폰 이력을 확인할 수 있습니다.": "Click to view event logs, order history, and coupon history for each customer.",
+    "전체": "All",
+    "판정 필터": "Outcome Filter",
+    "해당 판정의 고객이 없습니다.": "No customers with this outcome.",
+    "추천 카테고리": "Recommended Category",
+    "쿠폰 사용": "Coupon Used",
+    "전환": "Converted",
+    "개입 강도": "Intervention Intensity",
+    "이벤트 로그": "Event Log",
+    "주문 내역": "Order History",
+    "쿠폰 이력": "Coupon History",
+    "최근": "Recent",
+    "건만 표시": " shown",
+    "이벤트 기록 없음": "No event records",
+    "총 구매": "Total Purchases",
+    "회": " times",
+    "주문 기록 없음": "No order records",
+    "총 쿠폰 지급": "Total Coupons Issued",
+    "쿠폰 이력 없음": "No coupon history",
+    "상위": "Top",
+    "적절한 비용으로 기대 이상의 성과": "Good ROI and profit with reasonable cost",
+    "이익은 있지만 ROI가 기대보다 낮음": "Profitable but ROI below expectations",
+    "쿠폰 비용 대비 성과 부족": "Poor performance relative to coupon cost",
+    "잘못된 대상에 액션 집행": "Action executed on wrong target",
+    "미실행으로 기회 손실 발생": "Opportunity lost due to non-execution",
+    "시뮬레이션 설정": "Simulation Settings",
+    "CRM 담당자가 추천 액션 중 실제 실행하는 비율": "Proportion of recommended actions actually executed by CRM operator",
+    "고비용 쿠폰 추천의 실행 비율 (보통 더 낮음)": "Execution rate for high-cost coupon recommendations (usually lower)",
+    "실제 성과가 예상에서 벗어나는 정도": "How much actual performance deviates from predictions",
+    "실행": "Executed",
+    "미실행": "Not Executed",
+    "손실 액션이 없습니다!": "No loss actions!",
+    "실행된 액션이 없습니다.": "No executed actions.",
+    "쿠폰": "Coupon",
+    "손익": "P&L",
+    "실행 여부": "Executed",
 })
 UI_TEXT["ja"].update({
     "LLM 결과 요약": "LLM結果サマリー",
@@ -396,6 +481,87 @@ UI_TEXT["ja"].update({
     "학습 완료. 대시보드로 이동합니다.": "学習完了。ダッシュボードへ移動します。",
     "PostgreSQL user-live DB 초기 적재 완료": "PostgreSQL user-live DB初期投入完了",
     "PostgreSQL user-live DB 자동 적재 실패": "PostgreSQL user-live DB自動投入失敗",
+    "주간 액션 성과 리뷰": "週次アクション成果レビュー",
+    "이 화면은 실제 집행 결과가 아닌, 추천 데이터 기반의 시뮬레이션 리뷰입니다. 실행률과 성과 노이즈 슬라이더로 가상 시나리오를 조정할 수 있습니다.": "この画面は実際の実行結果ではなく、推薦データ基盤のシミュレーションレビューです。実行率と成果ノイズスライダーで仮想シナリオを調整できます。",
+    "전체 실행률": "全体実行率",
+    "고쿠폰 실행률": "高クーポン実行率",
+    "성과 노이즈": "成果ノイズ",
+    "시뮬레이션 시드": "シミュレーションシード",
+    "총 추천 건수": "総推薦件数",
+    "총 집행 건수": "総実行件数",
+    "총 집행 예산": "総実行予算",
+    "기대 이익 합계": "期待利益合計",
+    "실제 이익 합계": "実際利益合計",
+    "손실 액션 수": "損失アクション数",
+    "기대 vs 실제 ROI": "期待 vs 実際 ROI",
+    "추천 카테고리별 기대 vs 실제 ROI": "推薦カテゴリー別 期待 vs 実際 ROI",
+    "세그먼트별 손익": "セグメント別損益",
+    "세그먼트별 손익 히트맵": "セグメント別損益ヒートマップ",
+    "손실 Top N": "損失 Top N",
+    "손실 액션 Top 20": "損失アクション Top 20",
+    "판정 분포": "判定分布",
+    "액션 판정 분포": "アクション判定分布",
+    "전체 액션 상세": "全アクション詳細",
+    "주간 액션 성과 리뷰 테이블": "週次アクション成果レビューテーブル",
+    "다음 주 정책 조정 제안": "来週の方針調整提案",
+    "아래 제안은 이번 주 시뮬레이션 성과를 기반으로 자동 생성된 운영 힌트입니다.": "以下の提案は今週のシミュレーション成果に基づき自動生成された運用ヒントです。",
+    "적정 판단": "適切な判断",
+    "기대 미달": "期待未達",
+    "과잉 투자": "過剰投資",
+    "타겟 오류": "対象誤り",
+    "실행 누락": "実行漏れ",
+    "기대 이익": "期待利益",
+    "실제 이익": "実際利益",
+    "손실 액션 상세": "損失アクション詳細",
+    "개인화 추천 또는 최적화 선정 고객 산출물이 없습니다.": "パーソナライズ推薦または最適化選定顧客の産出物がありません。",
+    "실행 여부": "実行有無",
+    "판정": "判定",
+    "건수": "件数",
+    "과투자 추정 금액": "過剰投資推定額",
+    "기대 미달 고객 수": "期待未達顧客数",
+    "쿠폰 강도별 실제 전환율": "クーポン強度別実際転換率",
+    "기대 미달 원인 분포": "期待未達原因分布",
+    "지난주 리텐션 액션 결과": "先週のリテンションアクション結果",
+    "기대 대비": "期待比",
+    "원": "ウォン",
+    "건": "件",
+    "예상과 다른 반응을 보인 고객": "予想と異なる反応を示した顧客",
+    "클릭하면 해당 고객의 이벤트 로그, 주문 내역, 쿠폰 이력을 확인할 수 있습니다.": "クリックすると顧客のイベントログ、注文履歴、クーポン履歴を確認できます。",
+    "전체": "全体",
+    "판정 필터": "判定フィルター",
+    "해당 판정의 고객이 없습니다.": "該当判定の顧客がいません。",
+    "추천 카테고리": "推薦カテゴリー",
+    "쿠폰 사용": "クーポン使用",
+    "전환": "転換",
+    "개입 강도": "介入強度",
+    "이벤트 로그": "イベントログ",
+    "주문 내역": "注文履歴",
+    "쿠폰 이력": "クーポン履歴",
+    "최근": "最近",
+    "건만 표시": "件のみ表示",
+    "이벤트 기록 없음": "イベント記録なし",
+    "총 구매": "総購入",
+    "회": "回",
+    "주문 기록 없음": "注文記録なし",
+    "총 쿠폰 지급": "総クーポン支給",
+    "쿠폰 이력 없음": "クーポン履歴なし",
+    "상위": "上位",
+    "적절한 비용으로 기대 이상의 성과": "適切なコストで期待以上の成果",
+    "이익은 있지만 ROI가 기대보다 낮음": "利益はあるがROIが期待より低い",
+    "쿠폰 비용 대비 성과 부족": "クーポンコスト比成果不足",
+    "잘못된 대상에 액션 집행": "誤った対象にアクション実行",
+    "미실행으로 기회 손실 발생": "未実行による機会損失",
+    "시뮬레이션 설정": "シミュレーション設定",
+    "CRM 담당자가 추천 액션 중 실제 실행하는 비율": "CRM担当者が推薦アクションのうち実際に実行する割合",
+    "고비용 쿠폰 추천의 실행 비율 (보통 더 낮음)": "高コストクーポン推薦の実行率（通常より低い）",
+    "실제 성과가 예상에서 벗어나는 정도": "実際の成果が予測から外れる程度",
+    "실행": "実行",
+    "미실행": "未実行",
+    "손실 액션이 없습니다!": "損失アクションがありません！",
+    "실행된 액션이 없습니다.": "実行されたアクションがありません。",
+    "쿠폰": "クーポン",
+    "손익": "損益",
+    "실행 여부": "実行有無",
 })
 
 
@@ -912,6 +1078,11 @@ VIEW_INTRO_LINES: dict[str, list[str]] = {
         "같은 고객에게 아무것도 하지 않을 때와 여러 개입을 했을 때의 기대 손익을 직접 비교합니다.",
         "무개입, 쿠폰, 상담, 푸시/이메일, 7일 대기 전략의 예상 순이익과 신뢰도를 함께 봅니다.",
         "운영자는 추천 액션을 맹목적으로 따르지 않고, 비용·효과·대기 옵션을 비교해 실험 대상으로 보낼지 결정할 수 있습니다.",
+    ],
+    "14": [
+        "지난주 실행한 리텐션 액션의 기대 대비 실제 성과를 빠르게 점검합니다.",
+        "액션별 ROI, 이익/손실, 세그먼트별 손익을 함께 보며 어떤 판단이 맞았고 틀렸는지 확인합니다.",
+        "다음 주 예산·타겟·전략 조정 근거를 만들어 캠페인 운영을 개선하는 목적입니다.",
     ],
 }
 
@@ -1886,7 +2057,7 @@ LEGACY_VIEW_REDIRECTS: dict[str, str] = {
     "9. 이탈 시점 예측 (Survival Analysis)": "9. 이탈 시점 예측",
 }
 REALTIME_REFRESH_VIEWS: set[str] = {"6. 실시간 운영 모니터"}
-INSIGHT_HEAVY_VIEWS: set[str] = {"4. 예산 최적화 및 리텐션 타겟", "6. 실시간 운영 모니터"}
+INSIGHT_HEAVY_VIEWS: set[str] = {"4. 예산 최적화 및 리텐션 타겟", "6. 실시간 운영 모니터", "14. 주간 액션 성과 리뷰"}
 
 
 def _language_code() -> str:
@@ -4038,6 +4209,239 @@ def _simulator_mode_unavailable(feature_name: str, has_data: bool, reason: str =
         return False
     _simulator_missing_result_box(feature_name, reason=reason, action_hint=action_hint)
     return True
+
+
+# ────────────────────────────────────────────────────────────
+# ────────────────────────────────────────────────────────────
+
+def _build_weekly_action_review(
+    recommendations_df: pd.DataFrame,
+    selected_customers_df: pd.DataFrame,
+    execution_rate: float = 0.75,
+    high_coupon_execution_rate: float = 0.50,
+    noise_std: float = 0.15,
+    seed: int = 42,
+) -> tuple[dict, pd.DataFrame, list[dict]]:
+    """Build a simulated weekly execution log from recommendation data and analyze performance."""
+    rng = np.random.default_rng(seed)
+
+    df = recommendations_df.copy()
+    if df.empty:
+        empty_summary: dict[str, Any] = {
+            "total_actions": 0, "total_executed": 0, "execution_rate": 0.0,
+            "total_budget_spent": 0.0, "expected_profit_sum": 0.0,
+            "actual_profit_sum": 0.0, "profit_gap": 0.0, "profit_gap_pct": 0.0,
+            "loss_action_count": 0, "avg_expected_roi": 0.0, "avg_actual_roi": 0.0,
+            "conversion_rate": 0.0, "over_investment_amount": 0.0,
+            "underperformed_count": 0, "outcome_counts": {},
+        }
+        return empty_summary, pd.DataFrame(), []
+
+    if not selected_customers_df.empty and "customer_id" in selected_customers_df.columns:
+        opt_cols = ["customer_id"]
+        for c in ["recommended_action", "intervention_intensity", "intervention_intensity_label"]:
+            if c in selected_customers_df.columns and c not in df.columns:
+                opt_cols.append(c)
+        if len(opt_cols) > 1:
+            df = df.merge(selected_customers_df[opt_cols], on="customer_id", how="left")
+
+    if "intervention_intensity_label" not in df.columns:
+        buckets = df.get("timing_priority_bucket", pd.Series(dtype=str))
+        df["intervention_intensity_label"] = buckets.map(
+            lambda b: "고강도" if str(b).startswith("immediate") else (
+                "중강도" if str(b).startswith("soon") else "저강도"
+            )
+        )
+    if "recommended_action" not in df.columns:
+        df["recommended_action"] = df.apply(
+            lambda r: f"{r.get('recommended_category', 'retention')} · {r.get('intervention_intensity_label', '중강도')} · {r.get('recommended_intervention_window', '')}",
+            axis=1,
+        )
+
+    for col in ["coupon_cost", "expected_incremental_profit", "expected_roi", "churn_probability", "uplift_score"]:
+        if col not in df.columns:
+            df[col] = 0.0
+        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
+
+    n = len(df)
+
+    is_high_coupon = df["coupon_cost"] > df["coupon_cost"].quantile(0.75) if n > 4 else pd.Series([False] * n)
+    base_probs = np.where(is_high_coupon, high_coupon_execution_rate, execution_rate)
+    df["executed"] = rng.random(n) < base_probs
+
+    df["execution_day"] = np.where(df["executed"], rng.choice([1, 2, 3, 4, 5], size=n, p=[0.30, 0.25, 0.20, 0.15, 0.10]), 0)
+
+    noise = rng.normal(0, noise_std, n)
+    retention_base = 1 - df["churn_probability"].values
+    uplift_boost = df["uplift_score"].values * 0.5
+
+    df["actual_conversion"] = rng.random(n) < np.clip(retention_base + uplift_boost + noise * 0.3, 0, 1)
+    df["actual_roi"] = np.where(df["executed"], df["expected_roi"] * np.clip(1 + noise, -0.3, 3.0), 0.0)
+    perf_multiplier = np.clip(1 + noise * 1.5, 0.0, 2.5)
+    converted = df["actual_conversion"].values.astype(float)
+    gross_revenue = df["expected_incremental_profit"].values * perf_multiplier
+    net_cost = df["coupon_cost"].values * (1 - converted * 0.7)
+    df["actual_profit"] = np.where(
+        df["executed"],
+        gross_revenue - net_cost,
+        0.0,
+    )
+    missed_mask = (~df["executed"]) & (df["expected_roi"] > 1.0)
+    df.loc[missed_mask, "actual_profit"] = -df.loc[missed_mask, "expected_incremental_profit"] * 0.3
+
+    df["actual_coupon_cost"] = np.where(df["executed"], df["coupon_cost"] * np.clip(1 + rng.normal(0, 0.05, n), 0.9, 1.1), 0.0)
+    df["coupon_redeemed"] = df["executed"] & (rng.random(n) < np.clip(0.6 + df["uplift_score"] * 2, 0, 0.95))
+    df["retained_30d"] = df["executed"] & df["actual_conversion"]
+
+    median_cost = df.loc[df["executed"], "coupon_cost"].median() if df["executed"].any() else 0
+    conditions = [
+        df["executed"] & (df["actual_profit"] > 0) & (df["actual_roi"] >= df["expected_roi"] * 0.7),
+        df["executed"] & (df["actual_profit"] > 0) & (df["actual_roi"] < df["expected_roi"] * 0.7),
+        df["executed"] & (df["actual_profit"] <= 0) & (df["coupon_cost"] > median_cost),
+        df["executed"] & (df["actual_profit"] <= 0) & (df["coupon_cost"] <= median_cost),
+        missed_mask,
+    ]
+    labels = ["적정 판단", "기대 미달", "과잉 투자", "타겟 오류", "실행 누락"]
+    df["outcome_label"] = np.select(conditions, labels, default="해당 없음")
+
+    executed_df = df[df["executed"]]
+    executed_count = int(executed_df.shape[0])
+    expected_sum = float(executed_df["expected_incremental_profit"].sum())
+    actual_sum = float(executed_df["actual_profit"].sum())
+    gap = actual_sum - expected_sum
+    loss_count = int((executed_df["actual_profit"] < 0).sum())
+    over_inv = float(executed_df.loc[executed_df["outcome_label"] == "과잉 투자", "coupon_cost"].sum())
+    underperf = int((df["outcome_label"] == "기대 미달").sum())
+
+    summary: dict[str, Any] = {
+        "total_actions": n,
+        "total_executed": executed_count,
+        "execution_rate": executed_count / max(n, 1),
+        "total_budget_spent": float(executed_df["actual_coupon_cost"].sum()),
+        "expected_profit_sum": expected_sum,
+        "actual_profit_sum": actual_sum,
+        "profit_gap": gap,
+        "profit_gap_pct": gap / max(abs(expected_sum), 1),
+        "loss_action_count": loss_count,
+        "avg_expected_roi": float(executed_df["expected_roi"].mean()) if executed_count else 0.0,
+        "avg_actual_roi": float(executed_df["actual_roi"].mean()) if executed_count else 0.0,
+        "conversion_rate": float(executed_df["actual_conversion"].mean()) if executed_count else 0.0,
+        "over_investment_amount": over_inv,
+        "underperformed_count": underperf,
+        "outcome_counts": df["outcome_label"].value_counts().to_dict(),
+    }
+
+    suggestions: list[dict] = []
+
+    over_inv_df = executed_df[executed_df["outcome_label"] == "과잉 투자"]
+    if not over_inv_df.empty:
+        _oi_n = len(over_inv_df)
+        _oi_loss = float(over_inv_df["actual_profit"].sum())
+        _oi_cost = float(over_inv_df["coupon_cost"].sum())
+        _oi_segments = over_inv_df["uplift_segment"].value_counts().head(2).to_dict() if "uplift_segment" in over_inv_df.columns else {}
+        _oi_seg_str = ", ".join(f"{s} {c}명" for s, c in _oi_segments.items())
+        suggestions.append({
+            "title": "고비용 쿠폰 조정",
+            "amount": _oi_loss,
+            "what": f"{_oi_n}명에게 쿠폰 총 {_oi_cost:,.0f}원 지급 → 전환 실패",
+            "who": _oi_seg_str or "-",
+            "action": "고강도 쿠폰 기준을 expected_roi 2.0 이상으로 제한하거나, 쿠폰 대신 메시지/follow-up으로 전환",
+            "severity": "warning",
+        })
+
+    wrong_df = executed_df[executed_df["outcome_label"] == "타겟 오류"]
+    if not wrong_df.empty:
+        _wt_n = len(wrong_df)
+        _wt_loss = float(wrong_df["actual_profit"].sum())
+        _wt_personas = wrong_df["persona"].value_counts().head(2).to_dict() if "persona" in wrong_df.columns else {}
+        _wt_persona_str = ", ".join(f"{p} {c}명" for p, c in _wt_personas.items())
+        suggestions.append({
+            "title": "타겟 대상 재검토",
+            "amount": _wt_loss,
+            "what": f"{_wt_n}명에게 액션 실행했지만 반응 없음 (평균 ROI {float(wrong_df['actual_roi'].mean()):.2f})",
+            "who": _wt_persona_str or "-",
+            "action": "이 고객군을 다음 주 타겟에서 제외하거나 monitor_only로 전환",
+            "severity": "warning",
+        })
+
+    under_df = executed_df[executed_df["outcome_label"] == "기대 미달"]
+    if not under_df.empty:
+        _ud_n = len(under_df)
+        _ud_expected = float(under_df["expected_incremental_profit"].sum())
+        _ud_actual = float(under_df["actual_profit"].sum())
+        _ud_gap = _ud_actual - _ud_expected
+        _ud_categories = under_df["recommended_category"].value_counts().head(2).to_dict() if "recommended_category" in under_df.columns else {}
+        _ud_cat_str = ", ".join(f"{c} {n}건" for c, n in _ud_categories.items())
+        suggestions.append({
+            "title": "기대 미달 액션 점검",
+            "amount": _ud_gap,
+            "what": f"{_ud_n}명 이익 발생했지만 기대 대비 부족 (기대 {_ud_expected:,.0f}원 → 실제 {_ud_actual:,.0f}원)",
+            "who": _ud_cat_str or "-",
+            "action": "해당 카테고리의 쿠폰 강도를 한 단계 낮추거나 개입 타이밍을 앞당기세요",
+            "severity": "warning",
+        })
+
+    missed_count = int(missed_mask.sum())
+    if missed_count > 0:
+        missed_df = df[missed_mask]
+        _ms_expected = float(missed_df["expected_incremental_profit"].sum())
+        _ms_loss = float(missed_df["actual_profit"].sum())
+        _ms_segments = missed_df["uplift_segment"].value_counts().head(2).to_dict() if "uplift_segment" in missed_df.columns else {}
+        _ms_seg_str = ", ".join(f"{s} {c}명" for s, c in _ms_segments.items())
+        suggestions.append({
+            "title": "실행 누락 고객 추가",
+            "amount": _ms_loss,
+            "what": f"기대 ROI 1.0 이상인 고객 {missed_count}명을 실행하지 않아 이탈 (원래 기대 이익 {_ms_expected:,.0f}원)",
+            "who": _ms_seg_str or "-",
+            "action": "다음 주 우선 실행 대상에 추가",
+            "severity": "info",
+        })
+
+    seg_pnl = pd.Series(dtype=float)
+    seg_cost = pd.Series(dtype=float)
+    seg_cnt = pd.Series(dtype=int)
+    if "uplift_segment" in df.columns and not executed_df.empty:
+        seg_pnl = executed_df.groupby("uplift_segment")["actual_profit"].sum()
+        seg_cost = executed_df.groupby("uplift_segment")["coupon_cost"].sum()
+        seg_cnt = executed_df.groupby("uplift_segment").size()
+        for seg, pnl in seg_pnl.items():
+            if pnl < 0:
+                _sc = float(seg_cost.get(seg, 0))
+                _sn = int(seg_cnt.get(seg, 0))
+                suggestions.append({
+                    "title": f"{seg} 세그먼트 적자",
+                    "amount": pnl,
+                    "what": f"{seg} {_sn}명에 쿠폰 {_sc:,.0f}원 투입",
+                    "who": f"{seg} 세그먼트 전체",
+                    "action": "쿠폰 대신 CRM follow-up 또는 monitor_only로 전환",
+                    "severity": "warning",
+                })
+
+    if not seg_pnl.empty:
+        best_seg = seg_pnl.idxmax()
+        if seg_pnl[best_seg] > 0:
+            _bs_cnt = int(seg_cnt.get(best_seg, 0))
+            _bs_cost = float(seg_cost.get(best_seg, 0))
+            suggestions.append({
+                "title": f"{best_seg} 세그먼트 유지",
+                "amount": float(seg_pnl[best_seg]),
+                "what": f"{best_seg} {_bs_cnt}명에 {_bs_cost:,.0f}원 투입하여 성과 달성",
+                "who": f"{best_seg} 세그먼트",
+                "action": "현재 전략 유지, 비슷한 프로필 고객을 추가 타겟으로 확대",
+                "severity": "success",
+            })
+
+    if not suggestions:
+        suggestions.append({
+            "title": "전반적으로 양호",
+            "amount": 0.0,
+            "what": "주요 위험 신호 없음",
+            "who": "-",
+            "action": "현재 전략을 유지하세요",
+            "severity": "success",
+        })
+
+    return summary, df, suggestions
 
 
 def _ensure_retention_target_schema(df: pd.DataFrame) -> pd.DataFrame:
@@ -9496,6 +9900,271 @@ elif view == "7. 할인·쿠폰 운영 리스크":
         "risk_flags": flags_df.to_dict(orient="records") if not flags_df.empty else [],
         "segment_df": coupon_risk_overview.get("segment_df", pd.DataFrame()).head(15).to_dict(orient="records") if not coupon_risk_overview.get("segment_df", pd.DataFrame()).empty else [],
         "intensity_mix": coupon_risk_overview.get("intensity_mix", pd.DataFrame()).to_dict(orient="records") if not coupon_risk_overview.get("intensity_mix", pd.DataFrame()).empty else [],
+    }
+
+# ────────────────────────────────────────────────────────────
+# ────────────────────────────────────────────────────────────
+elif view == "14. 주간 액션 성과 리뷰":
+    _review_reco_df = insight_bundle.personalized_recommendations if insight_bundle else recommendation_context_df
+    _review_sel_df = insight_bundle.optimization_selected_customers if insight_bundle else selected_customers
+    _review_has_data = isinstance(_review_reco_df, pd.DataFrame) and not _review_reco_df.empty
+    if _simulator_mode_unavailable(
+        "주간 액션 성과 리뷰", _review_has_data,
+        "개인화 추천 또는 최적화 선정 고객 산출물이 없습니다.",
+        "시뮬레이터에서 recommend 모드를 먼저 실행하세요.",
+    ):
+        st.stop()
+    if not _review_has_data:
+        st.warning(T("개인화 추천 또는 최적화 선정 고객 산출물이 없습니다."))
+        st.stop()
+
+    st.subheader(T("주간 액션 성과 리뷰"))
+    _render_view_intro("14")
+    st.caption(T("이 화면은 실제 집행 결과가 아닌, 추천 데이터 기반의 시뮬레이션 리뷰입니다. 실행률과 성과 노이즈 슬라이더로 가상 시나리오를 조정할 수 있습니다."))
+
+    with st.sidebar.expander(T("시뮬레이션 설정"), expanded=False):
+        _exec_rate = st.slider(T("전체 실행률"), 0.0, 1.0, 0.75, 0.05, key="review_exec_rate",
+                               help=T("CRM 담당자가 추천 액션 중 실제 실행하는 비율"))
+        _hc_exec_rate = st.slider(T("고쿠폰 실행률"), 0.0, 1.0, 0.50, 0.05, key="review_hc_exec_rate",
+                                  help=T("고비용 쿠폰 추천의 실행 비율 (보통 더 낮음)"))
+        _noise = st.slider(T("성과 노이즈"), 0.0, 0.50, 0.15, 0.05, key="review_noise",
+                           help=T("실제 성과가 예상에서 벗어나는 정도"))
+        _seed = st.number_input(T("시뮬레이션 시드"), value=42, min_value=0, max_value=9999, key="review_seed")
+
+    review_summary, action_log, policy_suggestions = _build_weekly_action_review(
+        _review_reco_df, _review_sel_df,
+        execution_rate=_exec_rate,
+        high_coupon_execution_rate=_hc_exec_rate,
+        noise_std=_noise,
+        seed=int(_seed),
+    )
+
+    _data_dir = _project_root() / _domain_paths()["data"]
+    _events_path = _data_dir / "events.csv"
+    _orders_path = _data_dir / "orders.csv"
+    _campaigns_path = _data_dir / "campaign_exposures.csv"
+
+    @st.cache_data(show_spinner=False)
+    def _load_review_events(_token: str) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+        _evts = pd.read_csv(_events_path) if _events_path.exists() else pd.DataFrame()
+        _ords = pd.read_csv(_orders_path) if _orders_path.exists() else pd.DataFrame()
+        _camps = pd.read_csv(_campaigns_path) if _campaigns_path.exists() else pd.DataFrame()
+        return _evts, _ords, _camps
+
+    _review_events, _review_orders, _review_campaigns = _load_review_events(_raw_data_token())
+
+    _expected = review_summary["expected_profit_sum"]
+    _actual = review_summary["actual_profit_sum"]
+    _gap = review_summary["profit_gap"]       # actual - expected
+    _budget = review_summary["total_budget_spent"]
+    _gap_positive = _gap >= 0
+
+    _hero_color = "#e8f5e9" if _gap_positive else "#fbe9e7"
+    _hero_icon = "📈" if _gap_positive else "📉"
+    _hero_text_color = "#2e7d32" if _gap_positive else "#c62828"
+    _hero_label = T("예상보다 더 벌었습니다") if _gap_positive else T("예상보다 손해를 봤습니다")
+
+    st.markdown(
+        f"""<div style="background:{_hero_color};border-radius:16px;padding:28px 32px;margin-bottom:24px;">
+        <div style="font-size:15px;color:#666;margin-bottom:4px;">{T("지난주 리텐션 액션 결과")}</div>
+        <div style="font-size:36px;font-weight:700;color:{_hero_text_color};">
+            {_hero_icon} {_gap:+,.0f}{T("원")}
+        </div>
+        <div style="font-size:15px;color:{_hero_text_color};margin-top:2px;font-weight:600;">
+            {_hero_label}
+        </div>
+        <div style="font-size:13px;color:#888;margin-top:12px;">
+            {T("기대 이익")} <b>{money(_expected)}</b> &nbsp;→&nbsp;
+            {T("실제 이익")} <b style="color:{_hero_text_color}">{money(_actual)}</b> &nbsp;·&nbsp;
+            {T("총 집행 예산")} <b>{money(_budget)}</b> &nbsp;·&nbsp;
+            {T("집행")} <b>{review_summary['total_executed']:,}</b>{T("건")} / {review_summary['total_actions']:,}{T("건")}
+        </div>
+        </div>""",
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(f"### {T('다음 주 정책 조정 제안')}")
+    st.caption(T("아래 제안은 이번 주 시뮬레이션 성과를 기반으로 자동 생성된 운영 힌트입니다."))
+    for sug in policy_suggestions:
+        _sev = sug.get("severity", "info")
+        _sug_amt = float(sug.get("amount", 0))
+        _sug_what = sug.get("what", "")
+        _sug_who = sug.get("who", "")
+        _sug_action = sug.get("action", "")
+
+        _sug_bg = {"warning": "#fff8e1", "info": "#e3f2fd", "success": "#e8f5e9"}.get(_sev, "#e3f2fd")
+        _sug_border = {"warning": "#f9a825", "info": "#1976d2", "success": "#388e3c"}.get(_sev, "#1976d2")
+
+        if _sug_amt < 0:
+            _amt_color = "#c62828"
+            _amt_str = f"-{abs(_sug_amt):,.0f}원"
+            _amt_label = T("손실")
+        elif _sug_amt > 0:
+            _amt_color = "#2e7d32"
+            _amt_str = f"+{_sug_amt:,.0f}원"
+            _amt_label = T("이득")
+        else:
+            _amt_color = "#666"
+            _amt_str = "-"
+            _amt_label = ""
+
+        st.markdown(
+            f"""<div style="border-left:4px solid {_sug_border};background:{_sug_bg};padding:16px 20px;border-radius:0 10px 10px 0;margin-bottom:12px;">
+            <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:8px;">
+                <span style="font-size:15px;font-weight:700;">{T(sug['title'])}</span>
+                <span style="font-size:22px;font-weight:800;color:{_amt_color};">{_amt_str}</span>
+                <span style="font-size:12px;color:{_amt_color};">{_amt_label}</span>
+            </div>
+            <div style="font-size:13px;color:#444;line-height:1.6;">
+                <span style="color:#888;">결정:</span> {T(_sug_what)}<br>
+                <span style="color:#888;">대상:</span> {T(_sug_who)}<br>
+                <span style="color:#888;">→ 조치:</span> <b>{T(_sug_action)}</b>
+            </div>
+            </div>""",
+            unsafe_allow_html=True,
+        )
+
+    st.divider()
+
+    _outcome_config = [
+        ("적정 판단", "#2ecc71", "적절한 비용으로 기대 이상의 성과"),
+        ("기대 미달", "#f39c12", "이익은 있지만 ROI가 기대보다 낮음"),
+        ("과잉 투자", "#e74c3c", "쿠폰 비용 대비 성과 부족"),
+        ("타겟 오류", "#e67e22", "잘못된 대상에 액션 집행"),
+        ("실행 누락", "#9b59b6", "미실행으로 기회 손실 발생"),
+    ]
+    _oc = review_summary.get("outcome_counts", {})
+    _oc_cols = st.columns(len(_outcome_config))
+    for _col, (_label, _color, _desc) in zip(_oc_cols, _outcome_config):
+        _cnt = _oc.get(_label, 0)
+        _col.markdown(
+            f"""<div style="border-left:4px solid {_color};padding:8px 12px;margin-bottom:8px;border-radius:0 8px 8px 0;background:#fafafa;">
+            <div style="font-size:22px;font-weight:700;color:{_color};">{_cnt}</div>
+            <div style="font-size:13px;font-weight:600;">{T(_label)}</div>
+            <div style="font-size:11px;color:#999;">{T(_desc)}</div>
+            </div>""",
+            unsafe_allow_html=True,
+        )
+
+    st.divider()
+
+    st.markdown(f"### {T('예상과 다른 반응을 보인 고객')}")
+    st.caption(T("클릭하면 해당 고객의 이벤트 로그, 주문 내역, 쿠폰 이력을 확인할 수 있습니다."))
+
+    _filter_options = [T("전체")] + [T(lbl) for lbl, _, _ in _outcome_config]
+    _selected_filter = st.radio(
+        T("판정 필터"), _filter_options, horizontal=True, key="review_filter", label_visibility="collapsed",
+    )
+
+    _t_reverse = {T(lbl): lbl for lbl, _, _ in _outcome_config}
+    if _selected_filter == T("전체"):
+        _filtered_log = action_log[action_log["outcome_label"] != "해당 없음"].copy()
+    else:
+        _orig_label = _t_reverse.get(_selected_filter, _selected_filter)
+        _filtered_log = action_log[action_log["outcome_label"] == _orig_label].copy()
+
+    _filtered_log = _filtered_log.sort_values("actual_profit", ascending=True)
+    _display_limit = 30
+    _filtered_display = _filtered_log.head(_display_limit)
+
+    if _filtered_display.empty:
+        st.info(T("해당 판정의 고객이 없습니다."))
+    else:
+        for _, _row in _filtered_display.iterrows():
+            _cid = _row.get("customer_id", "?")
+            _persona = _row.get("persona", "-")
+            _seg = _row.get("uplift_segment", "-")
+            _outcome = _row.get("outcome_label", "-")
+            _a_profit = _row.get("actual_profit", 0)
+            _e_profit = _row.get("expected_incremental_profit", 0)
+            _coupon = _row.get("coupon_cost", 0)
+            _e_roi = _row.get("expected_roi", 0)
+            _a_roi = _row.get("actual_roi", 0)
+            _category = _row.get("recommended_category", "-")
+            _executed = _row.get("executed", False)
+            _converted = _row.get("actual_conversion", False)
+            _redeemed = _row.get("coupon_redeemed", False)
+
+            _oc_emoji = {"적정 판단": "🟢", "기대 미달": "🟡", "과잉 투자": "🔴", "타겟 오류": "🟠", "실행 누락": "🟣"}
+            _emoji = _oc_emoji.get(_outcome, "⚪")
+            _exec_badge = f"{'실행' if _executed else '미실행'}"
+            _profit_sign = "+" if _a_profit >= 0 else ""
+
+            _header = (
+                f"{_emoji} **{_cid}** [{T(_outcome)}]  ·  "
+                f"{T(_persona)} / {T(_seg)}  ·  "
+                f"{T('쿠폰')} {money(_coupon)} → {T('손익')} **{_profit_sign}{money(_a_profit)}**"
+            )
+
+            with st.expander(_header, expanded=False):
+                _s1, _s2, _s3, _s4, _s5 = st.columns(5)
+                _s1.metric(T("실행 여부"), T(_exec_badge))
+                _s2.metric(T("쿠폰 비용"), money(_coupon))
+                _s3.metric(T("기대 이익"), money(_e_profit))
+                _s4.metric(T("실제 이익"), money(_a_profit), delta=f"{_a_profit - _e_profit:+,.0f}")
+                _s5.metric(T("ROI"), f"{_a_roi:.2f}", delta=f"{_a_roi - _e_roi:+.2f}")
+
+                _info_cols = st.columns(4)
+                _info_cols[0].markdown(f"**{T('추천 카테고리')}:** {T(_category)}")
+                _info_cols[1].markdown(f"**{T('쿠폰 사용')}:** {'O' if _redeemed else 'X'}")
+                _info_cols[2].markdown(f"**{T('전환')}:** {'O' if _converted else 'X'}")
+                _intensity = _row.get("intervention_intensity_label", "-")
+                _info_cols[3].markdown(f"**{T('개입 강도')}:** {T(_intensity)}")
+
+                _cid_val = _cid
+                _cust_events = _review_events[_review_events["customer_id"] == _cid_val] if not _review_events.empty and "customer_id" in _review_events.columns else pd.DataFrame()
+                _cust_orders = _review_orders[_review_orders["customer_id"] == _cid_val] if not _review_orders.empty and "customer_id" in _review_orders.columns else pd.DataFrame()
+                _cust_campaigns = _review_campaigns[_review_campaigns["customer_id"] == _cid_val] if not _review_campaigns.empty and "customer_id" in _review_campaigns.columns else pd.DataFrame()
+
+                _timeline_tab1, _timeline_tab2, _timeline_tab3 = st.tabs([
+                    f"{T('이벤트 로그')} ({len(_cust_events)})",
+                    f"{T('주문 내역')} ({len(_cust_orders)})",
+                    f"{T('쿠폰 이력')} ({len(_cust_campaigns)})",
+                ])
+
+                with _timeline_tab1:
+                    if not _cust_events.empty:
+                        _evt_display = _cust_events.sort_values("timestamp", ascending=False).head(15)
+                        _evt_cols = [c for c in ["timestamp", "event_type", "item_category", "quantity"] if c in _evt_display.columns]
+                        st.dataframe(_evt_display[_evt_cols], use_container_width=True, hide_index=True)
+                        if len(_cust_events) > 15:
+                            st.caption(f"{T('최근')} 15{T('건만 표시')} (전체 {len(_cust_events)}건)")
+                    else:
+                        st.caption(T("이벤트 기록 없음"))
+
+                with _timeline_tab2:
+                    if not _cust_orders.empty:
+                        _ord_display = _cust_orders.sort_values("order_time", ascending=False)
+                        _ord_cols = [c for c in ["order_time", "item_category", "net_amount", "discount_amount", "coupon_used"] if c in _ord_display.columns]
+                        st.dataframe(_ord_display[_ord_cols], use_container_width=True, hide_index=True)
+                        _total_spend = _cust_orders["net_amount"].sum() if "net_amount" in _cust_orders.columns else 0
+                        _coupon_used_cnt = int(_cust_orders["coupon_used"].sum()) if "coupon_used" in _cust_orders.columns else 0
+                        st.caption(f"{T('총 구매')} {money(_total_spend)} · {T('쿠폰 사용')} {_coupon_used_cnt}{T('회')}")
+                    else:
+                        st.caption(T("주문 기록 없음"))
+
+                with _timeline_tab3:
+                    if not _cust_campaigns.empty:
+                        _camp_display = _cust_campaigns.sort_values("exposure_time", ascending=False)
+                        _camp_cols = [c for c in ["exposure_time", "campaign_type", "coupon_cost"] if c in _camp_display.columns]
+                        st.dataframe(_camp_display[_camp_cols], use_container_width=True, hide_index=True)
+                        _total_coupon = _cust_campaigns["coupon_cost"].sum() if "coupon_cost" in _cust_campaigns.columns else 0
+                        st.caption(f"{T('총 쿠폰 지급')} {money(_total_coupon)} · {len(_cust_campaigns)}{T('회')}")
+                    else:
+                        st.caption(T("쿠폰 이력 없음"))
+
+        if len(_filtered_log) > _display_limit:
+            st.caption(f"{T('상위')} {_display_limit}{T('건만 표시')} (전체 {len(_filtered_log)}건)")
+
+    llm_payload = {
+        "review_summary": review_summary,
+        "outcome_counts": review_summary.get("outcome_counts", {}),
+        "policy_suggestions": [{"title": s["title"], "amount": s.get("amount", 0), "what": s.get("what", ""), "action": s.get("action", "")} for s in policy_suggestions],
+        "top_loss_actions": (
+            action_log[action_log["actual_profit"] < 0]
+            .nsmallest(10, "actual_profit")[["customer_id", "persona", "recommended_category", "expected_roi", "actual_roi", "actual_profit", "outcome_label"]]
+            .to_dict(orient="records")
+        ) if not action_log.empty and (action_log["actual_profit"] < 0).any() else [],
     }
 
 current_view_key = view.split(".")[0]
