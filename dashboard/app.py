@@ -26,6 +26,7 @@ from dashboard.services.api_client import (
     fetch_user_live_recommendations,
     fetch_user_live_scores,
     fetch_user_live_seed_status,
+    fetch_demo_status,
     seed_user_live_from_artifacts,
 )
 from dashboard.services.churn_service import get_churn_status
@@ -67,6 +68,15 @@ from dashboard.services.uplift_service import (
     get_top_high_value_customers,
 )
 from dashboard.utils.formatters import money, pct
+from dashboard.ui_budget_formula import budget_formula_html
+from dashboard.ui_labels import (
+    drop_duplicate_metric_columns,
+    localize_plotly_figure,
+    translate_column as friendly_translate_column,
+    translate_text as friendly_translate_text,
+    translate_value as friendly_translate_value,
+)
+from dashboard.ui_llm_language import llm_language_instruction, llm_language_name
 
 
 DASHBOARD_VIEW_ITEMS: tuple[tuple[str, str], ...] = (
@@ -344,7 +354,7 @@ UI_TEXT["ja"].update({
     "고정된 챗봇 컨텍스트": "固定されたチャットボットコンテキスト",
     "화면을 이동해도 챗봇은 처음 열었던 화면의 데이터로 유지됩니다.": "画面を移動しても、チャットボットは最初に開いた画面のデータを維持します。",
     "현재 화면으로 컨텍스트 갱신": "現在画面でコンテキストを更新",
-    "실시간 화면에서는 새로고침 시 스트림을 조금씩 더 재생해 수치가 변하도록 했습니다. 나머지 화면은 캐시를 비우고 다시 계산합니다.": "リアルタイム画面では、更新時にストリームを少し進めて指標が変わるようにします。その他の画面ではキャッシュを削除して再計算します。",
+    "실시간 화면에서는 새로고침 시 최신 DB/캐시 상태를 다시 읽습니다. 나머지 화면도 캐시를 비우고 다시 계산합니다.": "リアルタイム画面では更新時に最新のDB/キャッシュ状態を再読み込みします。他の画面もキャッシュを削除して再計算します。",
     "LLM 요약은 API 키가 준비된 경우에만 메인 화면에 표시됩니다.": "LLM要約はAPIキーが準備されている場合のみメイン画面に表示されます。",
     "대화 지우기": "会話を削除",
     "컨텍스트": "コンテキスト",
@@ -482,7 +492,7 @@ EXTRA_UI_TEXT: dict[str, dict[str, str]] = {
         "AI 분석 챗봇": "AI analysis chatbot",
         "드래그해서 이동": "Drag to move",
         "닫기": "Close",
-        "실시간 화면에서는 새로고침 시 스트림을 조금씩 더 재생해 수치가 변하도록 했습니다. 나머지 화면은 캐시를 비우고 다시 계산합니다.": "On the real-time view, refresh advances the stream slightly so the metrics can change. Other views clear the cache and recalculate.",
+        "실시간 화면에서는 새로고침 시 최신 DB/캐시 상태를 다시 읽습니다. 나머지 화면도 캐시를 비우고 다시 계산합니다.": "On the real-time view, refresh reloads the latest DB/cache state. Other views also clear cache and recalculate.",
     "LLM 요약은 API 키가 준비된 경우에만 메인 화면에 표시됩니다.": "The LLM summary is shown on the main screen only when an API key is ready.",
     "대화 지우기": "Clear chat",
     },
@@ -899,7 +909,7 @@ FULL_UI_TEXT_PATCH: dict[str, dict[str, str]] = {
         "예산": "budget",
         "최종 타겟 고객 수": "final target customers",
         "원": "KRW",
-        "실시간 화면에서는 새로고침 시 스트림을 조금씩 더 재생해 수치가 변하도록 했습니다. 나머지 화면은 캐시를 비우고 다시 계산합니다.": "On the real-time view, refresh replays a little more of the stream so the numbers change. Other views clear the cache and recalculate.",
+        "실시간 화면에서는 새로고침 시 최신 DB/캐시 상태를 다시 읽습니다. 나머지 화면도 캐시를 비우고 다시 계산합니다.": "On the real-time view, refresh reloads the latest DB/cache state. Other views also clear cache and recalculate.",
         "최종 리텐션 타겟 고객군(예산/임계값 적용)에게만 추천을 생성합니다.": "Recommendations are generated only for final retention targets after applying the budget and threshold.",
         "고객당 추천 개수": "Recommendations per customer",
         "코호트 리텐션 분석": "Cohort Retention Analysis",
@@ -1158,7 +1168,7 @@ FULL_UI_TEXT_PATCH: dict[str, dict[str, str]] = {
         "예산": "予算",
         "최종 타겟 고객 수": "最終対象顧客数",
         "원": "ウォン",
-        "실시간 화면에서는 새로고침 시 스트림을 조금씩 더 재생해 수치가 변하도록 했습니다. 나머지 화면은 캐시를 비우고 다시 계산합니다.": "リアルタイム画面では、更新時にストリームを少しずつ再生して数値が変わるようにしています。その他の画面はキャッシュをクリアして再計算します。",
+        "실시간 화면에서는 새로고침 시 최신 DB/캐시 상태를 다시 읽습니다. 나머지 화면도 캐시를 비우고 다시 계산합니다.": "リアルタイム画面では更新時に最新のDB/キャッシュ状態を再読み込みします。他の画面もキャッシュをクリアして再計算します。",
         "최종 리텐션 타겟 고객군(예산/임계값 적용)에게만 추천을 생성합니다.": "予算としきい値を適用した最終リテンション対象顧客にのみ推薦を生成します。",
         "고객당 추천 개수": "顧客あたり推薦数",
         "코호트 리텐션 분석": "コホートリテンション分析",
@@ -1784,41 +1794,6 @@ def _language_code() -> str:
     return st.session_state.get("language_code", "ko") if hasattr(st, "session_state") else "ko"
 
 
-# ============================================================
-# [PERFORMANCE PATCH]
-# Large Streamlit tables become slow when every cell is translated,
-# reformatted, and rendered as HTML on every view switch. Keep the
-# original data untouched, but only sanitize/render the visible slice.
-# The full row/customer counts and customer-ID search still use the full
-# dataframe, so existing analysis semantics are preserved.
-# Override with env var when a demo needs a larger preview.
-# ============================================================
-def _env_int(name: str, default: int, minimum: int = 1) -> int:
-    try:
-        value = int(os.getenv(name, str(default)))
-    except Exception:
-        return default
-    return max(minimum, value)
-
-
-TABLE_DISPLAY_ROW_LIMIT = _env_int("DASHBOARD_TABLE_DISPLAY_ROW_LIMIT", 1000, minimum=50)
-CHURN_TIMING_DISPLAY_ROW_LIMIT = _env_int(
-    "DASHBOARD_CHURN_TIMING_DISPLAY_ROW_LIMIT",
-    min(TABLE_DISPLAY_ROW_LIMIT, 1000),
-    minimum=50,
-)
-
-
-def _collapse_repeated_customer_words(text: str) -> str:
-    """Make value-label translation idempotent: 'VIP 고객 고객' -> 'VIP 고객'."""
-    out = str(text or "")
-    out = re.sub(r"(?<!\S)(고객)(?:\s+\1)+(?!\S)", r"\1", out)
-    out = re.sub(r"(?<![A-Za-z])\b(customer)(?:\s+\1)+\b", r"\1", out, flags=re.IGNORECASE)
-    out = re.sub(r"顧客(?:\s*顧客)+", "顧客", out)
-    out = re.sub(r"\s{2,}", " ", out).strip()
-    return out
-
-
 def _normalize_i18n_key(text: str) -> str:
     """번역 키 비교용 정규화: 공백/언더스코어/대소문자 차이를 흡수한다."""
     return re.sub(r"[\s_\-:：/\.()\[\]{}]+", "", str(text or "")).lower()
@@ -1849,6 +1824,10 @@ def T(text: str) -> str:
             if localized and _normalize_i18n_key(localized) == normalized:
                 return translated
 
+    friendly = friendly_translate_text(raw, code)
+    if friendly != raw:
+        return friendly
+
     return raw
 
 
@@ -1875,6 +1854,8 @@ def _translate_runtime_text(text: Any) -> str:
 
     api_key_msg = "OpenAI API 키가 설정되지 않았습니다. 사이드바에 키를 입력하거나 OPENAI_API_KEY 환경변수를 설정하세요."
     out = out.replace(api_key_msg, T(api_key_msg))
+    out = friendly_translate_value(out, code)
+    out = friendly_translate_text(out, code)
     return out
 
 
@@ -1895,9 +1876,8 @@ def _translate_cell_value_cached(language_code: str, stripped: str) -> str:
     """
     if stripped == "":
         return ""
-
-    value_labels = VALUE_LABELS.get(language_code, VALUE_LABELS.get("ko", {}))
-    phrase_labels = PHRASE_LABELS.get(language_code, {})
+    code = _language_code()
+    value_labels = VALUE_LABELS.get(code, VALUE_LABELS.get("ko", {}))
     norm = _normalize_i18n_key(stripped)
 
     # Already localized values must be returned as-is. This makes display
@@ -1960,38 +1940,10 @@ def _translate_cell_value_cached(language_code: str, stripped: str) -> str:
         out = ", ".join(translated_parts)
 
     out = out.replace("-> action queued", "→ " + value_labels.get("queued", "queued"))
-    out = out.replace("score=", "위험 점수=")
-    out = re.sub(r"\s+·\s+", " · ", out).strip()
-    return _collapse_repeated_customer_words(out)
+    out = out.replace("score=", "risk=")
+    return out
 
 
-def _translate_cell_value(value: Any) -> str:
-    """Turn internal segment/action codes and generated phrases into beginner-friendly labels."""
-    raw = str(value)
-    stripped = raw.strip()
-    if stripped == "":
-        return ""
-    return _translate_cell_value_cached(_language_code(), stripped)
-
-
-def _map_object_series_unique(series: pd.Series, translator) -> pd.Series:
-    """Translate/format repeated table-cell strings once per unique value."""
-    if series.empty:
-        return series
-    cache: dict[str, Any] = {}
-
-    def _convert(value: Any) -> Any:
-        try:
-            if pd.isna(value):
-                return value
-        except Exception:
-            pass
-        key = str(value)
-        if key not in cache:
-            cache[key] = translator(value)
-        return cache[key]
-
-    return series.map(_convert)
 
 
 def _translate_dataframe_values_for_display(df: pd.DataFrame) -> pd.DataFrame:
@@ -2343,6 +2295,7 @@ def _filter_display_columns_for_label(df: pd.DataFrame, label: str = "") -> pd.D
     if not isinstance(df, pd.DataFrame) or df.empty:
         return pd.DataFrame() if df is None else df
     label = str(label or "")
+    df = drop_duplicate_metric_columns(df)
     if _label_matches(label, "고객별 선택 이유", "customer level reasons", "reason caution", "顧客別選定理由", "顧客別選定理由注意事項"):
         return _pick_existing_columns(df, ["customer_id", "persona", "selection_reason", "reason_summary", "watchout", "caution", "next_best_action", "recommended_action"])
     if _label_matches(label, "최종 리텐션 타겟", "final retention target", "最終リテンション対象"):
@@ -2359,8 +2312,6 @@ def _filter_display_columns_for_label(df: pd.DataFrame, label: str = "") -> pd.D
         return _pick_existing_columns(df, ["customer_id", "persona", "realtime_churn_score", "churn_score", "churn_probability", "action_queue_status", "queued_recommended_action", "queued_expected_profit", "latest_trigger_reason"])
     if _label_matches(label, "실시간 액션 큐", "live action queue", "action queue", "アクションキュー"):
         return _pick_existing_columns(df, ["customer_id", "persona", "recommended_action", "queued_recommended_action", "intervention_intensity", "queued_intervention_intensity", "expected_profit", "queued_expected_profit", "expected_roi", "queued_expected_roi", "action_status", "latest_trigger_reason"])
-    if _label_matches(label, "고객별 이탈 시점", "churn timing", "expected loss", "離脱時点"):
-        return _pick_existing_columns(df, ["customer_id", "persona", "expected_churn_period", "expected_churn_date", "churn_within_30d_probability", "expected_loss_30d"])
 
     hidden_norms = {
         _normalize_i18n_key(c) for c in [
@@ -2570,31 +2521,11 @@ def _build_churn_timing_table(
     return display.reset_index(drop=True)
 
 def _llm_language_name() -> str:
-    return {"ko": "Korean", "en": "English", "ja": "Japanese"}.get(_language_code(), "Korean")
+    return llm_language_name(_language_code())
 
 
 def _llm_strict_language_instruction() -> str:
-    """Return a hard language instruction for LLM-generated summaries/answers.
-
-    The llm_service prompt may be written in Korean, so passing only translated UI
-    labels is not enough. This instruction is injected into both the title and the
-    JSON payload so the model receives an explicit output-language requirement.
-    """
-    code = _language_code()
-    if code == "en":
-        return (
-            "You must write the entire response in English. Do not write Korean or Japanese. "
-            "Use clear business English and keep technical terms brief."
-        )
-    if code == "ja":
-        return (
-            "必ず回答全体を日本語で書いてください。韓国語や英語の文章を混ぜないでください。"
-            "専門用語は短く説明し、ビジネス担当者にも分かる表現にしてください。"
-        )
-    return (
-        "반드시 전체 답변을 한국어로 작성하세요. 영어/일본어 문장을 섞지 말고, "
-        "비즈니스 담당자가 이해하기 쉬운 표현을 사용하세요."
-    )
+    return llm_language_instruction(_language_code())
 
 
 def _wrap_llm_payload(payload_json: str) -> str:
@@ -2949,10 +2880,14 @@ def _restore_live_dimension_columns(fixed: pd.DataFrame) -> pd.DataFrame:
     return fixed
 
 
-@st.cache_data(show_spinner=False, ttl=15)
-def _fetch_user_live_scores_cached(cache_key: str) -> tuple[dict, pd.DataFrame]:
-    """전체 customer_scores는 크므로 동일 이벤트 상태에서는 15초 동안 재사용한다."""
-    return fetch_user_live_scores(limit=None)
+@st.cache_data(show_spinner=False, ttl=8)
+def _fetch_user_live_scores_cached(cache_key: str, limit: int, risk_threshold: float) -> tuple[dict, pd.DataFrame]:
+    """Live scores는 summary는 전체 기준, records는 화면 후보 수만 조회한다.
+
+    5만~10만 rows를 매 rerun마다 통째로 가져오면 Streamlit view switching이 느려진다.
+    API/Redis cache는 전체 summary를 캐시하고, 화면은 위험도 정렬 상위 후보만 받는다.
+    """
+    return fetch_user_live_scores(limit=int(limit), risk_threshold=float(risk_threshold))
 
 
 @st.cache_data(show_spinner=False, ttl=5)
@@ -3722,7 +3657,7 @@ def _build_dynamic_user_recommendations(
     return summary, rec_df
 
 
-def _load_user_live_tables(*, top_n: int, target_cap: int, view: str = "") -> dict[str, Any]:
+def _load_user_live_tables(*, top_n: int, target_cap: int, threshold: float = 0.50, view: str = "") -> dict[str, Any]:
     """user mode 전용 live API 조회 묶음. 실패 시 빈 DataFrame fallback.
 
     성능 최적화:
@@ -3745,7 +3680,7 @@ def _load_user_live_tables(*, top_n: int, target_cap: int, view: str = "") -> di
     if not payload["enabled"]:
         return payload
 
-    safe_limit = min(max(int(top_n) * 5, int(target_cap) * 3, 1000), 5000)
+    safe_limit = min(max(int(top_n) * 8, int(target_cap) * 4, 2000), 20000)
     now_bucket_5s = str(int(pd.Timestamp.now().timestamp() // 5))
     now_bucket_10s = str(int(pd.Timestamp.now().timestamp() // 10))
 
@@ -3763,10 +3698,13 @@ def _load_user_live_tables(*, top_n: int, target_cap: int, view: str = "") -> di
         seed_inner = seed_status.get("status", {}) if isinstance(seed_status, dict) else {}
         score_cache_key = "|".join([
             str((payload.get("health", {}) or {}).get("latest_event_time") or "no_event"),
+            str((payload.get("health", {}) or {}).get("latest_feature_update_time") or "no_feature_update"),
             str(seed_inner.get("score_count") or 0),
             str(seed_inner.get("latest_score_seeded_at") or "no_seed"),
+            str(safe_limit),
+            f"thr={float(threshold):.4f}",
         ])
-        summary, scores = _fetch_user_live_scores_cached(score_cache_key)
+        summary, scores = _fetch_user_live_scores_cached(score_cache_key, safe_limit, float(threshold))
         payload["score_summary"] = summary
         payload["scores"] = _rename_live_score_columns(scores)
     except Exception as exc:
@@ -3791,8 +3729,22 @@ def _load_user_live_tables(*, top_n: int, target_cap: int, view: str = "") -> di
         except Exception as exc:
             payload["action_summary"] = {"error": str(exc)}
 
-    # Saved recommendations are no longer fetched on every rerun. The recommendation view
-    # builds current-condition recommendations, and fallback fetches saved candidates only if needed.
+        # Recommendation summary is cheap and feeds the real-time KPI card. Fetch only
+        # on action/recommendation views so normal churn view remains fast.
+        try:
+            rec_cache_key = "|".join([
+                str((payload.get("health", {}) or {}).get("latest_event_time") or "no_event"),
+                str((payload.get("score_summary", {}) or {}).get("scored_customers") or 0),
+                "rec",
+                str(min(safe_limit, 5000)),
+            ])
+            rec_summary, rec_df = _fetch_user_live_recommendations_cached(rec_cache_key, limit=min(safe_limit, 5000))
+            payload["recommendation_summary"] = rec_summary
+            if view == "5. 개인화 추천":
+                payload["recommendations"] = rec_df
+        except Exception as exc:
+            payload["recommendation_summary"] = {"error": str(exc)}
+
     return payload
 
 def _render_user_live_status(live_payload: dict[str, Any]) -> None:
@@ -4968,9 +4920,11 @@ def _live_payload_matches_current_dataset(live_payload: dict[str, Any], customer
     if not file_ids or not live_ids:
         return False
 
-    overlap = len(file_ids & live_ids) / max(min(len(file_ids), len(live_ids)), 1)
-    count_gap = abs(len(file_ids) - len(live_ids)) / max(len(file_ids), 1)
-    return overlap >= 0.80 and count_gap <= 0.20
+    # Live 시연 중에는 신규 고객이 계속 생성되므로 live_ids가 file_ids보다 커지는 것이 정상이다.
+    # 기존 count_gap <= 20% 조건은 신규 고객이 누적되는 순간 Live DB를 "불일치"로 판정하여
+    # 이탈 현황/상단 KPI가 다시 정적 CSV 값으로 되돌아가는 원인이었다.
+    seeded_coverage = len(file_ids & live_ids) / max(len(file_ids), 1)
+    return seeded_coverage >= 0.80
 
 
 @st.cache_data(show_spinner=False)
@@ -5299,6 +5253,9 @@ def _translate_column_name(column: str) -> str:
     if canonical and canonical in labels:
         return labels[canonical]
 
+    friendly = friendly_translate_column(raw, code)
+    if friendly != raw:
+        return friendly
     return T(raw.replace("_", " "))
 
 
@@ -5356,7 +5313,8 @@ def _append_term_caption(df: pd.DataFrame, label: str = "") -> None:
 def _sanitize_display_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     if not isinstance(df, pd.DataFrame):
         return pd.DataFrame()
-    safe_df = _dedupe_display_columns(df.copy().reset_index(drop=True))
+
+    safe_df = df.copy().reset_index(drop=True)
     original_columns = _make_unique_columns([str(col) for col in safe_df.columns])
     safe_df.columns = original_columns
 
@@ -7230,16 +7188,16 @@ with st.sidebar:
     if st.button(T("데이터/결과 새로고침"), use_container_width=True):
         refresh_notice = None
         refresh_warning = None
-        if view in REALTIME_REFRESH_VIEWS:
+        if view in REALTIME_REFRESH_VIEWS and not _is_user_live_mode():
             try:
                 tick_payload = advance_realtime_stream(batch_size=250, top_n=max(int(top_n), 50), reset_when_exhausted=True)
                 tick_summary = tick_payload.get("summary", {}) if isinstance(tick_payload, dict) else {}
                 refresh_notice = (
-                    f"실시간 스트림을 {int(tick_summary.get('last_tick_advanced', 0) or 0):,}건 전진했습니다. "
+                    f"실시간 스냅샷을 {int(tick_summary.get('last_tick_advanced', 0) or 0):,}건 갱신했습니다. "
                     f"누적 처리 이벤트 수: {int(tick_summary.get('processed_events', 0) or 0):,}건"
                 )
             except Exception as exc:
-                refresh_warning = f"실시간 tick 호출에는 실패했지만 화면 캐시는 새로고침했습니다: {exc}"
+                refresh_warning = f"실시간 갱신 호출에는 실패했지만 화면 캐시는 새로고침했습니다: {exc}"
         clear_dashboard_caches()
         clear_llm_caches()
         if refresh_notice:
@@ -7248,7 +7206,7 @@ with st.sidebar:
             st.session_state["dashboard_refresh_warning"] = refresh_warning
         st.rerun()
 
-    st.caption(T("실시간 화면에서는 새로고침 시 스트림을 조금씩 더 재생해 수치가 변하도록 했습니다. 나머지 화면은 캐시를 비우고 다시 계산합니다."))
+    st.caption(T("실시간 화면에서는 새로고침 시 최신 DB/캐시 상태를 다시 읽습니다. 나머지 화면도 캐시를 비우고 다시 계산합니다."))
 
     st.divider()
     st.subheader(T("LLM 설정"))
@@ -7291,6 +7249,7 @@ with st.sidebar:
 live_payload = _load_user_live_tables(
     top_n=int(top_n),
     target_cap=int(target_cap),
+    threshold=float(threshold),
     view=view,
 )
 
@@ -7301,10 +7260,35 @@ if _is_user_live_mode():
     if not _use_live_payload and not live_payload.get("scores", pd.DataFrame()).empty:
         st.info(T("현재 데이터셋과 Live DB가 일치하지 않아 CSV/결과 파일 기준으로 표시합니다."))
 
+    # 시연 실행 중에는 어느 뷰에 있든 최신 event/score/action 지표를 보여줘야 한다.
+    # 기존에는 실시간 운영 모니터에서만 10초 auto-rerun이 있어 이탈 현황 등은 stale하게 보였다.
+    try:
+        _global_demo_status = fetch_demo_status()
+    except Exception:
+        _global_demo_status = {}
+    if _global_demo_status.get("running") and view != "6. 실시간 운영 모니터":
+        st.caption(T("시연 실행 중: 10초마다 live 지표를 자동 갱신합니다."))
+        components.html(
+            """<script>
+            setTimeout(function(){ window.parent.location.reload(); }, 10000);
+            </script>""",
+            height=0,
+        )
+
 if _use_live_payload and not live_payload.get("scores", pd.DataFrame()).empty:
     customers = _rename_live_score_columns(live_payload["scores"])
 
 churn_summary, risk_customers = get_churn_status(customers, threshold)
+if _use_live_payload:
+    _score_summary = live_payload.get("score_summary", {}) or {}
+    _total_live = int(_score_summary.get("scored_customers") or churn_summary.get("total_customers", 0) or 0)
+    _risk_live = int(_score_summary.get("high_risk_customers") or 0)
+    churn_summary.update({
+        "total_customers": _total_live,
+        "at_risk_customers": _risk_live,
+        "risk_rate": float(_risk_live / max(_total_live, 1)),
+        "avg_churn_prob": float(_score_summary.get("avg_churn_score") or churn_summary.get("avg_churn_prob", 0.0) or 0.0),
+    })
 cohort_curve = pd.DataFrame()
 top_customers = pd.DataFrame()
 if view == "2. 코호트 리텐션 분석":
@@ -7881,6 +7865,7 @@ elif view == "4. 예산 최적화 및 리텐션 타겟":
     st.subheader(T("예산 최적화 및 리텐션 타겟"))
     _render_view_intro("4")
     st.caption(T("예산 배분 후보, 최종 선정 고객, 고객별 선택 이유만 남긴 핵심 운영 화면입니다."))
+    st.markdown(budget_formula_html(_language_code()), unsafe_allow_html=True)
 
     m1, m2, m3, m4, m5 = st.columns(5)
     m1.metric(T("총 예산"), money(optimize_summary.get("budget", budget)))
@@ -8380,7 +8365,6 @@ elif view == "6. 실시간 운영 모니터":
                     "intervention_intensity",
                     "expected_profit",
                     "expected_incremental_profit",
-                    "expected_roi",
                     "expected_roi",
                     "action_status",
                     "trigger_reason",

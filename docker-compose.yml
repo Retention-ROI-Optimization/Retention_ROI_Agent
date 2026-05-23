@@ -48,6 +48,10 @@ services:
       RETENTION_MODEL_DIR: models
       RETENTION_RESULT_DIR: results
       RETENTION_REDIS_URL: redis://redis:6379/0
+      # Redis is used as cache-aside storage for expensive live-score/action queries.
+      # Realtime demo events are stored in PostgreSQL; Redis Streams are not required for user-live mode.
+      RETENTION_CACHE_TTL_SECONDS: "20"
+      RETENTION_CACHE_PREFIX: retention-cache
 
       # user mode live serving DB.
       # 컨테이너 내부에서는 localhost가 아니라 compose 서비스명인 postgres로 접속해야 한다.
@@ -87,6 +91,8 @@ services:
         condition: service_healthy
     environment:
       RETENTION_API_BASE_URL: http://api:8000
+      RETENTION_REDIS_URL: redis://redis:6379/0
+      RETENTION_CACHE_TTL_SECONDS: "20"
       PYTHONPATH: /app
       TZ: Asia/Seoul
 

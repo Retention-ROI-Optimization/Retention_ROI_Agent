@@ -117,8 +117,16 @@ def run_clv_pipeline(data_dir: Path, result_dir: Path) -> CLVArtifacts:
     customers = pd.read_csv(data_dir / "customers.csv")
     orders = pd.read_csv(data_dir / "orders.csv")
 
-    calibration = _compute_features_at_anchor(customers, orders, "2025-06-30")
-    calibration["future_spend_180d"] = _future_spend_target(orders, "2025-06-30", 180, calibration["customer_id"]) 
+    # Pick anchors from the actual order calendar instead of fixed dates.
+    # Fixed anchors can silently produce all-zero targets when uploaded data uses
+    # a different date range, making CLV metrics look perfect but meaningless.
+    order_dates = _prepare_dates(orders, "order_time").dropna()
+    max_order_date = order_dates.max() if not order_dates.empty else pd.Timestamp("2025-12-31")
+    validation_anchor = (max_order_date - pd.Timedelta(days=180)).normalize()
+    current_anchor = max_order_date.normalize()
+
+    calibration = _compute_features_at_anchor(customers, orders, str(validation_anchor.date()))
+    calibration["future_spend_180d"] = _future_spend_target(orders, str(validation_anchor.date()), 180, calibration["customer_id"]) 
 
     numeric_features = [
         "price_sensitivity", "coupon_affinity", "treatment_lift_base", "support_contact_propensity",
@@ -143,15 +151,22 @@ def run_clv_pipeline(data_dir: Path, result_dir: Path) -> CLVArtifacts:
     preds = np.clip(model.predict(X_test), 0.0, None)
 
     metrics = {
-        "validation_window": "predict next 180 days from 2025-06-30 features",
+        "validation_window": f"predict next 180 days from {validation_anchor.date()} features",
+        "validation_anchor_date": str(validation_anchor.date()),
+        "current_scoring_anchor_date": str(current_anchor.date()),
+        "target_nonzero_share": round(float((y > 0).mean()) if len(y) else 0.0, 6),
         "mae": round(float(mean_absolute_error(y_test, preds)), 4),
         "rmse": round(float(np.sqrt(mean_squared_error(y_test, preds))), 4),
         "r2": round(float(r2_score(y_test, preds)), 6),
         "actual_mean_180d": round(float(np.mean(y_test)), 4),
         "predicted_mean_180d": round(float(np.mean(preds)), 4),
+        "quality_warning": (
+            "validation target has too few non-zero future spend rows; collect a longer history or use a shorter horizon"
+            if float((y > 0).mean()) < 0.05 else None
+        ),
     }
 
-    current = _compute_features_at_anchor(customers, orders, "2025-12-31")
+    current = _compute_features_at_anchor(customers, orders, str(current_anchor.date()))
     current_X = current[numeric_features + categorical_features].copy()
     future_180_pred = np.clip(model.predict(current_X), 0.0, None)
     predicted_clv_12m = future_180_pred * 2.0

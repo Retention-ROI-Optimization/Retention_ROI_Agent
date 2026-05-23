@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from sklearn.compose import ColumnTransformer
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.impute import SimpleImputer
 from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import train_test_split
@@ -130,6 +130,75 @@ def _build_classifier(numeric_features: List[str], categorical_features: List[st
         class_weight="balanced_subsample",
     )
     return Pipeline([("preprocessor", preprocessor), ("model", model)])
+
+
+def _build_regressor(numeric_features: List[str], categorical_features: List[str]) -> Pipeline:
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ("num", Pipeline([("imputer", SimpleImputer(strategy="median"))]), numeric_features),
+            (
+                "cat",
+                Pipeline([("imputer", SimpleImputer(strategy="most_frequent")), ("onehot", OneHotEncoder(handle_unknown="ignore"))]),
+                categorical_features,
+            ),
+        ]
+    )
+    model = RandomForestRegressor(
+        n_estimators=260,
+        max_depth=8,
+        min_samples_leaf=40,
+        n_jobs=-1,
+        random_state=42,
+    )
+    return Pipeline([("preprocessor", preprocessor), ("model", model)])
+
+
+def _predict_s_learner_components(model: Pipeline, X: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
+    x1 = X.copy()
+    x0 = X.copy()
+    x1["treatment_flag"] = 1
+    x0["treatment_flag"] = 0
+    m1 = model.predict_proba(x1)[:, 1]
+    m0 = model.predict_proba(x0)[:, 1]
+    return m1, m0
+
+
+def _fit_dr_learner(
+    X_train: pd.DataFrame,
+    y_train: pd.Series,
+    w_train: pd.Series,
+    X_test: pd.DataFrame,
+) -> np.ndarray:
+    """Doubly robust CATE learner for retention outcome.
+
+    It uses an S-learner outcome model plus observed treatment propensity.  The
+    resulting pseudo-outcome is then smoothed with a regressor.  This is not a
+    substitute for real randomized experiments, but it is much more stable than
+    choosing only T/S learners when sample balance is imperfect.
+    """
+    numeric, categorical = _feature_lists()
+    outcome_numeric = numeric + ["treatment_flag"]
+    outcome_model = _build_classifier(outcome_numeric, categorical)
+    train = X_train.copy()
+    train["treatment_flag"] = w_train.values
+    outcome_model.fit(train, y_train)
+    m1_train, m0_train = _predict_s_learner_components(outcome_model, X_train)
+
+    # Randomized assignments should be near constant; clipping protects against
+    # quasi-separation in small or unbalanced uploaded datasets.
+    propensity = float(np.clip(np.mean(w_train), 0.05, 0.95))
+    y_arr = y_train.to_numpy(dtype=float)
+    w_arr = w_train.to_numpy(dtype=float)
+    pseudo = (
+        m1_train - m0_train
+        + w_arr * (y_arr - m1_train) / propensity
+        - (1.0 - w_arr) * (y_arr - m0_train) / (1.0 - propensity)
+    )
+    pseudo = np.clip(pseudo, -0.50, 0.50)
+
+    cate_model = _build_regressor(numeric, categorical)
+    cate_model.fit(X_train, pseudo)
+    return np.clip(cate_model.predict(X_test), -0.50, 0.50)
 
 
 def _fit_t_learner(
@@ -301,6 +370,7 @@ def run_uplift_modeling(data_dir: Path, result_dir: Path) -> UpliftArtifacts:
     test_predictions = {
         "T-Learner": _fit_t_learner(X_train, y_train, w_train, X_test),
         "S-Learner": _fit_s_learner(X_train, y_train, w_train, X_test),
+        "DR-Learner": _fit_dr_learner(X_train, y_train, w_train, X_test),
     }
 
     curves: Dict[str, pd.DataFrame] = {}
@@ -317,11 +387,26 @@ def run_uplift_modeling(data_dir: Path, result_dir: Path) -> UpliftArtifacts:
     best_method = max(comparison.items(), key=lambda kv: kv[1]["auuc"])[0]
     dataset["uplift_score_t_learner"] = _fit_t_learner(X, y, w, X)
     dataset["uplift_score_s_learner"] = _fit_s_learner(X, y, w, X)
+    dataset["uplift_score_dr_learner"] = _fit_dr_learner(X, y, w, X)
     fallback_positive = int((dataset["uplift_score_t_learner"] > NEUTRAL_UPLIFT_BAND).sum())
-    chosen_positive = int((dataset["uplift_score_s_learner"] > NEUTRAL_UPLIFT_BAND).sum()) if best_method == "S-Learner" else int((dataset["uplift_score_t_learner"] > NEUTRAL_UPLIFT_BAND).sum())
+    if best_method == "S-Learner":
+        chosen_positive = int((dataset["uplift_score_s_learner"] > NEUTRAL_UPLIFT_BAND).sum())
+    elif best_method == "DR-Learner":
+        chosen_positive = int((dataset["uplift_score_dr_learner"] > NEUTRAL_UPLIFT_BAND).sum())
+    else:
+        chosen_positive = fallback_positive
     if chosen_positive < max(100, int(len(dataset) * 0.005)) and fallback_positive > chosen_positive:
         best_method = "T-Learner"
-    dataset["predicted_uplift"] = dataset["uplift_score_t_learner"] if best_method == "T-Learner" else dataset["uplift_score_s_learner"]
+
+    method_to_col = {
+        "T-Learner": "uplift_score_t_learner",
+        "S-Learner": "uplift_score_s_learner",
+        "DR-Learner": "uplift_score_dr_learner",
+    }
+    dataset["predicted_uplift"] = dataset[method_to_col.get(best_method, "uplift_score_t_learner")]
+    # Guardrail: tiny negative estimates are often noise; keep true Sleeping Dogs
+    # negative, but do not let numerical jitter erase all persuadables.
+    dataset["predicted_uplift"] = pd.to_numeric(dataset["predicted_uplift"], errors="coerce").fillna(0.0).clip(-0.35, 0.50)
     dataset["uplift_segment"] = dataset.apply(lambda row: _make_segment(float(row["predicted_uplift"]), float(row["churn_probability"])), axis=1)
     dataset["expected_incremental_profit"] = dataset["predicted_uplift"] * pd.to_numeric(dataset["clv"], errors="coerce").fillna(0.0)
     dataset["expected_roi"] = _safe_div(dataset["expected_incremental_profit"] - pd.to_numeric(dataset["coupon_cost"], errors="coerce").fillna(0.0), pd.to_numeric(dataset["coupon_cost"], errors="coerce").fillna(0.0))
@@ -334,6 +419,7 @@ def run_uplift_modeling(data_dir: Path, result_dir: Path) -> UpliftArtifacts:
         "predicted_uplift",
         "uplift_score_t_learner",
         "uplift_score_s_learner",
+        "uplift_score_dr_learner",
         "uplift_segment",
         "clv",
         "churn_probability",
@@ -364,9 +450,16 @@ def run_uplift_modeling(data_dir: Path, result_dir: Path) -> UpliftArtifacts:
     persuadables_summary = _persuadables_analysis(scoring)
     persuadables_analysis_path.write_text(json.dumps(persuadables_summary, ensure_ascii=False, indent=2), encoding="utf-8")
 
+    reliability_notes = []
+    if all(v.get("auuc", 0.0) <= 0 for v in comparison.values()):
+        reliability_notes.append("All AUUC values are non-positive; use uplift scores as ranking signals until real campaign experiments accumulate.")
+    if min(int((w == 1).sum()), int((w == 0).sum())) < 200:
+        reliability_notes.append("Treatment/control sample is small; confidence in CATE estimates is limited.")
+
     summary = {
         "rows": int(len(scoring_out)),
         "best_method": best_method,
+        "uplift_reliability_notes": reliability_notes,
         "segment_counts": scoring_out["uplift_segment"].value_counts().to_dict(),
         "comparison": comparison,
         "qini_curve_path": str(qini_curve_path),

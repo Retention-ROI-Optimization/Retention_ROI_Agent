@@ -131,6 +131,7 @@ def _build_candidate_pool(
         & (candidate["uplift_score"] > 0.0)
         & (candidate["expected_incremental_profit"] > 0.0)
         & (candidate["coupon_cost"] > 0.0)
+        & (~candidate.get("uplift_segment", pd.Series("", index=candidate.index)).astype(str).isin(["Sleeping Dogs"]))
     ].copy()
 
     if candidate.empty:
@@ -281,13 +282,15 @@ def get_budget_result(
         return candidate, summary, budget_allocation_by_segment(candidate, all_segments)
 
     candidate_segment_counts = (
-        candidate['uplift_segment'].value_counts().reindex(all_segments, fill_value=0).astype(int).to_dict()
+        candidate.groupby('uplift_segment')['customer_id'].nunique().reindex(all_segments, fill_value=0).astype(int).to_dict()
     )
 
     selected_rows: list[dict] = []
     used_customers: set[int] = set()
     spent = 0.0
     selection_cap = int(max_customers) if max_customers is not None and int(max_customers) > 0 else None
+    high_intensity_cap = max(1, int((selection_cap or max(len(candidate), 1)) * 0.35))
+    high_intensity_used = 0
 
     intensity_seed_order = ["high", "mid", "low"]
     for intensity in intensity_seed_order:
@@ -299,11 +302,16 @@ def get_budget_result(
         for row in seed_pool.itertuples(index=False):
             customer_id = int(getattr(row, "customer_id"))
             cost = float(getattr(row, "coupon_cost", 0.0))
+            intensity_value = str(getattr(row, "intervention_intensity", "")).lower()
             if customer_id in used_customers or cost <= 0 or spent + cost > float(budget):
+                continue
+            if intensity_value == "high" and high_intensity_used >= high_intensity_cap:
                 continue
             selected_rows.append(row._asdict())
             used_customers.add(customer_id)
             spent += cost
+            if intensity_value == "high":
+                high_intensity_used += 1
             break
 
     for row in candidate.itertuples(index=False):
@@ -348,6 +356,8 @@ def get_budget_result(
         'selected_intensity_counts': selected['intervention_intensity'].value_counts().to_dict() if not selected.empty else {},
         'avg_timing_urgency_score': round(float(candidate['timing_urgency_score'].mean()), 6),
         'avg_intervention_window_days': round(float(candidate['intervention_window_days'].mean()), 2),
+        'optimization_method': 'constrained multiple-choice greedy: one action per customer, positive uplift/profit only, Sleeping Dogs excluded, high-intensity cap applied',
+        'high_intensity_cap': int(high_intensity_cap),
     }
     segment_allocation = budget_allocation_by_segment(selected, all_segments=all_segments)
     return selected, summary, segment_allocation

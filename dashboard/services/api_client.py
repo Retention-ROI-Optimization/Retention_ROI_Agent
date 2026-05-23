@@ -219,6 +219,7 @@ def seed_user_live_from_artifacts(reset: bool = True) -> Dict[str, Any]:
 def fetch_user_live_scores(
     limit: int | None = None,
     customer_id: int | None = None,
+    risk_threshold: float = 0.70,
 ) -> tuple[dict, pd.DataFrame]:
     """
     PostgreSQL customer_scores 최신 점수 조회.
@@ -232,6 +233,8 @@ def fetch_user_live_scores(
 
     if customer_id is not None:
         params["customer_id"] = int(customer_id)
+
+    params["risk_threshold"] = float(risk_threshold)
 
     payload = _request_json(
         "/api/v1/user-live/scores",

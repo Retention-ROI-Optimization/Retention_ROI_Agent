@@ -12,6 +12,7 @@ from src.api.services.user_live_db import (
     ensure_user_live_seed_columns,
     user_live_session,
 )
+from src.api.services.cache import cached_json, invalidate_user_live_cache, make_cache_key
 
 
 LIVE_SOURCE_TYPE = "live_policy_v1"
@@ -549,6 +550,10 @@ def update_live_actions_for_customers(
                 "queued": should_queue,
             })
 
+    # Action/recommendation writes change queue metrics and target tables.
+    # Invalidate Redis cache so dashboard view switches and reruns do not reuse stale queues.
+    invalidate_user_live_cache()
+
     return {
         "success": True,
         "source_type": LIVE_SOURCE_TYPE,
@@ -569,66 +574,61 @@ def get_live_recommendation_candidates(
     limit: int = 100,
     customer_id: int | None = None,
     source_type: str | None = None,
+    redis_url: str | None = None,
 ) -> dict[str, Any]:
     ensure_user_live_action_columns(db_url)
+    safe_limit = max(int(limit or 100), 1)
+    cache_key = make_cache_key("user-live", "recommendations", "v3", safe_limit, customer_id or "all", source_type or "all")
 
-    with user_live_session(db_url) as conn:
-        if customer_id is not None:
-            rows = conn.execute(
+    def _load_payload() -> dict[str, Any]:
+        with user_live_session(db_url) as conn:
+            if customer_id is not None:
+                rows = conn.execute(
+                    text("""
+                    SELECT *
+                    FROM recommendation_candidates
+                    WHERE customer_id = :customer_id
+                    ORDER BY updated_at DESC NULLS LAST, generated_at DESC
+                    LIMIT :limit
+                    """),
+                    {"customer_id": customer_id, "limit": safe_limit},
+                ).mappings().all()
+            elif source_type is not None:
+                rows = conn.execute(
+                    text("""
+                    SELECT *
+                    FROM recommendation_candidates
+                    WHERE source_type = :source_type
+                    ORDER BY priority_score DESC NULLS LAST, updated_at DESC NULLS LAST
+                    LIMIT :limit
+                    """),
+                    {"source_type": source_type, "limit": safe_limit},
+                ).mappings().all()
+            else:
+                rows = conn.execute(
+                    text("""
+                    SELECT *
+                    FROM recommendation_candidates
+                    ORDER BY priority_score DESC NULLS LAST, updated_at DESC NULLS LAST
+                    LIMIT :limit
+                    """),
+                    {"limit": safe_limit},
+                ).mappings().all()
+
+            summary = conn.execute(
                 text("""
-                SELECT *
+                SELECT
+                    COUNT(*) AS total_recommendations,
+                    SUM(CASE WHEN source_type = 'live_policy_v1' THEN 1 ELSE 0 END) AS live_recommendations,
+                    SUM(CASE WHEN active = TRUE THEN 1 ELSE 0 END) AS active_recommendations,
+                    MAX(updated_at) AS latest_updated_at
                 FROM recommendation_candidates
-                WHERE customer_id = :customer_id
-                ORDER BY updated_at DESC NULLS LAST, generated_at DESC
-                LIMIT :limit
-                """),
-                {
-                    "customer_id": customer_id,
-                    "limit": limit,
-                },
-            ).mappings().all()
-        elif source_type is not None:
-            rows = conn.execute(
-                text("""
-                SELECT *
-                FROM recommendation_candidates
-                WHERE source_type = :source_type
-                ORDER BY priority_score DESC NULLS LAST, updated_at DESC NULLS LAST
-                LIMIT :limit
-                """),
-                {
-                    "source_type": source_type,
-                    "limit": limit,
-                },
-            ).mappings().all()
-        else:
-            rows = conn.execute(
-                text("""
-                SELECT *
-                FROM recommendation_candidates
-                ORDER BY priority_score DESC NULLS LAST, updated_at DESC NULLS LAST
-                LIMIT :limit
-                """),
-                {"limit": limit},
-            ).mappings().all()
+                """)
+            ).mappings().first()
 
-        summary = conn.execute(
-            text("""
-            SELECT
-                COUNT(*) AS total_recommendations,
-                SUM(CASE WHEN source_type = 'live_policy_v1' THEN 1 ELSE 0 END) AS live_recommendations,
-                SUM(CASE WHEN active = TRUE THEN 1 ELSE 0 END) AS active_recommendations,
-                MAX(updated_at) AS latest_updated_at
-            FROM recommendation_candidates
-            """)
-        ).mappings().first()
+        return {"success": True, "summary": dict(summary or {}), "records": [dict(row) for row in rows]}
 
-    return {
-        "success": True,
-        "summary": dict(summary or {}),
-        "records": [dict(row) for row in rows],
-    }
-
+    return cached_json(cache_key, _load_payload, ttl_seconds=15, redis_url=redis_url)
 
 def get_live_action_queue(
     *,
@@ -637,53 +637,50 @@ def get_live_action_queue(
     customer_id: int | None = None,
     source_type: str | None = None,
     status: str | None = None,
+    redis_url: str | None = None,
 ) -> dict[str, Any]:
     ensure_user_live_action_columns(db_url)
+    safe_limit = max(int(limit or 100), 1)
+    cache_key = make_cache_key("user-live", "actions", "v3", safe_limit, customer_id or "all", source_type or "all", status or "all")
 
-    with user_live_session(db_url) as conn:
-        conditions = []
-        params: dict[str, Any] = {"limit": limit}
+    def _load_payload() -> dict[str, Any]:
+        with user_live_session(db_url) as conn:
+            conditions = []
+            params: dict[str, Any] = {"limit": safe_limit}
 
-        if customer_id is not None:
-            conditions.append("customer_id = :customer_id")
-            params["customer_id"] = customer_id
+            if customer_id is not None:
+                conditions.append("customer_id = :customer_id")
+                params["customer_id"] = customer_id
+            if source_type is not None:
+                conditions.append("source_type = :source_type")
+                params["source_type"] = source_type
+            if status is not None:
+                conditions.append("action_status = :status")
+                params["status"] = status
 
-        if source_type is not None:
-            conditions.append("source_type = :source_type")
-            params["source_type"] = source_type
+            where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
+            rows = conn.execute(
+                text(f"""
+                SELECT *
+                FROM action_queue
+                {where_clause}
+                ORDER BY priority_score DESC NULLS LAST, updated_at DESC NULLS LAST, queued_at DESC
+                LIMIT :limit
+                """),
+                params,
+            ).mappings().all()
 
-        if status is not None:
-            conditions.append("action_status = :status")
-            params["status"] = status
+            summary = conn.execute(
+                text("""
+                SELECT
+                    COUNT(*) AS total_actions,
+                    SUM(CASE WHEN source_type = 'live_policy_v1' THEN 1 ELSE 0 END) AS live_actions,
+                    SUM(CASE WHEN action_status = 'queued' THEN 1 ELSE 0 END) AS queued_actions,
+                    MAX(updated_at) AS latest_updated_at
+                FROM action_queue
+                """)
+            ).mappings().first()
 
-        where_clause = ""
-        if conditions:
-            where_clause = "WHERE " + " AND ".join(conditions)
+        return {"success": True, "summary": dict(summary or {}), "records": [dict(row) for row in rows]}
 
-        rows = conn.execute(
-            text(f"""
-            SELECT *
-            FROM action_queue
-            {where_clause}
-            ORDER BY priority_score DESC NULLS LAST, updated_at DESC NULLS LAST, queued_at DESC
-            LIMIT :limit
-            """),
-            params,
-        ).mappings().all()
-
-        summary = conn.execute(
-            text("""
-            SELECT
-                COUNT(*) AS total_actions,
-                SUM(CASE WHEN source_type = 'live_policy_v1' THEN 1 ELSE 0 END) AS live_actions,
-                SUM(CASE WHEN action_status = 'queued' THEN 1 ELSE 0 END) AS queued_actions,
-                MAX(updated_at) AS latest_updated_at
-            FROM action_queue
-            """)
-        ).mappings().first()
-
-    return {
-        "success": True,
-        "summary": dict(summary or {}),
-        "records": [dict(row) for row in rows],
-    }
+    return cached_json(cache_key, _load_payload, ttl_seconds=10, redis_url=redis_url)

@@ -15,6 +15,7 @@ from src.api.services.user_live_db import (
     user_live_session,
 )
 from src.api.settings import ApiSettings
+from src.api.services.cache import invalidate_user_live_cache
 from pathlib import Path
 
 from src.api.services.user_live_seed import (
@@ -376,6 +377,8 @@ def ingest_user_event(
                 "customer_id": event.customer_id,
             }
 
+    invalidate_user_live_cache(settings.redis_url)
+
     return {
         "success": True,
         "mode": "user-live",
@@ -471,6 +474,9 @@ def ingest_user_events_batch(
                 "error": str(exc),
                 "customer_ids": sorted(changed_customer_ids),
             }
+
+    if inserted_count:
+        invalidate_user_live_cache(settings.redis_url)
 
     return {
         "success": True,
@@ -635,6 +641,8 @@ def reset_user_live_tables(
         conn.execute(text("TRUNCATE TABLE recommendation_candidates RESTART IDENTITY CASCADE"))
         conn.execute(text("TRUNCATE TABLE action_queue RESTART IDENTITY CASCADE"))
 
+    invalidate_user_live_cache(settings.redis_url)
+
     return {
         "success": True,
         "message": "user-live tables reset",
@@ -683,6 +691,7 @@ def seed_from_user_artifacts(
             detail=result,
         )
 
+    invalidate_user_live_cache(settings.redis_url)
     return result
 
 
@@ -744,6 +753,7 @@ def score_customers(
 def live_scores(
     limit: int | None = Query(default=None, ge=1),
     customer_id: int | None = None,
+    risk_threshold: float = Query(default=0.70, ge=0.0, le=1.0),
     settings: ApiSettings = Depends(get_settings),
 ):
     """
@@ -759,6 +769,8 @@ def live_scores(
         db_url=settings.user_db_url,
         limit=limit,
         customer_id=customer_id,
+        risk_threshold=risk_threshold,
+        redis_url=settings.redis_url,
     )
 
 @router.post("/refresh-actions")
@@ -779,13 +791,15 @@ def refresh_actions(
             detail="customer_ids must not be empty",
         )
 
-    return update_live_actions_for_customers(
+    result = update_live_actions_for_customers(
         db_url=settings.user_db_url,
         customer_ids=customer_ids,
         threshold=action_threshold,
         min_expected_roi=min_expected_roi,
         min_expected_profit=min_expected_profit,
     )
+    invalidate_user_live_cache(settings.redis_url)
+    return result
 
 
 @router.get("/recommendations")
@@ -803,6 +817,7 @@ def live_recommendations(
         limit=limit,
         customer_id=customer_id,
         source_type=source_type,
+        redis_url=settings.redis_url,
     )
 
 
@@ -823,6 +838,7 @@ def live_actions(
         customer_id=customer_id,
         source_type=source_type,
         status=status,
+        redis_url=settings.redis_url,
     )
 @router.post("/jobs/drift-check")
 def run_drift_check_job(
@@ -892,11 +908,13 @@ async def demo_start(
         new_customer_ratio=new_customer_ratio,
         action_threshold=action_threshold,
     )
-    return start_demo(
+    result = start_demo(
         db_url=settings.user_db_url,
         model_dir=Path.cwd() / "models_user",
         config=config,
     )
+    invalidate_user_live_cache(settings.redis_url)
+    return result
 
 
 @router.post("/demo/stop")
@@ -906,7 +924,9 @@ def demo_stop():
 
 @router.post("/demo/reset")
 def demo_reset(settings: ApiSettings = Depends(get_settings)):
-    return reset_demo(db_url=settings.user_db_url)
+    result = reset_demo(db_url=settings.user_db_url)
+    invalidate_user_live_cache(settings.redis_url)
+    return result
 
 
 @router.get("/demo/status")
