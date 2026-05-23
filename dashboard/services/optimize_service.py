@@ -16,8 +16,12 @@ from src.optimization.timing import load_survival_predictions
 def _candidate_result_dirs() -> list[Path]:
     project_root = Path(__file__).resolve().parents[2]
     candidates = [
+        Path.cwd() / 'results_user',
         Path.cwd() / 'results',
+        Path.cwd() / 'results_simulator',
+        project_root / 'results_user',
         project_root / 'results',
+        project_root / 'results_simulator',
     ]
     unique: list[Path] = []
     seen: set[str] = set()

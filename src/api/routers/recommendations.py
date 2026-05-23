@@ -13,7 +13,7 @@ from src.workflows.pipeline_runner import run_recommendation_pipeline
 router = APIRouter(prefix='/recommendations', tags=['recommendations'])
 
 
-MAX_RECOMMENDATION_CUSTOMERS = 5000
+MAX_RECOMMENDATION_CUSTOMERS = 100000
 
 
 def _should_rebuild(

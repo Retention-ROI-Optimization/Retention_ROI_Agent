@@ -492,7 +492,7 @@ def ingest_user_events_batch(
 
 @router.get("/feature-state")
 def get_feature_state(
-    limit: int = Query(default=100, ge=1, le=5000),
+    limit: int = Query(default=100, ge=1, le=100000),
     customer_id: int | None = Query(default=None, ge=1),
     settings: ApiSettings = Depends(get_settings),
 ):
@@ -531,7 +531,7 @@ def get_feature_state(
 
 @router.get("/events")
 def get_recent_events(
-    limit: int = Query(default=100, ge=1, le=5000),
+    limit: int = Query(default=100, ge=1, le=100000),
     customer_id: int | None = Query(default=None, ge=1),
     settings: ApiSettings = Depends(get_settings),
 ):

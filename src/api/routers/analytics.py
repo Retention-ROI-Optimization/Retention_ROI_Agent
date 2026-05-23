@@ -115,7 +115,7 @@ def _load_cohort_retention(repository: DataRepository) -> pd.DataFrame:
 def dashboard_summary(
     threshold: float = Query(default=0.50, ge=0.0, le=1.0),
     budget: int = Query(default=5000000, ge=1),
-    max_customers: Optional[int] = Query(default=None, ge=1, le=5000),
+    max_customers: Optional[int] = Query(default=None, ge=1, le=100000),
     repository: DataRepository = Depends(get_repository),
     settings: ApiSettings = Depends(get_settings),
 ) -> DashboardSummaryResponse:
@@ -241,7 +241,7 @@ def retention_targets(
 def budget_optimization(
     budget: int = Query(default=5000000, ge=1),
     threshold: float = Query(default=0.50, ge=0.0, le=1.0),
-    max_customers: Optional[int] = Query(default=None, ge=1, le=5000),
+    max_customers: Optional[int] = Query(default=None, ge=1, le=100000),
     repository: DataRepository = Depends(get_repository),
     settings: ApiSettings = Depends(get_settings),
 ) -> BudgetResponse:
