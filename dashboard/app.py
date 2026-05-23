@@ -7,7 +7,7 @@ import os
 # Limit only the number of rows rendered in heavy HTML preview tables.
 # This does not limit the full dataset used by the pipeline.
 TABLE_DISPLAY_ROW_LIMIT = int(os.getenv("TABLE_DISPLAY_ROW_LIMIT", "500"))
-CHURN_TIMING_DISPLAY_ROW_LIMIT = int(os.getenv("CHURN_TIMING_DISPLAY_ROW_LIMIT", "1000"))
+CHURN_TIMING_DISPLAY_ROW_LIMIT = int(os.getenv("CHURN_TIMING_DISPLAY_ROW_LIMIT", "500"))
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -2601,23 +2601,36 @@ def _build_churn_timing_table(
     min_churn_probability: float = 0.0,
     limit: int | None = None,
 ) -> pd.DataFrame:
-    """Return a plain-language table: customer, when they may leave, and expected loss."""
+    """Return a fast Korean table: customer, likely churn timing, and expected loss.
+
+    속도 개선 포인트:
+    - 전체 survival 결과를 고객 테이블과 통째로 merge하지 않는다.
+    - 화면에 필요한 컬럼만 복사하고, 고객 속성은 customer_id 기준 map으로 붙인다.
+    - 정렬/포맷팅은 표시 제한 후보에 대해서만 수행한다.
+    """
     if not isinstance(predictions, pd.DataFrame) or predictions.empty:
         return pd.DataFrame()
-
-    df = _merge_customer_value_columns(predictions, customers_df)
-    if "customer_id" not in df.columns:
+    if "customer_id" not in predictions.columns:
         return pd.DataFrame()
 
     days_col = next(
-        (col for col in ["predicted_median_time_to_churn_days", "expected_time_to_churn_days", "median_time_to_churn_days", "duration_days"] if col in df.columns),
+        (col for col in ["predicted_median_time_to_churn_days", "expected_time_to_churn_days", "median_time_to_churn_days", "duration_days"] if col in predictions.columns),
         None,
     )
     if days_col is None:
         return pd.DataFrame()
 
-    out = df.copy()
+    # 필요한 최소 컬럼만 사용한다. 큰 업로드 데이터에서 불필요한 merge/복사를 피하기 위함이다.
+    base_cols = ["customer_id", days_col]
+    for col in ["survival_prob_30d", "churn_probability", "predicted_hazard_ratio", "persona", "clv", "predicted_clv_12m", "monetary", "expected_incremental_profit"]:
+        if col in predictions.columns and col not in base_cols:
+            base_cols.append(col)
+    out = predictions[base_cols].copy()
+    out["_customer_id_key"] = out["customer_id"].astype(str)
     out["_expected_days"] = pd.to_numeric(out[days_col], errors="coerce")
+    out = out[out["_expected_days"].notna()].copy()
+    if out.empty:
+        return pd.DataFrame()
 
     if "survival_prob_30d" in out.columns:
         survival_30 = pd.to_numeric(out["survival_prob_30d"], errors="coerce").clip(lower=0, upper=1)
@@ -2627,15 +2640,6 @@ def _build_churn_timing_table(
     else:
         out["_churn_30d"] = np.nan
 
-    value_col = next(
-        (col for col in ["clv", "predicted_clv_12m", "monetary", "expected_incremental_profit"] if col in out.columns),
-        None,
-    )
-    if value_col is not None:
-        out["_customer_value"] = pd.to_numeric(out[value_col], errors="coerce")
-    else:
-        out["_customer_value"] = np.nan
-
     try:
         probability_threshold = float(min_churn_probability)
     except (TypeError, ValueError):
@@ -2643,25 +2647,59 @@ def _build_churn_timing_table(
     probability_threshold = max(0.0, min(1.0, probability_threshold))
     if probability_threshold > 0:
         out = out[out["_churn_30d"].notna() & (out["_churn_30d"] >= probability_threshold)].copy()
+        if out.empty:
+            return pd.DataFrame()
+
+    # 고객 테이블에서 필요한 표시 속성만 dictionary map으로 보강한다.
+    customer_lookup = None
+    if isinstance(customers_df, pd.DataFrame) and not customers_df.empty and "customer_id" in customers_df.columns:
+        lookup_cols = [
+            col for col in ["customer_id", "persona", "clv", "predicted_clv_12m", "monetary", "expected_incremental_profit"]
+            if col in customers_df.columns
+        ]
+        if len(lookup_cols) > 1:
+            customer_lookup = customers_df[lookup_cols].copy()
+            customer_lookup["_customer_id_key"] = customer_lookup["customer_id"].astype(str)
+            customer_lookup = customer_lookup.drop_duplicates("_customer_id_key", keep="first")
+
+    if customer_lookup is not None:
+        customer_lookup_indexed = customer_lookup.set_index("_customer_id_key")
+        for col in ["persona", "clv", "predicted_clv_12m", "monetary", "expected_incremental_profit"]:
+            if col not in customer_lookup_indexed.columns:
+                continue
+            mapped = out["_customer_id_key"].map(customer_lookup_indexed[col])
+            if col in out.columns:
+                out[col] = out[col].where(out[col].notna(), mapped)
+            else:
+                out[col] = mapped
+
+    value_col = next((col for col in ["clv", "predicted_clv_12m", "monetary", "expected_incremental_profit"] if col in out.columns), None)
+    if value_col is not None:
+        out["_customer_value"] = pd.to_numeric(out[value_col], errors="coerce")
+    else:
+        out["_customer_value"] = np.nan
 
     out["_expected_loss"] = (out["_customer_value"].clip(lower=0) * out["_churn_30d"].fillna(1.0)).replace([np.inf, -np.inf], np.nan)
-    landmark_date = (metrics or {}).get("landmark_as_of_date") or (metrics or {}).get("as_of_date")
-
     if "predicted_hazard_ratio" in out.columns:
         out["_hazard_sort"] = pd.to_numeric(out["predicted_hazard_ratio"], errors="coerce")
     else:
         out["_hazard_sort"] = np.nan
+
+    # 표시 후보만 남긴 뒤 문자열 포맷팅을 수행한다.
     out = out.sort_values(
         ["_expected_days", "_expected_loss", "_churn_30d", "_hazard_sort"],
         ascending=[True, False, False, False],
         kind="mergesort",
     )
     if limit is not None:
-        out = out.head(max(int(limit), 1))
+        out = out.head(max(int(limit), 1)).copy()
+
+    landmark_date = (metrics or {}).get("landmark_as_of_date") or (metrics or {}).get("as_of_date")
+    persona_series = out["persona"] if "persona" in out.columns else pd.Series(["-"] * len(out), index=out.index)
 
     display = pd.DataFrame({
         "customer_id": out["customer_id"].astype(str),
-        "persona": out["persona"] if "persona" in out.columns else "-",
+        "persona": persona_series.fillna("-").astype(str),
         "expected_churn_period": out["_expected_days"].map(_format_churn_period),
         "expected_churn_date": out["_expected_days"].map(lambda value: _format_expected_churn_date(landmark_date, value)),
         "churn_within_30d_probability": out["_churn_30d"].map(lambda value: pct(float(value)) if pd.notna(value) else "-"),
@@ -8252,12 +8290,12 @@ elif view == "4. 예산 최적화 및 리텐션 타겟":
     }
 
 elif view == "13. 반사실 리텐션 실험실":
-    if _user_mode_unavailable("반사실 리텐션 실험실", "반사실 손익 비교는 churn·uplift·CLV·survival 신호를 사용합니다. 업로드 CSV에 Treatment/Control이 없으면 전처리 단계의 휴리스틱 uplift 추정값으로 표시됩니다."):
+    if _user_mode_unavailable("반사실 리텐션 실험실", "반사실 손익 비교는 churn·uplift·CLV·survival 신호를 사용합니다. 업로드 CSV에 Treatment/Control이 없으면 전처리 단계의 휴리스틱 개입효과 추정값으로 표시됩니다."):
         st.stop()
 
-    st.subheader(T("반사실 리텐션 실험실"))
+    st.subheader("반사실 리텐션 실험실")
     _render_view_intro("13")
-    st.caption(T("반사실 실험실은 실제 집행 결과가 아니라 기존 churn·uplift·CLV·survival 신호를 조합한 의사결정 시뮬레이션입니다. 실제 증분 ROI는 holdout/A-B 검증으로 확인해야 합니다."))
+    st.caption("이 화면은 실제 집행 결과가 아니라, 이탈 가능성·고객가치·개입 반응 가능성·예상 이탈 시점을 조합해 만든 의사결정 비교표입니다. 실제 효과는 A/B 검증이나 검증용 미개입군으로 확인해야 합니다.")
 
     counterfactual_summary, counterfactual_lab, counterfactual_scenarios = build_counterfactual_retention_lab(
         customers=customers,
@@ -8267,42 +8305,80 @@ elif view == "13. 반사실 리텐션 실험실":
         threshold=float(threshold),
     )
 
+    def _ko_value(value: Any) -> str:
+        if pd.isna(value):
+            return ""
+        text = str(value)
+        ko_map = VALUE_LABELS.get("ko", {})
+        return ko_map.get(text, ko_map.get(text.lower(), text))
+
+    def _format_ko_money(value: Any) -> str:
+        return money(float(value)) if pd.notna(value) else ""
+
+    def _format_ko_probability(value: Any) -> str:
+        return f"{float(value) * 100:.1f}%" if pd.notna(value) else ""
+
+    counterfactual_column_rename = {
+        "customer_id": "고객 ID",
+        "persona": "고객 유형",
+        "churn_probability": "현재 이탈 가능성",
+        "expected_churn_period": "예상 이탈 시점",
+        "clv": "고객 생애가치",
+        "recommended_action": "기존 추천 액션",
+        "expected_no_action_net_profit": "무개입 예상 순이익",
+        "expected_net_profit_coupon_5000": "5,000원 쿠폰 예상 순이익",
+        "expected_net_profit_consult_call": "상담 전화 예상 순이익",
+        "expected_net_profit_push_email": "푸시/이메일 예상 순이익",
+        "expected_net_profit_wait_7d": "7일 대기 예상 순이익",
+        "final_recommendation": "최종 추천 전략",
+        "best_expected_net_profit": "최선 전략 예상 순이익",
+        "incremental_vs_no_action": "무개입 대비 개선액",
+        "confidence": "신뢰도",
+        "ab_test_recommended": "검증 필요 여부",
+        "recommendation_reason": "추천 근거",
+    }
+    scenario_column_rename = {
+        "action_label": "비교 전략",
+        "action_cost": "개입 비용",
+        "expected_net_profit": "예상 순이익",
+        "incremental_vs_no_action": "무개입 대비 개선액",
+        "treated_churn_probability": "전략 적용 후 이탈 가능성",
+        "estimated_retention_lift": "이탈 가능성 감소폭",
+        "description": "전략 설명",
+    }
+
     if counterfactual_lab.empty:
-        st.warning(T("현재 조건에서 반사실 시나리오를 계산할 고객이 없습니다."))
+        st.warning("현재 조건에서 반사실 시나리오를 계산할 고객이 없습니다.")
         llm_payload = {
             "threshold": float(threshold),
             "budget": int(budget),
             "counterfactual_summary": counterfactual_summary,
         }
     else:
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric(T("분석 고객 수"), f"{int(counterfactual_summary.get('customer_count', len(counterfactual_lab))):,}")
-        m2.metric(T("무개입 대비 평균 개선"), money(counterfactual_summary.get("avg_incremental_vs_no_action", 0.0)))
-        m3.metric(T("양수 개선 고객"), f"{int(counterfactual_summary.get('positive_recommendation_count', 0)):,}")
-        m4.metric(T("A/B 검증 권장"), f"{int(counterfactual_summary.get('ab_test_recommended_count', 0)):,}")
+        summary_df = pd.DataFrame(
+            [
+                {"항목": "분석 고객 수", "값": f"{int(counterfactual_summary.get('customer_count', len(counterfactual_lab))):,}명"},
+                {"항목": "무개입 대비 평균 개선액", "값": money(counterfactual_summary.get("avg_incremental_vs_no_action", 0.0))},
+                {"항목": "무개입보다 나은 추천이 나온 고객", "값": f"{int(counterfactual_summary.get('positive_recommendation_count', 0)):,}명"},
+                {"항목": "A/B 검증 또는 미개입군 검증이 필요한 고객", "값": f"{int(counterfactual_summary.get('ab_test_recommended_count', 0)):,}명"},
+            ]
+        )
+        _render_dataframe_with_count(summary_df, label="반사실 실험 요약", prefer_static=True, height=260)
 
         action_counts = pd.DataFrame(
             [
-                {"final_recommendation": action, "customer_count": count}
+                {"최종 추천 전략": _ko_value(action), "고객 수": f"{int(count):,}명"}
                 for action, count in (counterfactual_summary.get("best_action_counts", {}) or {}).items()
             ]
         )
         if not action_counts.empty:
-            action_counts = _translate_dataframe_values_for_display(action_counts)
-            action_fig = px.bar(
-                action_counts,
-                x="final_recommendation",
-                y="customer_count",
-                text="customer_count",
-                title=T("최종 추천 분포"),
-            )
-            action_fig.update_traces(textposition="outside", cliponaxis=False)
-            st.plotly_chart(action_fig, use_container_width=True)
+            st.markdown("### 최종 추천 전략 분포")
+            _render_dataframe_with_count(action_counts, label="최종 추천 전략 분포", prefer_static=True, height=min(360, 180 + 34 * len(action_counts)))
 
-        st.markdown(f"### {T('고객별 시나리오 상세')}")
+        st.markdown("### 고객별 시나리오 상세")
         customer_options = counterfactual_lab["customer_id"].astype(str).tolist() if "customer_id" in counterfactual_lab.columns else []
         selected_customer_for_lab = st.selectbox(
-            T("상세 비교 고객 선택"),
+            "상세 비교 고객 선택",
             options=customer_options,
             index=0,
             key="counterfactual_customer_selector",
@@ -8313,29 +8389,22 @@ elif view == "13. 반사실 리텐션 실험실":
                 counterfactual_scenarios["customer_id"].astype(str) == str(selected_customer_for_lab)
             ].copy()
             if not one_customer_scenarios.empty:
-                chart_one = _translate_dataframe_values_for_display(one_customer_scenarios.copy())
-                scenario_fig = px.bar(
-                    chart_one,
-                    x="action_label",
-                    y="expected_net_profit",
-                    hover_data=[c for c in ["incremental_vs_no_action", "action_cost", "treated_churn_probability", "estimated_retention_lift"] if c in chart_one.columns],
-                    title=T("고객별 반사실 손익 비교"),
-                )
-                scenario_fig.update_layout(xaxis_title=T("액션"), yaxis_title=T("예상 순이익"))
-                st.plotly_chart(scenario_fig, use_container_width=True)
-
                 detail_cols = ["action_label", "action_cost", "expected_net_profit", "incremental_vs_no_action", "treated_churn_probability", "estimated_retention_lift", "description"]
                 detail_df = one_customer_scenarios[[c for c in detail_cols if c in one_customer_scenarios.columns]].copy()
+                if "action_label" in detail_df.columns:
+                    detail_df["action_label"] = detail_df["action_label"].map(_ko_value)
+                if "description" in detail_df.columns:
+                    detail_df["description"] = detail_df["description"].map(_ko_value)
                 for money_col in ["action_cost", "expected_net_profit", "incremental_vs_no_action"]:
                     if money_col in detail_df.columns:
-                        detail_df[money_col] = detail_df[money_col].map(lambda x: money(float(x)) if pd.notna(x) else "")
+                        detail_df[money_col] = detail_df[money_col].map(_format_ko_money)
                 for prob_col in ["treated_churn_probability", "estimated_retention_lift"]:
                     if prob_col in detail_df.columns:
-                        detail_df[prob_col] = detail_df[prob_col].map(lambda x: f"{float(x):.3f}" if pd.notna(x) else "")
-                detail_df = _translate_dataframe_values_for_display(detail_df)
-                _render_dataframe_with_count(detail_df, label=T("고객별 시나리오 상세"), prefer_static=True)
+                        detail_df[prob_col] = detail_df[prob_col].map(_format_ko_probability)
+                detail_df = detail_df.rename(columns=scenario_column_rename)
+                _render_dataframe_with_count(detail_df, label="고객별 시나리오 상세", prefer_static=True, height=min(520, 220 + 34 * len(detail_df)))
 
-        st.markdown(f"### {T('고객별 반사실 손익 비교')}")
+        st.markdown("### 고객별 반사실 손익 비교")
         display_columns = [
             "customer_id",
             "persona",
@@ -8356,8 +8425,13 @@ elif view == "13. 반사실 리텐션 실험실":
             "recommendation_reason",
         ]
         display_df = counterfactual_lab[[col for col in display_columns if col in counterfactual_lab.columns]].copy()
+        if "persona" in display_df.columns:
+            display_df["persona"] = display_df["persona"].map(_ko_value)
+        for text_col in ["recommended_action", "final_recommendation", "confidence", "recommendation_reason"]:
+            if text_col in display_df.columns:
+                display_df[text_col] = display_df[text_col].map(_ko_value)
         if "churn_probability" in display_df.columns:
-            display_df["churn_probability"] = display_df["churn_probability"].map(lambda x: f"{float(x):.3f}" if pd.notna(x) else "")
+            display_df["churn_probability"] = display_df["churn_probability"].map(_format_ko_probability)
         if "expected_churn_period" in display_df.columns:
             display_df["expected_churn_period"] = display_df["expected_churn_period"].map(lambda x: _format_churn_period(x) if pd.notna(x) else "")
         for money_col in [
@@ -8371,17 +8445,18 @@ elif view == "13. 반사실 리텐션 실험실":
             "incremental_vs_no_action",
         ]:
             if money_col in display_df.columns:
-                display_df[money_col] = display_df[money_col].map(lambda x: money(float(x)) if pd.notna(x) else "")
+                display_df[money_col] = display_df[money_col].map(_format_ko_money)
         if "ab_test_recommended" in display_df.columns:
-            display_df["ab_test_recommended"] = display_df["ab_test_recommended"].map(lambda x: "권장" if bool(x) else "선택")
-        display_df = _translate_dataframe_values_for_display(display_df)
+            display_df["ab_test_recommended"] = display_df["ab_test_recommended"].map(lambda x: "검증 권장" if bool(x) else "바로 집행 가능")
+        display_df = display_df.rename(columns=counterfactual_column_rename)
         _render_dataframe_with_count(
             display_df,
-            label=T("고객별 반사실 손익 비교"),
-            height=min(1100, 220 + 34 * len(display_df)),
+            label="고객별 반사실 손익 비교",
+            prefer_static=True,
+            height=min(760, 220 + 34 * len(display_df)),
         )
 
-        st.info(T("권장 해석: 신뢰도가 낮거나 중간인 고객은 바로 전체 집행하지 말고 A/B 검증 또는 holdout 군에 포함해 실제 증분 ROI를 확인하세요."))
+        st.info("권장 해석: 신뢰도가 낮거나 중간인 고객은 바로 전체 집행하지 말고 A/B 검증 또는 검증용 미개입군에 포함해 실제 추가 이익을 확인하세요.")
 
         llm_payload = {
             "threshold": float(threshold),
@@ -8987,7 +9062,7 @@ elif _is_churn_timing_view(view):
             )
             st.caption(T("예상 손실액은 고객 생애가치(CLV)에 30일 내 이탈 가능성을 곱해 계산합니다. CLV가 없으면 최근 구매금액을 보수적 대체값으로 사용합니다."))
             _render_dataframe_with_count(
-                _translate_dataframe_values_for_display(timing_display),
+                timing_display,
                 label=T("고객별 이탈 시점과 예상 손실"),
                 height=min(720, 220 + 34 * len(timing_display)),
             )
