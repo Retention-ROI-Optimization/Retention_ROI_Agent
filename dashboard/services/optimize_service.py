@@ -8,6 +8,7 @@ import pandas as pd
 from src.api.services.analytics import (
     DEFAULT_SEGMENT_ORDER,
     budget_allocation_by_segment,
+    build_budget_sensitivity_map as _build_budget_sensitivity_map,
     get_budget_result as _get_budget_result,
 )
 from src.optimization.timing import load_survival_predictions
@@ -56,8 +57,26 @@ def get_budget_result(
     )
 
 
+def build_budget_sensitivity_map(
+    customers: pd.DataFrame,
+    budget: int,
+    threshold: float = 0.50,
+    max_customers: Optional[int] = None,
+    budget_step: int = 1_000_000,
+):
+    return _build_budget_sensitivity_map(
+        customers=customers,
+        base_budget=budget,
+        threshold=threshold,
+        max_customers=max_customers,
+        survival_predictions=_load_first_survival_predictions(),
+        budget_step=budget_step,
+    )
+
+
 __all__ = [
     "DEFAULT_SEGMENT_ORDER",
     "budget_allocation_by_segment",
+    "build_budget_sensitivity_map",
     "get_budget_result",
 ]
