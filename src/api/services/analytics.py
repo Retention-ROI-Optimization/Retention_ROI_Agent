@@ -25,6 +25,226 @@ DEFAULT_SEGMENT_ORDER = [
 INTENSITY_ORDER = ['low', 'mid', 'high']
 
 
+def _budget_sensitivity_grid(base_budget: int, step: int = 1_000_000) -> list[int]:
+    """Return a compact budget grid centered on the operator's current budget.
+
+    The dashboard needs a table-style sensitivity map, not an expensive chart.
+    We therefore keep 1,000,000 KRW intervals around the current setting and
+    include the exact current budget even when it is not aligned to the step.
+    """
+    base = max(int(base_budget or 0), 0)
+    step = max(int(step or 1_000_000), 1)
+    if base <= 30 * step:
+        start = 0
+        end = max(10 * step, base + 5 * step)
+    else:
+        start = max(0, base - 10 * step)
+        end = base + 10 * step
+
+    budgets = set(range(start, end + step, step))
+    budgets.update({0, base, base + step})
+    return sorted(int(v) for v in budgets if v >= 0)
+
+
+def _select_budget_candidates(
+    candidate: pd.DataFrame,
+    budget: int,
+    max_customers: Optional[int] = None,
+) -> pd.DataFrame:
+    """Apply the same one-action-per-customer greedy policy to a prepared pool."""
+    if candidate.empty or int(budget or 0) <= 0:
+        return candidate.head(0).copy()
+
+    selected_rows: list[dict] = []
+    used_customers: set[int] = set()
+    spent = 0.0
+    selection_cap = int(max_customers) if max_customers is not None and int(max_customers) > 0 else None
+    high_intensity_cap = max(1, int((selection_cap or max(len(candidate), 1)) * 0.35))
+    high_intensity_used = 0
+
+    for row in candidate.itertuples(index=False):
+        if selection_cap is not None and len(selected_rows) >= selection_cap:
+            break
+        customer_id = int(getattr(row, "customer_id"))
+        cost = float(getattr(row, "coupon_cost", 0.0))
+        if customer_id in used_customers:
+            continue
+        if cost <= 0:
+            continue
+        if spent + cost > float(budget):
+            continue
+        intensity_value = str(getattr(row, "intervention_intensity", "")).lower()
+        if intensity_value == "high" and high_intensity_used >= high_intensity_cap:
+            continue
+        selected_rows.append(row._asdict())
+        used_customers.add(customer_id)
+        spent += cost
+        if intensity_value == "high":
+            high_intensity_used += 1
+
+    if not selected_rows:
+        return candidate.head(0).copy()
+    return pd.DataFrame(selected_rows)
+
+
+def build_budget_sensitivity_map(
+    customers: pd.DataFrame,
+    base_budget: int,
+    threshold: float = 0.50,
+    max_customers: Optional[int] = None,
+    survival_predictions: Optional[pd.DataFrame] = None,
+    budget_step: int = 1_000_000,
+) -> Tuple[Dict[str, object], pd.DataFrame]:
+    """Evaluate how profit, ROI, target count, and marginal gain change by budget.
+
+    This function intentionally reuses one candidate pool across all budget
+    levels.  It avoids rebuilding dose/timing candidates for every row, so the
+    dashboard can show a sensitivity table without making the budget view slow.
+    """
+    base_budget = max(int(base_budget or 0), 0)
+    budget_step = max(int(budget_step or 1_000_000), 1)
+
+    empty_summary: Dict[str, object] = {
+        "current_budget": base_budget,
+        "current_spent": 0.0,
+        "current_target_count": 0,
+        "current_expected_profit": 0.0,
+        "current_average_roi": 0.0,
+        "next_1m_expected_profit_gain": 0.0,
+        "current_marginal_roi": 0.0,
+        "saturation_budget": None,
+        "saturation_label": "분석 가능한 후보 고객이 없습니다.",
+        "low_efficiency_budget": None,
+        "low_efficiency_label": "분석 가능한 후보 고객이 없습니다.",
+        "candidate_customers": 0,
+        "budget_step": budget_step,
+    }
+
+    if customers.empty:
+        return empty_summary, pd.DataFrame()
+
+    candidate = _build_candidate_pool(customers, threshold=threshold, survival_predictions=survival_predictions)
+    if candidate.empty:
+        return empty_summary, pd.DataFrame()
+
+    budgets = _budget_sensitivity_grid(base_budget, step=budget_step)
+    rows: list[dict] = []
+    previous: dict | None = None
+
+    for budget_value in budgets:
+        selected = _select_budget_candidates(candidate, budget=budget_value, max_customers=max_customers)
+        spent = float(selected["coupon_cost"].sum()) if not selected.empty and "coupon_cost" in selected.columns else 0.0
+        profit = float(selected["expected_incremental_profit"].sum()) if not selected.empty and "expected_incremental_profit" in selected.columns else 0.0
+        target_count = int(selected["customer_id"].nunique()) if not selected.empty and "customer_id" in selected.columns else 0
+        avg_roi = float(profit / spent) if spent > 0 else 0.0
+
+        if previous is None:
+            added_budget = 0.0
+            added_spend = 0.0
+            added_profit = 0.0
+            added_targets = 0
+            marginal_profit_per_1m = 0.0
+            marginal_roi = 0.0
+            status = "기준 구간"
+            interpretation = "비교를 시작하기 위한 기준 예산 구간입니다."
+        else:
+            added_budget = float(budget_value - previous["budget"])
+            added_spend = float(spent - previous["spent"])
+            added_profit = float(profit - previous["expected_incremental_profit"])
+            added_targets = int(target_count - previous["target_count"])
+            marginal_profit_per_1m = float(added_profit / added_budget * 1_000_000) if added_budget > 0 else 0.0
+            marginal_roi = float(added_profit / added_spend) if added_spend > 0 else 0.0
+
+            if added_profit <= 0 and added_targets <= 0:
+                status = "포화 또는 낭비 주의"
+                interpretation = "예산을 더 늘려도 추가로 선택되는 고객이나 기대 순이익이 거의 없습니다."
+            elif marginal_roi < 0.2:
+                status = "효율 낮음"
+                interpretation = "추가 예산 대비 기대 순이익이 낮아 예산 확대를 신중히 검토해야 합니다."
+            elif avg_roi < float(previous.get("average_roi", 0.0)):
+                status = "ROI 하락 시작"
+                interpretation = "타깃 고객은 늘지만 평균 ROI가 낮아지기 시작하는 구간입니다."
+            elif marginal_roi >= avg_roi:
+                status = "확대 검토 가능"
+                interpretation = "추가 예산의 효율이 현재 평균과 비슷하거나 더 높아 확대를 검토할 수 있습니다."
+            else:
+                status = "점진 확대 가능"
+                interpretation = "추가 예산의 효율은 양호하지만 평균 효율보다 낮아 단계적 확대가 적절합니다."
+
+        row = {
+            "budget": int(budget_value),
+            "spent": round(spent, 2),
+            "remaining": round(max(float(budget_value) - spent, 0.0), 2),
+            "target_count": int(target_count),
+            "expected_incremental_profit": round(profit, 2),
+            "average_roi": round(avg_roi, 6),
+            "added_budget": round(added_budget, 2),
+            "added_spend": round(added_spend, 2),
+            "added_target_count": int(added_targets),
+            "added_profit": round(added_profit, 2),
+            "marginal_profit_per_1m": round(marginal_profit_per_1m, 2),
+            "marginal_roi": round(marginal_roi, 6),
+            "budget_status": status,
+            "operator_message": interpretation,
+        }
+        rows.append(row)
+        previous = {
+            "budget": int(budget_value),
+            "spent": spent,
+            "target_count": target_count,
+            "expected_incremental_profit": profit,
+            "average_roi": avg_roi,
+        }
+
+    table = pd.DataFrame(rows)
+    if table.empty:
+        return empty_summary, table
+
+    current_idx = (table["budget"] - base_budget).abs().idxmin()
+    current_row = table.loc[current_idx]
+    next_budget = base_budget + budget_step
+    next_candidates = table[table["budget"] >= next_budget]
+    next_row = next_candidates.iloc[0] if not next_candidates.empty else current_row
+
+    positive_marginal = pd.to_numeric(table.get("marginal_profit_per_1m", pd.Series(dtype=float)), errors="coerce").fillna(0.0)
+    best_marginal = float(positive_marginal.max()) if not positive_marginal.empty else 0.0
+    saturation_threshold = max(best_marginal * 0.15, 0.0)
+    saturation_df = table[(table["budget"] > 0) & (table["marginal_profit_per_1m"] <= saturation_threshold) & (table["added_target_count"] <= 0)]
+    if saturation_df.empty and best_marginal > 0:
+        saturation_df = table[(table["budget"] > 0) & (table["marginal_profit_per_1m"] <= saturation_threshold)]
+    if saturation_df.empty:
+        saturation_budget = None
+        saturation_label = "현재 분석 범위에서는 뚜렷한 포화점이 보이지 않습니다."
+    else:
+        saturation_budget = int(saturation_df.iloc[0]["budget"])
+        saturation_label = f"약 {saturation_budget:,}원 이후부터 추가 예산 효율이 크게 낮아질 수 있습니다."
+
+    low_eff_df = table[(table["budget"] > 0) & ((table["marginal_roi"] < 0.2) | (table["marginal_profit_per_1m"] <= 0))]
+    if low_eff_df.empty:
+        low_efficiency_budget = None
+        low_efficiency_label = "현재 분석 범위에서는 명확한 저효율 예산 구간이 확인되지 않습니다."
+    else:
+        low_efficiency_budget = int(low_eff_df.iloc[0]["budget"])
+        low_efficiency_label = f"약 {low_efficiency_budget:,}원 구간부터 추가 집행 효율을 점검하는 것이 좋습니다."
+
+    summary: Dict[str, object] = {
+        "current_budget": int(base_budget),
+        "current_spent": float(current_row.get("spent", 0.0)),
+        "current_target_count": int(current_row.get("target_count", 0)),
+        "current_expected_profit": float(current_row.get("expected_incremental_profit", 0.0)),
+        "current_average_roi": float(current_row.get("average_roi", 0.0)),
+        "next_1m_expected_profit_gain": float(next_row.get("added_profit", 0.0)) if int(next_row.get("budget", base_budget)) >= next_budget else 0.0,
+        "current_marginal_roi": float(current_row.get("marginal_roi", 0.0)),
+        "saturation_budget": saturation_budget,
+        "saturation_label": saturation_label,
+        "low_efficiency_budget": low_efficiency_budget,
+        "low_efficiency_label": low_efficiency_label,
+        "candidate_customers": int(candidate["customer_id"].nunique()) if "customer_id" in candidate.columns else int(len(candidate)),
+        "budget_step": int(budget_step),
+    }
+    return summary, table
+
+
 def get_churn_status(customers: pd.DataFrame, threshold: float) -> Tuple[Dict[str, float], pd.DataFrame]:
     df = customers.copy()
     if df.empty:
