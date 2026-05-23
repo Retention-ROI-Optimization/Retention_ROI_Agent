@@ -292,28 +292,11 @@ def get_budget_result(
     high_intensity_cap = max(1, int((selection_cap or max(len(candidate), 1)) * 0.35))
     high_intensity_used = 0
 
-    intensity_seed_order = ["high", "mid", "low"]
-    for intensity in intensity_seed_order:
-        if selection_cap is not None and len(selected_rows) >= selection_cap:
-            break
-        seed_pool = candidate[candidate["intervention_intensity"].astype(str).str.lower() == intensity]
-        if seed_pool.empty:
-            continue
-        for row in seed_pool.itertuples(index=False):
-            customer_id = int(getattr(row, "customer_id"))
-            cost = float(getattr(row, "coupon_cost", 0.0))
-            intensity_value = str(getattr(row, "intervention_intensity", "")).lower()
-            if customer_id in used_customers or cost <= 0 or spent + cost > float(budget):
-                continue
-            if intensity_value == "high" and high_intensity_used >= high_intensity_cap:
-                continue
-            selected_rows.append(row._asdict())
-            used_customers.add(customer_id)
-            spent += cost
-            if intensity_value == "high":
-                high_intensity_used += 1
-            break
-
+    # Do not pre-seed one action per intensity.  A forced high/mid/low seed can
+    # make small budget changes appear ineffective and may choose a high-cost
+    # action before a better ROI action.  The single greedy pass below treats
+    # all customer × intensity candidates uniformly while enforcing one action
+    # per customer, budget cap, max-customer cap, and high-intensity cap.
     for row in candidate.itertuples(index=False):
         if selection_cap is not None and len(selected_rows) >= selection_cap:
             break
@@ -325,9 +308,14 @@ def get_budget_result(
             continue
         if spent + cost > float(budget):
             continue
+        intensity_value = str(getattr(row, "intervention_intensity", "")).lower()
+        if intensity_value == "high" and high_intensity_used >= high_intensity_cap:
+            continue
         selected_rows.append(row._asdict())
         used_customers.add(customer_id)
         spent += cost
+        if intensity_value == "high":
+            high_intensity_used += 1
 
     if selected_rows:
         selected = pd.DataFrame(selected_rows)
@@ -342,9 +330,11 @@ def get_budget_result(
         'budget': int(budget),
         'spent': int(round(spent)),
         'remaining': int(round(budget - spent)),
-        'num_targeted': int(len(selected)),
+        'num_targeted': int(selected['customer_id'].nunique()) if not selected.empty and 'customer_id' in selected.columns else 0,
         'candidate_customers': int(candidate['customer_id'].nunique()),
         'candidate_actions': int(len(candidate)),
+        'selected_actions': int(len(selected)),
+        'budget_binding': bool(spent >= float(budget) * 0.98) if budget > 0 else False,
         'expected_incremental_profit': round(expected_profit, 2),
         'overall_roi': round(overall_roi, 6),
         'threshold': float(threshold),
