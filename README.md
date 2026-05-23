@@ -2,29 +2,34 @@
 
 ## Project Overview
 
-Retention ROI Agent is an operational retention decision platform for **customer churn prediction, budget-aware intervention targeting, personalized recommendations, and real-time monitoring**.
+Retention ROI Project is a data-driven decision system that covers the full retention workflow: **customer churn prediction, intervention strategy optimization, personalized recommendations, and real-time operations**.  
+Rather than only predicting _who_ will churn, this system estimates **_when_ churn is likely to happen**, **_which_ offer should be given to _which_ customer for maximum ROI**, and **identifies the optimal execution priority under budget constraints**.
 
-The platform is organized into two business modes:
+This project supports:
 
-1. **Finance Mode** — analyzes churn/cancellation risk and campaign priority using deposits, loans, cards, transactions, balances, delinquency, and customer-service history.
-2. **E-commerce Mode** — analyzes churn risk and personalized recommendations using visits, searches, carts, purchases, coupons, categories, and browsing behavior.
+- Customer behavior analysis using simulated data
+- Churn modeling and survival analysis for churn timing estimation
+- Uplift, CLV, and segmentation-based targeting with budget optimization
+- Customer-level action recommendations with operational explainability
+- Strategy validation through A/B testing and simulation fidelity checks
+- Pre-deployment validation through real-time replay pipelines
 
-The goal is not only to predict who may leave, but also to decide **who should receive an intervention, what action should be recommended, and how the limited budget should be allocated for better expected ROI**.
+In short, this project is an end-to-end **Retention Decision Intelligence Pipeline** that helps marketing and CRM teams execute retention strategies based on data rather than intuition.
 
-## Dashboard Screens
+## Image
 
-The dashboard focuses on four operational views:
-
-1. **Churn Status** — identifies at-risk customers and overall risk scale.
-2. **Budget Allocation & Targets** — selects final retention targets under budget and churn-risk thresholds.
-3. **Personalized Recommendations** — recommends products, benefits, or actions for final targets.
-4. **Real-time Operations** — monitors live customer risk and action queues.
-
-The UI supports Korean, English, and Japanese. Dashboard labels, table values, chart axes, and LLM summary instructions are localized for each language mode.
+<img src="assets/dash1.jpeg" width="400"/>
 
 
+<img src="assets/dash2.jpeg" width="400"/>
 
-## Installation
+
+<img src="assets/dash3.jpeg" width="400"/>
+
+<img src="assets/dash4.jpeg" width="400"/>
+
+
+## Installment
 
 ```bash
 pip install -r requirements.txt

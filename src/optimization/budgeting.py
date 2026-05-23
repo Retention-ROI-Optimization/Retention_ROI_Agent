@@ -129,6 +129,8 @@ def _greedy_select(candidates: pd.DataFrame, budget: int) -> pd.DataFrame:
     ranked = candidates[candidates["coupon_cost"] > 0].copy()
     ranked = ranked[ranked["expected_revenue"] > 0].copy()
     ranked = ranked[ranked["expected_incremental_profit"] > 0].copy()
+    if "uplift_segment" in ranked.columns:
+        ranked = ranked[~ranked["uplift_segment"].astype(str).isin(["Sleeping Dogs"])].copy()
     ranked = ranked.sort_values(
         [
             "selection_score",
@@ -146,6 +148,8 @@ def _greedy_select(candidates: pd.DataFrame, budget: int) -> pd.DataFrame:
     selected_rows = []
     used_customers: set[int] = set()
     spent = 0.0
+    high_intensity_cap = max(1, int(max(len(ranked["customer_id"].unique()), 1) * 0.35)) if "intervention_intensity" in ranked.columns else 10**9
+    high_intensity_used = 0
     for row in ranked.itertuples(index=False):
         customer_id = int(getattr(row, "customer_id"))
         cost = float(getattr(row, "coupon_cost", 0.0))
@@ -155,9 +159,14 @@ def _greedy_select(candidates: pd.DataFrame, budget: int) -> pd.DataFrame:
             continue
         if spent + cost > float(budget):
             continue
+        intensity_value = str(getattr(row, "intervention_intensity", "")).lower()
+        if intensity_value == "high" and high_intensity_used >= high_intensity_cap:
+            continue
         selected_rows.append(row._asdict())
         used_customers.add(customer_id)
         spent += cost
+        if intensity_value == "high":
+            high_intensity_used += 1
 
     if not selected_rows:
         return ranked.head(0).copy()
@@ -229,7 +238,13 @@ def run_budget_optimization(result_dir: Path, budget: int) -> OptimizationArtifa
         "expected_revenue": round(revenue, 2),
         "expected_incremental_profit": round(profit, 2),
         "overall_roi": round(roi, 6),
-        "baseline_method": "Greedy multiple-choice selection over customer × timing × intensity actions",
+        "baseline_method": "Constrained multiple-choice greedy over customer × timing × intensity actions",
+        "guardrails": {
+            "one_action_per_customer": True,
+            "positive_expected_profit_only": True,
+            "exclude_sleeping_dogs": True,
+            "high_intensity_cap_share": 0.35
+        },
         "objective": "Maximize Σ(learned dose-response uplift × value basis × survival timing − action cost)",
         "selected_intensity_counts": _complete_intensity_counts(selected),
         "survival_enriched": bool(not survival_predictions.empty),

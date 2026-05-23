@@ -131,6 +131,11 @@ def run_ab_test_analysis(result_dir: Path) -> ABTestArtifacts:
     chi2, chi2_p, _, _ = chi2_contingency(contingency)
     required_n = _power_sample_size(ztest["control_rate"], ztest["treatment_rate"], alpha=alpha, power=target_power)
     achieved_power = _achieved_power(ztest["control_rate"], ztest["treatment_rate"], n_c, n_t, alpha=alpha)
+    # Minimum detectable effect around the control churn rate for the current sample size.
+    # This prevents over-claiming when the observed lift is smaller than the design can reliably detect.
+    min_group = max(min(n_t, n_c), 1)
+    p0 = min(max(float(ztest["control_rate"]), 1e-6), 1 - 1e-6)
+    mde_abs = (norm.ppf(1 - alpha / 2) + norm.ppf(target_power)) * math.sqrt(2 * p0 * (1 - p0) / min_group)
 
     treatment_churn_rate = float(ztest["treatment_rate"])
     control_churn_rate = float(ztest["control_rate"])
@@ -184,6 +189,7 @@ def run_ab_test_analysis(result_dir: Path) -> ABTestArtifacts:
             "target_power": target_power,
             "required_sample_size_per_group": int(required_n),
             "achieved_power_with_current_sample": round(achieved_power, 6),
+            "minimum_detectable_effect_abs": round(float(mde_abs), 6),
             "current_min_group_size": int(min(n_t, n_c)),
             "meets_required_sample_size": bool(min(n_t, n_c) >= required_n),
         },
@@ -217,6 +223,15 @@ def run_ab_test_analysis(result_dir: Path) -> ABTestArtifacts:
             "cost_per_incremental_retained_customer": round(float(cost_per_incremental_retained_customer), 2) if cost_per_incremental_retained_customer is not None else None,
             "incremental_roi_after_coupon": round(float(incremental_roi), 6) if incremental_roi is not None else None,
         },
+        "decision_guardrails": {
+            "do_not_claim_effect_if_underpowered": bool(achieved_power < target_power),
+            "observed_effect_smaller_than_mde": bool(abs(churn_diff) < mde_abs),
+            "recommended_interpretation": (
+                "효과 검증 완료"
+                if (ztest["p_value"] < alpha and achieved_power >= target_power and abs(churn_diff) >= mde_abs)
+                else "실험 설계/검증 프레임워크로 해석: 현재 결과만으로 효과를 단정하지 말고 표본 수와 재실험이 필요"
+            ),
+        },
     }
 
     significant_text = "유의하다" if result["hypothesis_test"]["is_statistically_significant"] else "유의하지 않다"
@@ -247,6 +262,7 @@ def run_ab_test_analysis(result_dir: Path) -> ABTestArtifacts:
 - 목표 검정력(power): **{target_power:.2f}**
 - 현재 관측된 효과 크기를 검출하기 위해 필요한 표본 수(그룹당): **{required_n:,}명**
 - 현재 표본으로 추정한 achieved power: **{achieved_power:.3f}**
+- 현재 표본 기준 최소 검출 가능 효과(MDE): **{mde_abs:.3%}p**
 - 현재 최소 그룹 표본 수가 요구치를 충족하는가: **{'예' if min(n_t, n_c) >= required_n else '아니오'}**
 
 ## 4. 이탈률 및 증분 효과

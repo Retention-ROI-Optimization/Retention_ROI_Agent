@@ -14,6 +14,7 @@ from src.api.services.user_live_db import (
     ensure_user_live_seed_columns,
     user_live_session,
 )
+from src.api.services.cache import cached_json, invalidate_user_live_cache, make_cache_key
 
 
 _MODEL_CACHE: dict[str, Any] = {}
@@ -694,6 +695,10 @@ def score_changed_customers(
                 "risk_segment": risk_segment,
             })
 
+    # Score writes must invalidate Redis cache; otherwise demo events change DB rows
+    # while dashboards keep showing stale totals/risk counts.
+    invalidate_user_live_cache()
+
     return {
         "success": True,
         "updated_customers": updated_count,
@@ -711,53 +716,71 @@ def get_user_live_scores(
     db_url: str,
     limit: int | None = None,
     customer_id: int | None = None,
+    risk_threshold: float = 0.70,
+    redis_url: str | None = None,
 ) -> dict[str, Any]:
     ensure_user_live_seed_columns(db_url)
+    safe_threshold = max(0.0, min(float(risk_threshold), 1.0))
+    cache_key = make_cache_key(
+        "user-live",
+        "scores",
+        "v4",
+        limit if limit is not None else "all",
+        customer_id or "all",
+        f"thr{safe_threshold:.4f}",
+    )
 
-    with user_live_session(db_url) as conn:
-        if customer_id is not None:
-            rows = conn.execute(
+    def _load_payload() -> dict[str, Any]:
+        with user_live_session(db_url) as conn:
+            if customer_id is not None:
+                rows = conn.execute(
+                    text("""
+                    SELECT *
+                    FROM customer_scores
+                    WHERE customer_id = :customer_id
+                    """),
+                    {"customer_id": customer_id},
+                ).mappings().all()
+
+            elif limit is None:
+                rows = conn.execute(
+                    text("""
+                    SELECT *
+                    FROM customer_scores
+                    ORDER BY churn_score DESC NULLS LAST, scored_at DESC
+                    """)
+                ).mappings().all()
+
+            else:
+                rows = conn.execute(
+                    text("""
+                    SELECT *
+                    FROM customer_scores
+                    ORDER BY churn_score DESC NULLS LAST, scored_at DESC
+                    LIMIT :limit
+                    """),
+                    {"limit": int(limit)},
+                ).mappings().all()
+
+            summary = conn.execute(
                 text("""
-                SELECT *
+                SELECT
+                    COUNT(*) AS scored_customers,
+                    AVG(churn_score) AS avg_churn_score,
+                    SUM(CASE WHEN churn_score >= :risk_threshold THEN 1 ELSE 0 END) AS high_risk_customers,
+                    MIN(churn_score) AS min_churn_score,
+                    MAX(churn_score) AS max_churn_score,
+                    MAX(scored_at) AS latest_scored_at
                 FROM customer_scores
-                WHERE customer_id = :customer_id
                 """),
-                {"customer_id": customer_id},
-            ).mappings().all()
+                {"risk_threshold": safe_threshold},
+            ).mappings().first()
 
-        elif limit is None:
-            rows = conn.execute(
-                text("""
-                SELECT *
-                FROM customer_scores
-                ORDER BY churn_score DESC NULLS LAST, scored_at DESC
-                """)
-            ).mappings().all()
+        return {
+            "success": True,
+            "summary": dict(summary or {}),
+            "records": [dict(row) for row in rows],
+            "cache": {"key": cache_key, "ttl_seconds": 15, "risk_threshold": safe_threshold},
+        }
 
-        else:
-            rows = conn.execute(
-                text("""
-                SELECT *
-                FROM customer_scores
-                ORDER BY churn_score DESC NULLS LAST, scored_at DESC
-                LIMIT :limit
-                """),
-                {"limit": int(limit)},
-            ).mappings().all()
-
-        summary = conn.execute(
-            text("""
-            SELECT
-                COUNT(*) AS scored_customers,
-                AVG(churn_score) AS avg_churn_score,
-                SUM(CASE WHEN churn_score >= 0.70 THEN 1 ELSE 0 END) AS high_risk_customers,
-                MAX(scored_at) AS latest_scored_at
-            FROM customer_scores
-            """)
-        ).mappings().first()
-
-    return {
-        "success": True,
-        "summary": dict(summary or {}),
-        "records": [dict(row) for row in rows],
-    }
+    return cached_json(cache_key, _load_payload, ttl_seconds=15, redis_url=redis_url)
