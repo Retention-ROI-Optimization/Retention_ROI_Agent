@@ -68,7 +68,7 @@ from dashboard.services.llm_service import (
     numeric_summary,
     series_distribution,
 )
-from dashboard.services.optimize_service import get_budget_result
+from dashboard.services.optimize_service import build_budget_sensitivity_map, get_budget_result
 from dashboard.services.uplift_service import (
     get_retention_targets,
     get_top_high_value_customers,
@@ -8141,6 +8141,87 @@ elif view == "4. 예산 최적화 및 리텐션 타겟":
     m4.metric(T("타겟 고객 수"), f"{int(optimize_summary.get('num_targeted', len(selected_customers))):,}")
     m5.metric(T("예상 증분 이익"), money(optimize_summary.get("expected_incremental_profit", 0)))
 
+    st.markdown("### 예산 민감도 지도")
+    st.caption("예산을 100만 원 단위로 조정했을 때 타깃 고객 수, 기대 순이익, 평균 ROI, 한계 ROI가 어떻게 바뀌는지 표로 비교합니다.")
+    try:
+        budget_sensitivity_summary, budget_sensitivity_table = build_budget_sensitivity_map(
+            customers,
+            budget=int(budget),
+            threshold=float(threshold),
+            max_customers=target_cap,
+            budget_step=1_000_000,
+        )
+    except Exception as exc:
+        budget_sensitivity_summary, budget_sensitivity_table = {}, pd.DataFrame()
+        st.warning(f"예산 민감도 지도를 계산하지 못했습니다: {exc}")
+
+    if not budget_sensitivity_table.empty:
+        sensitivity_summary_df = pd.DataFrame(
+            [
+                {"항목": "현재 입력 예산", "값": money(budget_sensitivity_summary.get("current_budget", budget))},
+                {"항목": "현재 집행 예산", "값": money(budget_sensitivity_summary.get("current_spent", 0))},
+                {"항목": "현재 타깃 고객 수", "값": f"{int(budget_sensitivity_summary.get('current_target_count', 0)):,}명"},
+                {"항목": "현재 기대 순이익", "값": money(budget_sensitivity_summary.get("current_expected_profit", 0))},
+                {"항목": "현재 평균 ROI", "값": _format_roi_display(budget_sensitivity_summary.get("current_average_roi", 0))},
+                {"항목": "현재 구간 한계 ROI", "값": _format_roi_display(budget_sensitivity_summary.get("current_marginal_roi", 0))},
+                {"항목": "예산 100만 원 추가 시 기대 순이익 증가", "값": money(budget_sensitivity_summary.get("next_1m_expected_profit_gain", 0))},
+                {"항목": "예산 포화점", "값": str(budget_sensitivity_summary.get("saturation_label", "확인되지 않음"))},
+                {"항목": "저효율 예산 구간", "값": str(budget_sensitivity_summary.get("low_efficiency_label", "확인되지 않음"))},
+            ]
+        )
+        _render_dataframe_with_count(
+            sensitivity_summary_df,
+            label="예산 민감도 핵심 지표",
+            prefer_static=True,
+            height=360,
+        )
+
+        sensitivity_display = budget_sensitivity_table.copy()
+        sensitivity_display["예산 구간"] = sensitivity_display["budget"].map(
+            lambda x: "현재 선택 예산" if int(x) == int(budget) else f"예산 {int(x):,}원"
+        )
+        sensitivity_display["입력 예산"] = sensitivity_display["budget"].map(money)
+        sensitivity_display["집행 예산"] = sensitivity_display["spent"].map(money)
+        sensitivity_display["잔여 예산"] = sensitivity_display["remaining"].map(money)
+        sensitivity_display["타깃 고객 수"] = sensitivity_display["target_count"].map(lambda x: f"{int(x):,}명")
+        sensitivity_display["기대 순이익"] = sensitivity_display["expected_incremental_profit"].map(money)
+        sensitivity_display["평균 ROI"] = sensitivity_display["average_roi"].map(_format_roi_display)
+        sensitivity_display["직전 구간 대비 추가 예산"] = sensitivity_display["added_budget"].map(money)
+        sensitivity_display["직전 구간 대비 추가 집행액"] = sensitivity_display["added_spend"].map(money)
+        sensitivity_display["추가 타깃 고객 수"] = sensitivity_display["added_target_count"].map(lambda x: f"{int(x):,}명")
+        sensitivity_display["직전 구간 대비 추가 순이익"] = sensitivity_display["added_profit"].map(money)
+        sensitivity_display["예산 100만 원당 추가 순이익"] = sensitivity_display["marginal_profit_per_1m"].map(money)
+        sensitivity_display["한계 ROI"] = sensitivity_display["marginal_roi"].map(_format_roi_display)
+        sensitivity_display["예산 상태"] = sensitivity_display["budget_status"].astype(str)
+        sensitivity_display["운영 해석"] = sensitivity_display["operator_message"].astype(str)
+        sensitivity_display = sensitivity_display[
+            [
+                "예산 구간",
+                "입력 예산",
+                "집행 예산",
+                "잔여 예산",
+                "타깃 고객 수",
+                "기대 순이익",
+                "평균 ROI",
+                "직전 구간 대비 추가 예산",
+                "직전 구간 대비 추가 집행액",
+                "추가 타깃 고객 수",
+                "직전 구간 대비 추가 순이익",
+                "예산 100만 원당 추가 순이익",
+                "한계 ROI",
+                "예산 상태",
+                "운영 해석",
+            ]
+        ]
+        _render_dataframe_with_count(
+            sensitivity_display,
+            label="예산 구간별 민감도 지도",
+            prefer_static=True,
+            height=min(760, 220 + 34 * len(sensitivity_display)),
+        )
+    else:
+        st.info("예산 민감도 지도를 만들 후보 고객이 없습니다. 이탈 임계값을 낮추거나 예산 조건을 조정해 보세요.")
+
     selected_customers = _ensure_retention_target_schema(selected_customers)
     optimized_targets = selected_customers.sort_values(
         ["priority_score", "selection_score", "expected_incremental_profit", "customer_id"],
@@ -8162,14 +8243,6 @@ elif view == "4. 예산 최적화 및 리텐션 타겟":
         )
     if not candidate_by_segment.empty:
         candidate_by_segment = _translate_dataframe_values_for_display(candidate_by_segment)
-        cand_fig = px.bar(
-            candidate_by_segment,
-            x="uplift_segment",
-            y="candidate_customer_count",
-            text="candidate_customer_count",
-            title=T("세그먼트별 예산 배분 후보 고객 수"),
-        )
-        st.plotly_chart(cand_fig, use_container_width=True)
         _render_dataframe_with_count(candidate_by_segment, label=T("세그먼트별 예산 배분 후보 고객 수"), prefer_static=True)
     else:
         st.info(T("세그먼트별 후보 고객 수를 계산할 데이터가 없습니다."))
@@ -8178,38 +8251,6 @@ elif view == "4. 예산 최적화 및 리텐션 타겟":
         st.warning(T("현재 조건에서 예산 배분 대상 고객이 없습니다."))
     else:
         st.markdown(f"### {T('세그먼트별 예산 배분 테이블')}")
-        chart_df = _translate_dataframe_values_for_display(segment_allocation.copy())
-        label_threshold = float(chart_df["allocated_budget"].max()) * 0.08 if "allocated_budget" in chart_df.columns and not chart_df.empty else 0.0
-        if "customer_count" in chart_df.columns and "allocated_budget" in chart_df.columns:
-            chart_df["customer_count_label"] = np.where(
-                (chart_df["customer_count"] >= 5) | (chart_df["allocated_budget"] >= label_threshold),
-                chart_df["customer_count"].astype(int).astype(str),
-                "",
-            )
-        if "allocated_budget" in chart_df.columns:
-            if "intervention_intensity" in chart_df.columns and chart_df["intervention_intensity"].nunique() > 1:
-                bar_fig = px.bar(
-                    chart_df,
-                    x="uplift_segment" if "uplift_segment" in chart_df.columns else chart_df.index,
-                    y="allocated_budget",
-                    color="intervention_intensity",
-                    barmode="group",
-                    text="customer_count_label" if "customer_count_label" in chart_df.columns else None,
-                    hover_data=[c for c in ["customer_count", "expected_profit"] if c in chart_df.columns],
-                    title=T("세그먼트·개입 강도별 예산 배분"),
-                )
-                bar_fig.update_layout(legend_title_text=T("개입 강도"))
-            else:
-                bar_fig = px.bar(
-                    chart_df,
-                    x="uplift_segment" if "uplift_segment" in chart_df.columns else chart_df.index,
-                    y="allocated_budget",
-                    text="customer_count_label" if "customer_count_label" in chart_df.columns else None,
-                    hover_data=[c for c in ["customer_count", "expected_profit"] if c in chart_df.columns],
-                    title=T("세그먼트별 예산 배분"),
-                )
-            bar_fig.update_traces(textposition="outside", cliponaxis=False)
-            st.plotly_chart(bar_fig, use_container_width=True)
         display_df = _translate_dataframe_values_for_display(segment_allocation.copy())
         if "allocated_budget" in display_df.columns:
             display_df["allocated_budget"] = display_df["allocated_budget"].map(money)
@@ -8237,6 +8278,7 @@ elif view == "4. 예산 최적화 및 리텐션 타겟":
             "recommended_intervention_window",
         ]
         display_df = optimized_targets[[col for col in display_columns if col in optimized_targets.columns]].copy()
+        display_df = _translate_dataframe_values_for_display(display_df)
         if "churn_probability" in display_df.columns:
             display_df["churn_probability"] = display_df["churn_probability"].map(lambda x: f"{float(x):.3f}" if pd.notna(x) else "")
         if "uplift_score" in display_df.columns:
@@ -8278,6 +8320,8 @@ elif view == "4. 예산 최적화 및 리텐션 타겟":
         "threshold": threshold,
         "budget": budget,
         "optimize_summary": optimize_summary,
+        "budget_sensitivity_summary": budget_sensitivity_summary if isinstance(budget_sensitivity_summary, dict) else {},
+        "budget_sensitivity_table": budget_sensitivity_table.head(20).round(4).to_dict(orient="records") if isinstance(budget_sensitivity_table, pd.DataFrame) and not budget_sensitivity_table.empty else [],
         "candidate_by_segment": candidate_by_segment.to_dict(orient="records") if not candidate_by_segment.empty else [],
         "segment_allocation": segment_allocation.round(4).to_dict(orient="records") if not segment_allocation.empty else [],
         "target_count": int(len(optimized_targets)),
@@ -8297,11 +8341,12 @@ elif view == "13. 반사실 리텐션 실험실":
     _render_view_intro("13")
     st.caption("이 화면은 실제 집행 결과가 아니라, 이탈 가능성·고객가치·개입 반응 가능성·예상 이탈 시점을 조합해 만든 의사결정 비교표입니다. 실제 효과는 A/B 검증이나 검증용 미개입군으로 확인해야 합니다.")
 
+    counterfactual_display_limit = 500
     counterfactual_summary, counterfactual_lab, counterfactual_scenarios = build_counterfactual_retention_lab(
         customers=customers,
         selected_customers=selected_customers,
         survival_predictions=survival_predictions,
-        top_n=max(int(top_n), 1),
+        top_n=counterfactual_display_limit,
         threshold=float(threshold),
     )
 
@@ -8424,7 +8469,7 @@ elif view == "13. 반사실 리텐션 실험실":
             "ab_test_recommended",
             "recommendation_reason",
         ]
-        display_df = counterfactual_lab[[col for col in display_columns if col in counterfactual_lab.columns]].copy()
+        display_df = counterfactual_lab[[col for col in display_columns if col in counterfactual_lab.columns]].head(counterfactual_display_limit).copy()
         if "persona" in display_df.columns:
             display_df["persona"] = display_df["persona"].map(_ko_value)
         for text_col in ["recommended_action", "final_recommendation", "confidence", "recommendation_reason"]:
