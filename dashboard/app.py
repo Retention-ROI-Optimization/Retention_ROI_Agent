@@ -35,6 +35,7 @@ from dashboard.services.api_client import (
     seed_user_live_from_artifacts,
 )
 from dashboard.services.churn_service import get_churn_status
+from dashboard.services.counterfactual_service import build_counterfactual_retention_lab
 from dashboard.services.cohort_service import (
     get_activity_definition_label,
     get_available_activity_definitions,
@@ -90,6 +91,7 @@ DASHBOARD_VIEW_ITEMS: tuple[tuple[str, str], ...] = (
     ("1", "이탈현황"),
     ("9", "이탈 시점 예측"),
     ("4", "예산 최적화 및 리텐션 타겟"),
+    ("13", "반사실 리텐션 실험실"),
     ("5", "개인화 추천"),
     ("6", "실시간 운영 모니터"),
 )
@@ -97,7 +99,7 @@ DASHBOARD_VIEW_OPTIONS: tuple[str, ...] = tuple(f"{n}. {t}" for n, t in DASHBOAR
 VIEW_OPTION_BY_NUM: dict[str, str] = {num: f"{num}. {title}" for num, title in DASHBOARD_VIEW_ITEMS}
 
 DASHBOARD_VIEW_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("핵심 화면", ("1", "9", "4", "5", "6")),
+    ("핵심 화면", ("1", "9", "4", "13", "5", "6")),
 )
 
 GROUP_TO_VIEW_OPTIONS: dict[str, tuple[str, ...]] = {
@@ -116,22 +118,25 @@ CORE_VIEW_DISPLAY_LABELS: dict[str, dict[str, str]] = {
         "1. 이탈현황": "① 이탈 현황",
         "9. 이탈 시점 예측": "② 이탈 시점 예측",
         "4. 예산 최적화 및 리텐션 타겟": "③ 예산 배분·타겟 고객",
-        "5. 개인화 추천": "④ 개인화 추천",
-        "6. 실시간 운영 모니터": "⑤ 실시간 운영 모니터",
+        "13. 반사실 리텐션 실험실": "④ 반사실 리텐션 실험실",
+        "5. 개인화 추천": "⑤ 개인화 추천",
+        "6. 실시간 운영 모니터": "⑥ 실시간 운영 모니터",
     },
     "en": {
         "1. 이탈현황": "① Churn Status",
         "9. 이탈 시점 예측": "② Churn Timing",
         "4. 예산 최적화 및 리텐션 타겟": "③ Budget Allocation & Targets",
-        "5. 개인화 추천": "④ Personalized Recommendations",
-        "6. 실시간 운영 모니터": "⑤ Real-time Operations",
+        "13. 반사실 리텐션 실험실": "④ Counterfactual Retention Lab",
+        "5. 개인화 추천": "⑤ Personalized Recommendations",
+        "6. 실시간 운영 모니터": "⑥ Real-time Operations",
     },
     "ja": {
         "1. 이탈현황": "① 離脱状況",
         "9. 이탈 시점 예측": "② 離脱時点予測",
         "4. 예산 최적화 및 리텐션 타겟": "③ 予算配分・対象顧客",
-        "5. 개인화 추천": "④ パーソナライズ推薦",
-        "6. 실시간 운영 모니터": "⑤ リアルタイム運用",
+        "13. 반사실 리텐션 실험실": "④ 反事実リテンション実験室",
+        "5. 개인화 추천": "⑤ パーソナライズ推薦",
+        "6. 실시간 운영 모니터": "⑥ リアルタイム運用",
     },
 }
 
@@ -793,6 +798,90 @@ EXTRA_COLUMN_LABELS: dict[str, dict[str, str]] = {
 for _lang, _mapping in EXTRA_COLUMN_LABELS.items():
     COLUMN_LABELS.setdefault(_lang, {}).update(_mapping)
 
+COUNTERFACTUAL_UI_TEXT: dict[str, dict[str, str]] = {
+    "en": {
+        "반사실 리텐션 실험실": "Counterfactual Retention Lab",
+        "무개입 대비 평균 개선": "Avg. improvement vs no action",
+        "양수 개선 고객": "Positive-improvement customers",
+        "A/B 검증 권장": "A/B validation recommended",
+        "최종 추천 분포": "Final recommendation distribution",
+        "고객별 반사실 손익 비교": "Customer-level counterfactual profit comparison",
+        "고객별 시나리오 상세": "Customer scenario details",
+        "무개입": "No action",
+        "5,000원 쿠폰": "5,000 KRW coupon",
+        "상담 전화": "Consultation call",
+        "푸시/이메일": "Push/email",
+        "7일 대기": "Wait 7 days",
+        "반사실 실험실은 실제 집행 결과가 아니라 기존 churn·uplift·CLV·survival 신호를 조합한 의사결정 시뮬레이션입니다. 실제 증분 ROI는 holdout/A-B 검증으로 확인해야 합니다.": "The lab is a decision simulation from churn, uplift, CLV, and survival signals, not realized campaign results. Validate true incremental ROI with holdout/A-B tests.",
+    },
+    "ja": {
+        "반사실 리텐션 실험실": "反事実リテンション実験室",
+        "무개입 대비 평균 개선": "無介入比の平均改善",
+        "양수 개선 고객": "改善が正の顧客",
+        "A/B 검증 권장": "A/B検証推奨",
+        "최종 추천 분포": "最終推薦分布",
+        "고객별 반사실 손익 비교": "顧客別反事実損益比較",
+        "고객별 시나리오 상세": "顧客別シナリオ詳細",
+        "무개입": "無介入",
+        "5,000원 쿠폰": "5,000ウォンクーポン",
+        "상담 전화": "相談電話",
+        "푸시/이메일": "プッシュ/メール",
+        "7일 대기": "7日待機",
+        "반사실 실험실은 실제 집행 결과가 아니라 기존 churn·uplift·CLV·survival 신호를 조합한 의사결정 시뮬레이션입니다. 실제 증분 ROI는 holdout/A-B 검증으로 확인해야 합니다.": "反事実実験室は実際の施策結果ではなく、churn・uplift・CLV・survival信号を組み合わせた意思決定シミュレーションです。真の増分ROIはholdout/A-B検証で確認する必要があります。",
+    },
+}
+COUNTERFACTUAL_COLUMN_LABELS: dict[str, dict[str, str]] = {
+    "ko": {
+        "expected_no_action_net_profit": "무개입 예상 순이익",
+        "expected_net_profit_coupon_5000": "쿠폰 개입 예상 순이익",
+        "expected_net_profit_consult_call": "상담 개입 예상 순이익",
+        "expected_net_profit_push_email": "푸시/이메일 예상 순이익",
+        "expected_net_profit_wait_7d": "7일 대기 예상 순이익",
+        "best_expected_net_profit": "최선 시나리오 예상 순이익",
+        "incremental_vs_no_action": "무개입 대비 개선액",
+        "final_recommendation": "최종 추천",
+        "recommendation_reason": "추천 근거",
+        "confidence": "신뢰도",
+        "confidence_score": "신뢰도 점수",
+        "ab_test_recommended": "A/B 검증 권장",
+        "expected_churn_period": "예상 이탈 시점",
+    },
+    "en": {
+        "expected_no_action_net_profit": "No-action expected net profit",
+        "expected_net_profit_coupon_5000": "Coupon expected net profit",
+        "expected_net_profit_consult_call": "Call expected net profit",
+        "expected_net_profit_push_email": "Push/email expected net profit",
+        "expected_net_profit_wait_7d": "Wait-7d expected net profit",
+        "best_expected_net_profit": "Best-scenario expected net profit",
+        "incremental_vs_no_action": "Improvement vs no action",
+        "final_recommendation": "Final recommendation",
+        "recommendation_reason": "Recommendation rationale",
+        "confidence": "Confidence",
+        "confidence_score": "Confidence score",
+        "ab_test_recommended": "A/B validation recommended",
+        "expected_churn_period": "Expected churn timing",
+    },
+    "ja": {
+        "expected_no_action_net_profit": "無介入の予想純利益",
+        "expected_net_profit_coupon_5000": "クーポン介入の予想純利益",
+        "expected_net_profit_consult_call": "相談介入の予想純利益",
+        "expected_net_profit_push_email": "プッシュ/メールの予想純利益",
+        "expected_net_profit_wait_7d": "7日待機の予想純利益",
+        "best_expected_net_profit": "最善シナリオの予想純利益",
+        "incremental_vs_no_action": "無介入比の改善額",
+        "final_recommendation": "最終推薦",
+        "recommendation_reason": "推薦根拠",
+        "confidence": "信頼度",
+        "confidence_score": "信頼度スコア",
+        "ab_test_recommended": "A/B検証推奨",
+        "expected_churn_period": "予想離脱時点",
+    },
+}
+for _lang, _mapping in COUNTERFACTUAL_UI_TEXT.items():
+    UI_TEXT.setdefault(_lang, {}).update(_mapping)
+for _lang, _mapping in COUNTERFACTUAL_COLUMN_LABELS.items():
+    COLUMN_LABELS.setdefault(_lang, {}).update(_mapping)
+
 VIEW_INTRO_LINES: dict[str, list[str]] = {
     "1": [
         "이탈 위험이 높은 고객을 먼저 확인해 리텐션 대응의 출발점을 잡습니다.",
@@ -818,6 +907,11 @@ VIEW_INTRO_LINES: dict[str, list[str]] = {
         "실시간 이벤트가 들어올 때 고객 위험도와 액션 큐가 어떻게 바뀌는지 확인합니다.",
         "새 이벤트, 고위험 고객, 큐 적재 상태를 함께 보며 운영 이상 여부를 점검합니다.",
         "시연이나 실제 운영에서 시스템이 데이터 변화에 반응하는지 검증하는 목적입니다.",
+    ],
+    "13": [
+        "같은 고객에게 아무것도 하지 않을 때와 여러 개입을 했을 때의 기대 손익을 직접 비교합니다.",
+        "무개입, 쿠폰, 상담, 푸시/이메일, 7일 대기 전략의 예상 순이익과 신뢰도를 함께 봅니다.",
+        "운영자는 추천 액션을 맹목적으로 따르지 않고, 비용·효과·대기 옵션을 비교해 실험 대상으로 보낼지 결정할 수 있습니다.",
     ],
 }
 
@@ -7544,7 +7638,7 @@ else:
     realtime_summary, realtime_scores = {}, pd.DataFrame()
     realtime_error = None
 
-if _is_churn_timing_view(view):
+if _is_churn_timing_view(view) or view == "13. 반사실 리텐션 실험실":
     if _business_mode() in BUSINESS_UPLOAD_MODES:
         _mode_result_dir = Path(_resolve_result_dir_for_mode(_business_mode()))
         _bundle = load_insight_data()
@@ -8156,6 +8250,160 @@ elif view == "4. 예산 최적화 및 리텐션 타겟":
             ["priority_score", "selection_score", "churn_probability", "uplift_score", "clv", "coupon_cost", "expected_incremental_profit", "expected_roi"],
         ),
     }
+
+elif view == "13. 반사실 리텐션 실험실":
+    if _user_mode_unavailable("반사실 리텐션 실험실", "반사실 손익 비교는 churn·uplift·CLV·survival 신호를 사용합니다. 업로드 CSV에 Treatment/Control이 없으면 전처리 단계의 휴리스틱 uplift 추정값으로 표시됩니다."):
+        st.stop()
+
+    st.subheader(T("반사실 리텐션 실험실"))
+    _render_view_intro("13")
+    st.caption(T("반사실 실험실은 실제 집행 결과가 아니라 기존 churn·uplift·CLV·survival 신호를 조합한 의사결정 시뮬레이션입니다. 실제 증분 ROI는 holdout/A-B 검증으로 확인해야 합니다."))
+
+    counterfactual_summary, counterfactual_lab, counterfactual_scenarios = build_counterfactual_retention_lab(
+        customers=customers,
+        selected_customers=selected_customers,
+        survival_predictions=survival_predictions,
+        top_n=max(int(top_n), 1),
+        threshold=float(threshold),
+    )
+
+    if counterfactual_lab.empty:
+        st.warning(T("현재 조건에서 반사실 시나리오를 계산할 고객이 없습니다."))
+        llm_payload = {
+            "threshold": float(threshold),
+            "budget": int(budget),
+            "counterfactual_summary": counterfactual_summary,
+        }
+    else:
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric(T("분석 고객 수"), f"{int(counterfactual_summary.get('customer_count', len(counterfactual_lab))):,}")
+        m2.metric(T("무개입 대비 평균 개선"), money(counterfactual_summary.get("avg_incremental_vs_no_action", 0.0)))
+        m3.metric(T("양수 개선 고객"), f"{int(counterfactual_summary.get('positive_recommendation_count', 0)):,}")
+        m4.metric(T("A/B 검증 권장"), f"{int(counterfactual_summary.get('ab_test_recommended_count', 0)):,}")
+
+        action_counts = pd.DataFrame(
+            [
+                {"final_recommendation": action, "customer_count": count}
+                for action, count in (counterfactual_summary.get("best_action_counts", {}) or {}).items()
+            ]
+        )
+        if not action_counts.empty:
+            action_counts = _translate_dataframe_values_for_display(action_counts)
+            action_fig = px.bar(
+                action_counts,
+                x="final_recommendation",
+                y="customer_count",
+                text="customer_count",
+                title=T("최종 추천 분포"),
+            )
+            action_fig.update_traces(textposition="outside", cliponaxis=False)
+            st.plotly_chart(action_fig, use_container_width=True)
+
+        st.markdown(f"### {T('고객별 시나리오 상세')}")
+        customer_options = counterfactual_lab["customer_id"].astype(str).tolist() if "customer_id" in counterfactual_lab.columns else []
+        selected_customer_for_lab = st.selectbox(
+            T("상세 비교 고객 선택"),
+            options=customer_options,
+            index=0,
+            key="counterfactual_customer_selector",
+        ) if customer_options else None
+
+        if selected_customer_for_lab is not None and not counterfactual_scenarios.empty:
+            one_customer_scenarios = counterfactual_scenarios[
+                counterfactual_scenarios["customer_id"].astype(str) == str(selected_customer_for_lab)
+            ].copy()
+            if not one_customer_scenarios.empty:
+                chart_one = _translate_dataframe_values_for_display(one_customer_scenarios.copy())
+                scenario_fig = px.bar(
+                    chart_one,
+                    x="action_label",
+                    y="expected_net_profit",
+                    hover_data=[c for c in ["incremental_vs_no_action", "action_cost", "treated_churn_probability", "estimated_retention_lift"] if c in chart_one.columns],
+                    title=T("고객별 반사실 손익 비교"),
+                )
+                scenario_fig.update_layout(xaxis_title=T("액션"), yaxis_title=T("예상 순이익"))
+                st.plotly_chart(scenario_fig, use_container_width=True)
+
+                detail_cols = ["action_label", "action_cost", "expected_net_profit", "incremental_vs_no_action", "treated_churn_probability", "estimated_retention_lift", "description"]
+                detail_df = one_customer_scenarios[[c for c in detail_cols if c in one_customer_scenarios.columns]].copy()
+                for money_col in ["action_cost", "expected_net_profit", "incremental_vs_no_action"]:
+                    if money_col in detail_df.columns:
+                        detail_df[money_col] = detail_df[money_col].map(lambda x: money(float(x)) if pd.notna(x) else "")
+                for prob_col in ["treated_churn_probability", "estimated_retention_lift"]:
+                    if prob_col in detail_df.columns:
+                        detail_df[prob_col] = detail_df[prob_col].map(lambda x: f"{float(x):.3f}" if pd.notna(x) else "")
+                detail_df = _translate_dataframe_values_for_display(detail_df)
+                _render_dataframe_with_count(detail_df, label=T("고객별 시나리오 상세"), prefer_static=True)
+
+        st.markdown(f"### {T('고객별 반사실 손익 비교')}")
+        display_columns = [
+            "customer_id",
+            "persona",
+            "churn_probability",
+            "expected_churn_period",
+            "clv",
+            "recommended_action",
+            "expected_no_action_net_profit",
+            "expected_net_profit_coupon_5000",
+            "expected_net_profit_consult_call",
+            "expected_net_profit_push_email",
+            "expected_net_profit_wait_7d",
+            "final_recommendation",
+            "best_expected_net_profit",
+            "incremental_vs_no_action",
+            "confidence",
+            "ab_test_recommended",
+            "recommendation_reason",
+        ]
+        display_df = counterfactual_lab[[col for col in display_columns if col in counterfactual_lab.columns]].copy()
+        if "churn_probability" in display_df.columns:
+            display_df["churn_probability"] = display_df["churn_probability"].map(lambda x: f"{float(x):.3f}" if pd.notna(x) else "")
+        if "expected_churn_period" in display_df.columns:
+            display_df["expected_churn_period"] = display_df["expected_churn_period"].map(lambda x: _format_churn_period(x) if pd.notna(x) else "")
+        for money_col in [
+            "clv",
+            "expected_no_action_net_profit",
+            "expected_net_profit_coupon_5000",
+            "expected_net_profit_consult_call",
+            "expected_net_profit_push_email",
+            "expected_net_profit_wait_7d",
+            "best_expected_net_profit",
+            "incremental_vs_no_action",
+        ]:
+            if money_col in display_df.columns:
+                display_df[money_col] = display_df[money_col].map(lambda x: money(float(x)) if pd.notna(x) else "")
+        if "ab_test_recommended" in display_df.columns:
+            display_df["ab_test_recommended"] = display_df["ab_test_recommended"].map(lambda x: "권장" if bool(x) else "선택")
+        display_df = _translate_dataframe_values_for_display(display_df)
+        _render_dataframe_with_count(
+            display_df,
+            label=T("고객별 반사실 손익 비교"),
+            height=min(1100, 220 + 34 * len(display_df)),
+        )
+
+        st.info(T("권장 해석: 신뢰도가 낮거나 중간인 고객은 바로 전체 집행하지 말고 A/B 검증 또는 holdout 군에 포함해 실제 증분 ROI를 확인하세요."))
+
+        llm_payload = {
+            "threshold": float(threshold),
+            "budget": int(budget),
+            "counterfactual_summary": counterfactual_summary,
+            "best_action_counts": counterfactual_summary.get("best_action_counts", {}),
+            "top_counterfactual_customers": dataframe_snapshot(
+                counterfactual_lab,
+                columns=[
+                    "customer_id",
+                    "churn_probability",
+                    "clv",
+                    "final_recommendation",
+                    "best_expected_net_profit",
+                    "incremental_vs_no_action",
+                    "confidence",
+                    "ab_test_recommended",
+                    "recommendation_reason",
+                ],
+                max_rows=20,
+            ),
+        }
 
 elif view == "8. 학습 결과 아티팩트":
     st.subheader("학습 결과 아티팩트")
