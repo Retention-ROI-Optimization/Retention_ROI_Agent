@@ -205,6 +205,79 @@ def _recommend_action(
     return "monitor_only", "monitoring", "none"
 
 
+def _estimated_action_cost(
+    *,
+    recommended_category: str | None,
+    intervention_intensity: str | None,
+    clv: float | None,
+    expected_incremental_profit: float | None,
+    expected_roi: float | None,
+) -> float:
+    """Return a non-zero operational cost for budget-sensitive live queues.
+
+    Earlier live action rows persisted coupon_cost=0.  That made the dashboard
+    either drop otherwise valid actions or derive unstable costs from profit/ROI,
+    so changing the sidebar budget often did not change the displayed spend/target
+    count.  The action queue is not the optimizer itself, but it must carry a
+    realistic unit cost so budget cutoffs are meaningful.
+    """
+    category = (recommended_category or "").lower()
+    intensity = (intervention_intensity or "").lower()
+
+    base_by_category = {
+        "coupon": 7000.0,
+        "crm": 12000.0,
+        "message": 1500.0,
+        "upsell": 4000.0,
+        "monitoring": 0.0,
+    }
+    multiplier_by_intensity = {
+        "none": 0.0,
+        "low": 0.70,
+        "medium": 1.00,
+        "mid": 1.00,
+        "high": 1.65,
+    }
+
+    base = base_by_category.get(category, 5000.0)
+    multiplier = multiplier_by_intensity.get(intensity, 1.0)
+    cost = base * multiplier
+
+    # For very high-value customers, cap the incentive/action cost as a small
+    # share of value/profit instead of a flat coupon.  This keeps rows budget
+    # sensitive while avoiding unrealistic 0-cost actions.
+    clv_value = _safe_float(clv, None)
+    profit_value = _safe_float(expected_incremental_profit, None)
+    roi_value = _safe_float(expected_roi, None)
+    if profit_value is not None and roi_value is not None and roi_value > 0:
+        implied_cost = max(profit_value / roi_value, 0.0)
+        if implied_cost > 0:
+            cost = max(cost, implied_cost)
+    if clv_value is not None and clv_value > 0 and category in {"coupon", "crm", "upsell"}:
+        cost = min(cost, max(clv_value * 0.08, 1000.0))
+
+    return round(float(max(cost, 0.0)), 2)
+
+
+def _net_profit_after_action_cost(
+    *,
+    expected_incremental_profit: float | None,
+    action_cost: float,
+) -> float | None:
+    """Return the expected incremental profit used for live ranking.
+
+    In offline artifacts this field is already a net incremental-profit estimate.
+    In live fallback scoring it is often CLV × uplift.  We therefore do not
+    subtract action_cost again here; the action_cost is stored separately and is
+    used by the dashboard budget cutoff.  Subtracting it a second time made many
+    valid live actions disappear and weakened budget sensitivity.
+    """
+    profit_value = _safe_float(expected_incremental_profit, None)
+    if profit_value is None:
+        return None
+    return float(profit_value)
+
+
 def _should_queue_action(
     *,
     churn_score: float | None,
@@ -395,10 +468,30 @@ def update_live_actions_for_customers(
                 risk_segment=risk_segment,
             )
 
+            action_cost = _estimated_action_cost(
+                recommended_category=recommended_category,
+                intervention_intensity=intensity,
+                clv=clv,
+                expected_incremental_profit=expected_profit,
+                expected_roi=expected_roi,
+            )
+            action_profit = _net_profit_after_action_cost(
+                expected_incremental_profit=expected_profit,
+                action_cost=action_cost,
+            )
+            action_roi = (action_profit / action_cost) if action_profit is not None and action_cost > 0 else expected_roi
+            priority = _priority_score(
+                churn_score=churn_score,
+                clv=clv,
+                uplift_score=uplift_score,
+                expected_roi=action_roi,
+                expected_incremental_profit=action_profit,
+            )
+
             should_queue = _should_queue_action(
                 churn_score=churn_score,
-                expected_roi=expected_roi,
-                expected_incremental_profit=expected_profit,
+                expected_roi=action_roi,
+                expected_incremental_profit=action_profit,
                 threshold=threshold,
                 min_expected_roi=min_expected_roi,
                 min_expected_profit=min_expected_profit,
@@ -410,8 +503,9 @@ def update_live_actions_for_customers(
                 "churn_score": churn_score,
                 "clv": clv,
                 "uplift_score": uplift_score,
-                "expected_roi": expected_roi,
-                "expected_incremental_profit": expected_profit,
+                "expected_roi": action_roi,
+                "expected_incremental_profit": action_profit,
+                "coupon_cost": action_cost,
                 "risk_segment": risk_segment,
                 "threshold": threshold,
                 "should_queue": should_queue,
@@ -465,9 +559,9 @@ def update_live_actions_for_customers(
                     "customer_id": customer_id,
                     "recommended_action": recommended_action,
                     "recommended_category": recommended_category,
-                    "coupon_cost": 0.0,
-                    "expected_roi": expected_roi,
-                    "expected_incremental_profit": expected_profit,
+                    "coupon_cost": action_cost,
+                    "expected_roi": action_roi,
+                    "expected_incremental_profit": action_profit,
                     "priority_score": priority,
                     "reason_tags": json.dumps(reason_tags, ensure_ascii=False),
                     "source_payload": json.dumps(source_payload, ensure_ascii=False),
@@ -480,7 +574,7 @@ def update_live_actions_for_customers(
             if should_queue:
                 trigger_reason = (
                     f"live policy queued: churn={churn_score}, "
-                    f"roi={expected_roi}, profit={expected_profit}, "
+                    f"roi={action_roi}, profit={action_profit}, cost={action_cost}, "
                     f"risk={risk_segment}"
                 )
 
@@ -523,9 +617,9 @@ def update_live_actions_for_customers(
                         "customer_id": customer_id,
                         "recommended_action": recommended_action,
                         "intervention_intensity": intensity,
-                        "coupon_cost": 0.0,
-                        "expected_profit": expected_profit,
-                        "expected_roi": expected_roi,
+                        "coupon_cost": action_cost,
+                        "expected_profit": action_profit,
+                        "expected_roi": action_roi,
                         "priority_score": priority,
                         "trigger_reason": trigger_reason,
                         "source_payload": json.dumps(source_payload, ensure_ascii=False),
@@ -540,8 +634,9 @@ def update_live_actions_for_customers(
                 "churn_score": churn_score,
                 "clv": clv,
                 "uplift_score": uplift_score,
-                "expected_roi": expected_roi,
-                "expected_incremental_profit": expected_profit,
+                "expected_roi": action_roi,
+                "expected_incremental_profit": action_profit,
+                "coupon_cost": action_cost,
                 "risk_segment": risk_segment,
                 "priority_score": priority,
                 "recommended_action": recommended_action,

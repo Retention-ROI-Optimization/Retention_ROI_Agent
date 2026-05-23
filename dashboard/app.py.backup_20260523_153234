@@ -3,11 +3,6 @@ import html
 import json
 import math
 import os
-
-# Limit only the number of rows rendered in heavy HTML preview tables.
-# This does not limit the full dataset used by the pipeline.
-TABLE_DISPLAY_ROW_LIMIT = int(os.getenv("TABLE_DISPLAY_ROW_LIMIT", "500"))
-CHURN_TIMING_DISPLAY_ROW_LIMIT = int(os.getenv("CHURN_TIMING_DISPLAY_ROW_LIMIT", "1000"))
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -1868,55 +1863,6 @@ def _translation_destination_set(mapping: dict[str, str]) -> set[str]:
     return {str(v).strip() for v in mapping.values() if str(v).strip()}
 
 
-
-def _collapse_repeated_customer_words(value: Any) -> str:
-    """Collapse accidental repeated UI suffixes such as '고객 고객 고객'.
-
-    The display translation layer may receive values that were already localized
-    by a previous rerun/cache. This helper keeps the text readable without
-    changing the original data used by the pipeline.
-    """
-    text = str(value or "")
-    if not text:
-        return ""
-
-    # Common Korean/Japanese/English repeated display tokens caused by broad
-    # value translation. Keep the loop bounded and conservative.
-    for _ in range(4):
-        before = text
-        text = re.sub(r"(고객)(?:\s+\1)+", r"\1", text)
-        text = re.sub(r"(고객군)(?:\s+\1)+", r"\1", text)
-        text = re.sub(r"(ユーザー)(?:\s+\1)+", r"\1", text)
-        text = re.sub(r"(customer)(?:\s+\1)+", r"\1", text, flags=re.IGNORECASE)
-        if text == before:
-            break
-    return text.strip()
-
-
-def _translate_cell_value(value: Any) -> Any:
-    """Translate a scalar cell value safely and idempotently for display only."""
-    if value is None:
-        return ""
-    if isinstance(value, (list, tuple, set)):
-        return " · ".join(str(_translate_cell_value(v)) for v in value)
-    if isinstance(value, dict):
-        try:
-            return json.dumps(value, ensure_ascii=False)
-        except TypeError:
-            return str(value)
-    try:
-        if pd.isna(value):
-            return ""
-    except Exception:
-        pass
-    if not isinstance(value, str):
-        return value
-    stripped = value.strip()
-    if not stripped:
-        return ""
-    return _translate_cell_value_cached(_language_code(), stripped)
-
-
 @lru_cache(maxsize=20000)
 def _translate_cell_value_cached(language_code: str, stripped: str) -> str:
     """Cached, idempotent cell-value translation.
@@ -1930,9 +1876,8 @@ def _translate_cell_value_cached(language_code: str, stripped: str) -> str:
     """
     if stripped == "":
         return ""
-    code = language_code or _language_code()
+    code = _language_code()
     value_labels = VALUE_LABELS.get(code, VALUE_LABELS.get("ko", {}))
-    phrase_labels = PHRASE_LABELS.get(code, PHRASE_LABELS.get("ko", {}))
     norm = _normalize_i18n_key(stripped)
 
     # Already localized values must be returned as-is. This makes display
@@ -5363,63 +5308,6 @@ def _append_term_caption(df: pd.DataFrame, label: str = "") -> None:
     if caption_html:
         st.markdown(caption_html, unsafe_allow_html=True)
 
-
-
-
-def _display_value_is_null(value):
-    """Return True only for scalar null-like values.
-
-    Pandas pd.isna(list/dict/array) can return array-like results, which should
-    not be used as booleans. For display sanitization, non-scalar objects are
-    treated as non-null and formatted safely.
-    """
-    try:
-        result = pd.isna(value)
-        if isinstance(result, bool):
-            return result
-        try:
-            return bool(result) if not hasattr(result, "__len__") else False
-        except Exception:
-            return False
-    except Exception:
-        return False
-
-
-def _map_object_series_unique(series, formatter):
-    """Format an object Series by formatting unique values once.
-
-    This is a rendering optimization for large upload preview tables. It does
-    not change the underlying dataframe used by the pipeline.
-    """
-    if series is None:
-        return series
-
-    def _safe_format(value):
-        if _display_value_is_null(value):
-            return ""
-        try:
-            return formatter(value)
-        except Exception:
-            return str(value)
-
-    try:
-        if getattr(series, "empty", False):
-            return series
-
-        # Fast path for hashable scalar/object values.
-        mapping = {}
-        for value in series.dropna().unique():
-            try:
-                hash(value)
-            except Exception:
-                raise TypeError("unhashable display value")
-            mapping[value] = _safe_format(value)
-
-        return series.map(lambda value: "" if _display_value_is_null(value) else mapping.get(value, _safe_format(value)))
-
-    except Exception:
-        # Safe fallback for lists/dicts/mixed objects.
-        return series.apply(_safe_format)
 
 
 def _sanitize_display_dataframe(df: pd.DataFrame) -> pd.DataFrame:
