@@ -35,7 +35,7 @@ ACTION_CATALOG: tuple[CounterfactualAction, ...] = (
         cost=5000.0,
         uplift_multiplier=1.00,
         channel="coupon",
-        description="가격 민감·쿠폰 반응 고객에게 적합한 저비용 직접 혜택",
+        description="쿠폰에 반응할 가능성이 있는 고객에게 5,000원 혜택을 제공하는 전략",
     ),
     CounterfactualAction(
         action_id="consult_call",
@@ -43,7 +43,7 @@ ACTION_CATALOG: tuple[CounterfactualAction, ...] = (
         cost=12000.0,
         uplift_multiplier=1.18,
         channel="call_center",
-        description="고가치·고위험 고객에게 적합한 고비용 서비스 회복 액션",
+        description="가치가 높고 이탈 위험도 큰 고객에게 상담원이 직접 연락하는 전략",
     ),
     CounterfactualAction(
         action_id="push_email",
@@ -51,7 +51,7 @@ ACTION_CATALOG: tuple[CounterfactualAction, ...] = (
         cost=800.0,
         uplift_multiplier=0.42,
         channel="owned_message",
-        description="낮은 비용으로 반응 가능성을 시험하는 라이트 터치 액션",
+        description="앱 푸시나 이메일로 낮은 비용의 안내 메시지를 보내는 전략",
     ),
     CounterfactualAction(
         action_id="wait_7d",
@@ -59,7 +59,7 @@ ACTION_CATALOG: tuple[CounterfactualAction, ...] = (
         cost=0.0,
         uplift_multiplier=0.0,
         channel="defer",
-        description="즉시 비용을 쓰지 않고 7일 후 신호를 더 본다는 option-value 전략",
+        description="지금 바로 비용을 쓰지 않고 7일 동안 추가 행동을 지켜본 뒤 결정하는 전략",
     ),
 )
 
@@ -243,14 +243,14 @@ def _build_reason(row: pd.Series) -> str:
     churn = float(row.get("churn_probability", 0.0) or 0.0)
     uplift = float(row.get("uplift_score", 0.0) or 0.0)
     if best_action == "무개입":
-        return "개입 비용 또는 낮은 uplift 때문에 무개입의 기대 순이익이 가장 높습니다. 불필요한 쿠폰·상담 비용을 쓰지 않는 것이 유리합니다."
+        return "개입 비용이 효과보다 크거나 고객 반응 가능성이 낮아, 지금은 아무 조치를 하지 않는 편이 예상 순이익이 가장 높습니다."
     if best_action == "7일 대기":
-        return f"즉시 개입보다 7일 대기 전략의 기대 순이익이 높습니다. 이탈 확률 {churn:.1%}, uplift {uplift:.3f} 기준으로 추가 행동 신호를 더 관찰하는 편이 유리합니다."
+        return f"지금 바로 개입하기보다 7일 동안 고객 행동을 더 지켜보는 편이 예상 순이익이 높습니다. 현재 이탈 가능성은 {churn:.1%}, 개입 반응 가능성은 {uplift:.3f} 수준입니다."
     if confidence == "낮음":
-        return f"{best_action}이 무개입 대비 {_format_delta(delta)} 개선으로 추정되지만 신뢰도가 낮아 A/B 검증 또는 holdout 포함을 권장합니다."
+        return f"{best_action}을 선택하면 아무것도 하지 않을 때보다 {_format_delta(delta)} 정도 나아질 것으로 보입니다. 다만 신뢰도가 낮으므로 바로 전체 고객에게 적용하지 말고 A/B 검증이나 검증용 미개입군을 함께 두는 것이 좋습니다."
     if confidence == "중간":
-        return f"{best_action}이 무개입 대비 {_format_delta(delta)} 개선으로 추정됩니다. uplift 신뢰도가 중간 수준이므로 실험군·대조군 검증을 함께 운영하는 것이 안전합니다."
-    return f"{best_action}이 무개입 대비 {_format_delta(delta)} 개선으로 추정되며, 입력 신호와 시점 정보가 충분해 우선 실행 후보로 볼 수 있습니다."
+        return f"{best_action}을 선택하면 아무것도 하지 않을 때보다 {_format_delta(delta)} 정도 나아질 것으로 보입니다. 신뢰도는 중간 수준이므로 실험군과 대조군을 함께 운영해 실제 효과를 확인하는 것이 안전합니다."
+    return f"{best_action}을 선택하면 아무것도 하지 않을 때보다 {_format_delta(delta)} 정도 나아질 것으로 보입니다. 입력 신호가 비교적 충분해 우선 실행 후보로 볼 수 있습니다."
 
 
 def build_counterfactual_retention_lab(
@@ -386,7 +386,7 @@ def build_counterfactual_retention_lab(
         lab_df["recommended_action"] = lab_df["recommended_action"].fillna(lab_df["final_recommendation"])
 
     lab_df["recommendation_reason"] = lab_df.apply(_build_reason, axis=1)
-    lab_df["model_caveat"] = "예측 기반 반사실 추정치입니다. 실제 증분 ROI는 holdout/A-B 검증으로 확인해야 합니다."
+    lab_df["model_caveat"] = "예측으로 계산한 비교 결과입니다. 실제 추가 이익은 A/B 검증이나 검증용 미개입군으로 확인해야 합니다."
 
     summary = {
         "customer_count": int(lab_df["customer_id"].nunique()) if "customer_id" in lab_df.columns else int(len(lab_df)),
@@ -397,7 +397,7 @@ def build_counterfactual_retention_lab(
         "ab_test_recommended_count": int(lab_df["ab_test_recommended"].sum()),
         "best_action_counts": lab_df["final_recommendation"].value_counts().astype(int).to_dict(),
         "avg_confidence_score": round(float(lab_df["confidence_score"].mean()), 4) if not lab_df.empty else 0.0,
-        "model_note": "Expected net profit = retained CLV expectation - action cost; scenarios are counterfactual estimates, not realized causal effects.",
+        "model_note": "예상 순이익 = 유지될 것으로 기대되는 고객가치 - 개입 비용입니다. 이 값은 실제 집행 결과가 아니라 예측 기반 비교값입니다.",
     }
 
     scenario_df = scenario_df.sort_values(["customer_id", "expected_net_profit"], ascending=[True, False]).reset_index(drop=True)
