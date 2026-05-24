@@ -39,4 +39,4 @@
 
 - `src/optimization/counterfactual.py`: 반사실 손익 계산 엔진
 - `dashboard/services/counterfactual_service.py`: 대시보드용 서비스 wrapper
-- `dashboard/app.py`: 신규 뷰 `반사실 리텐션 실험실` 추가
+- `dashboard/app.py`: 신규 뷰 `고객별 대응 전략 비교` 추가
