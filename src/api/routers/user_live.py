@@ -573,34 +573,81 @@ def get_recent_events(
     }
 
 
+def _has_column(conn, table_name: str, column_name: str) -> bool:
+    return bool(conn.execute(
+        text("""
+        SELECT EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = current_schema()
+              AND table_name = :table_name
+              AND column_name = :column_name
+        )
+        """),
+        {"table_name": table_name, "column_name": column_name},
+    ).scalar())
+
+
 @router.get("/health")
 def user_live_health(
     settings: ApiSettings = Depends(get_settings),
 ):
     """
     user-live DB 상태 확인.
+
+    Dashboard cache invalidation depends on this endpoint.  It therefore exposes
+    not only event/feature counts but also the latest insert, score,
+    recommendation, and action timestamps.  Without those timestamps the
+    Streamlit layer can keep showing stale churn KPIs or stale action queues
+    even after a live event has been ingested and rescored.
     """
     init_user_live_tables(settings.user_db_url)
 
     with user_live_session(settings.user_db_url) as conn:
-        event_count = conn.execute(
-            text("SELECT COUNT(*) FROM customer_events")
+        event_count = conn.execute(text("SELECT COUNT(*) FROM customer_events")).scalar_one()
+        feature_state_count = conn.execute(text("SELECT COUNT(*) FROM customer_feature_state")).scalar_one()
+        processed_count = conn.execute(text("SELECT COUNT(*) FROM customer_events WHERE processed = TRUE")).scalar_one()
+        latest_event_time = conn.execute(text("SELECT MAX(event_time) FROM customer_events")).scalar_one()
+        latest_event_created_at = conn.execute(text("SELECT MAX(created_at) FROM customer_events")).scalar_one()
+        latest_update_time = conn.execute(text("SELECT MAX(updated_at) FROM customer_feature_state")).scalar_one()
+
+        score_count = conn.execute(text("SELECT COUNT(*) FROM customer_scores")).scalar_one()
+        latest_score_time = conn.execute(text("SELECT MAX(scored_at) FROM customer_scores")).scalar_one()
+        avg_churn_score = conn.execute(text("SELECT AVG(churn_score) FROM customer_scores")).scalar_one()
+        high_risk_customers_default = conn.execute(
+            text("SELECT COUNT(*) FROM customer_scores WHERE churn_score >= 0.50")
+        ).scalar_one()
+        critical_risk_customers = conn.execute(
+            text("SELECT COUNT(*) FROM customer_scores WHERE churn_score >= 0.85")
         ).scalar_one()
 
-        feature_state_count = conn.execute(
-            text("SELECT COUNT(*) FROM customer_feature_state")
+        recommendation_count = conn.execute(text("SELECT COUNT(*) FROM recommendation_candidates")).scalar_one()
+        live_recommendation_count = conn.execute(
+            text("""
+            SELECT COUNT(*)
+            FROM recommendation_candidates
+            WHERE source_type = 'live_policy_v1'
+            """)
+        ).scalar_one() if _has_column(conn, "recommendation_candidates", "source_type") else 0
+        rec_latest_col = "updated_at" if _has_column(conn, "recommendation_candidates", "updated_at") else "generated_at"
+        latest_recommendation_update_time = conn.execute(
+            text(f"SELECT MAX({rec_latest_col}) FROM recommendation_candidates")
         ).scalar_one()
 
-        processed_count = conn.execute(
-            text("SELECT COUNT(*) FROM customer_events WHERE processed = TRUE")
+        action_count = conn.execute(text("SELECT COUNT(*) FROM action_queue")).scalar_one()
+        queued_action_count = conn.execute(
+            text("SELECT COUNT(*) FROM action_queue WHERE action_status = 'queued'")
         ).scalar_one()
-
-        latest_event_time = conn.execute(
-            text("SELECT MAX(event_time) FROM customer_events")
-        ).scalar_one()
-
-        latest_update_time = conn.execute(
-            text("SELECT MAX(updated_at) FROM customer_feature_state")
+        live_action_count = conn.execute(
+            text("""
+            SELECT COUNT(*)
+            FROM action_queue
+            WHERE source_type = 'live_policy_v1'
+            """)
+        ).scalar_one() if _has_column(conn, "action_queue", "source_type") else 0
+        action_latest_col = "updated_at" if _has_column(conn, "action_queue", "updated_at") else "queued_at"
+        latest_action_update_time = conn.execute(
+            text(f"SELECT MAX({action_latest_col}) FROM action_queue")
         ).scalar_one()
 
     return {
@@ -609,8 +656,21 @@ def user_live_health(
         "event_count": int(event_count),
         "processed_event_count": int(processed_count),
         "feature_state_count": int(feature_state_count),
+        "score_count": int(score_count),
+        "avg_churn_score": float(avg_churn_score or 0.0),
+        "high_risk_customers_default": int(high_risk_customers_default or 0),
+        "critical_risk_customers": int(critical_risk_customers or 0),
+        "recommendation_count": int(recommendation_count or 0),
+        "live_recommendation_count": int(live_recommendation_count or 0),
+        "action_count": int(action_count or 0),
+        "queued_action_count": int(queued_action_count or 0),
+        "live_action_count": int(live_action_count or 0),
         "latest_event_time": latest_event_time,
+        "latest_event_created_at": latest_event_created_at,
         "latest_feature_update_time": latest_update_time,
+        "latest_score_time": latest_score_time,
+        "latest_recommendation_update_time": latest_recommendation_update_time,
+        "latest_action_update_time": latest_action_update_time,
     }
 
 
