@@ -16,18 +16,6 @@ This project supports:
 
 In short, this project is an end-to-end **Retention Decision Intelligence Pipeline** that helps marketing and CRM teams execute retention strategies based on data rather than intuition.
 
-## Image
-
-<img src="assets/dash1.jpeg" width="400"/>
-
-
-<img src="assets/dash2.jpeg" width="400"/>
-
-
-<img src="assets/dash3.jpeg" width="400"/>
-
-<img src="assets/dash4.jpeg" width="400"/>
-
 
 ## Installment
 
