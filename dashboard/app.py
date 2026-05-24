@@ -91,7 +91,7 @@ DASHBOARD_VIEW_ITEMS: tuple[tuple[str, str], ...] = (
     ("1", "이탈현황"),
     ("9", "이탈 시점 예측"),
     ("4", "예산 최적화 및 리텐션 타겟"),
-    ("13", "반사실 리텐션 실험실"),
+    ("13", "고객별 대응 전략 비교"),
     ("5", "개인화 추천"),
     ("6", "실시간 운영 모니터"),
     ("14", "주간 액션 성과 리뷰"),
@@ -119,7 +119,7 @@ CORE_VIEW_DISPLAY_LABELS: dict[str, dict[str, str]] = {
         "1. 이탈현황": "① 이탈 현황",
         "9. 이탈 시점 예측": "② 이탈 시점 예측",
         "4. 예산 최적화 및 리텐션 타겟": "③ 예산 배분·타겟 고객",
-        "13. 반사실 리텐션 실험실": "④ 반사실 리텐션 실험실",
+        "13. 고객별 대응 전략 비교": "④ 고객별 대응 전략 비교",
         "5. 개인화 추천": "⑤ 개인화 추천",
         "6. 실시간 운영 모니터": "⑥ 실시간 운영 모니터",
         "14. 주간 액션 성과 리뷰": "⑦ 주간 액션 성과 리뷰",
@@ -128,7 +128,7 @@ CORE_VIEW_DISPLAY_LABELS: dict[str, dict[str, str]] = {
         "1. 이탈현황": "① Churn Status",
         "9. 이탈 시점 예측": "② Churn Timing",
         "4. 예산 최적화 및 리텐션 타겟": "③ Budget Allocation & Targets",
-        "13. 반사실 리텐션 실험실": "④ Counterfactual Retention Lab",
+        "13. 고객별 대응 전략 비교": "④ Counterfactual Retention Lab",
         "5. 개인화 추천": "⑤ Personalized Recommendations",
         "6. 실시간 운영 모니터": "⑥ Real-time Operations",
         "14. 주간 액션 성과 리뷰": "⑦ Weekly Action Review",
@@ -137,7 +137,7 @@ CORE_VIEW_DISPLAY_LABELS: dict[str, dict[str, str]] = {
         "1. 이탈현황": "① 離脱状況",
         "9. 이탈 시점 예측": "② 離脱時点予測",
         "4. 예산 최적화 및 리텐션 타겟": "③ 予算配分・対象顧客",
-        "13. 반사실 리텐션 실험실": "④ 反事実リテンション実験室",
+        "13. 고객별 대응 전략 비교": "④ 反事実リテンション実験室",
         "5. 개인화 추천": "⑤ パーソナライズ推薦",
         "6. 실시간 운영 모니터": "⑥ リアルタイム運用",
         "14. 주간 액션 성과 리뷰": "⑦ 週次アクション成果レビュー",
@@ -966,7 +966,7 @@ for _lang, _mapping in EXTRA_COLUMN_LABELS.items():
 
 COUNTERFACTUAL_UI_TEXT: dict[str, dict[str, str]] = {
     "en": {
-        "반사실 리텐션 실험실": "Counterfactual Retention Lab",
+        "고객별 대응 전략 비교": "Counterfactual Retention Lab",
         "무개입 대비 평균 개선": "Avg. improvement vs no action",
         "양수 개선 고객": "Positive-improvement customers",
         "A/B 검증 권장": "A/B validation recommended",
@@ -981,7 +981,7 @@ COUNTERFACTUAL_UI_TEXT: dict[str, dict[str, str]] = {
         "반사실 실험실은 실제 집행 결과가 아니라 기존 churn·uplift·CLV·survival 신호를 조합한 의사결정 시뮬레이션입니다. 실제 증분 ROI는 holdout/A-B 검증으로 확인해야 합니다.": "The lab is a decision simulation from churn, uplift, CLV, and survival signals, not realized campaign results. Validate true incremental ROI with holdout/A-B tests.",
     },
     "ja": {
-        "반사실 리텐션 실험실": "反事実リテンション実験室",
+        "고객별 대응 전략 비교": "反事実リテンション実験室",
         "무개입 대비 평균 개선": "無介入比の平均改善",
         "양수 개선 고객": "改善が正の顧客",
         "A/B 검증 권장": "A/B検証推奨",
@@ -8080,7 +8080,7 @@ else:
     realtime_summary, realtime_scores = {}, pd.DataFrame()
     realtime_error = None
 
-if _is_churn_timing_view(view) or view == "13. 반사실 리텐션 실험실":
+if _is_churn_timing_view(view) or view == "13. 고객별 대응 전략 비교":
     if _business_mode() in BUSINESS_UPLOAD_MODES:
         _mode_result_dir = Path(_resolve_result_dir_for_mode(_business_mode()))
         _bundle = load_insight_data()
@@ -8737,11 +8737,11 @@ elif view == "4. 예산 최적화 및 리텐션 타겟":
         ),
     }
 
-elif view == "13. 반사실 리텐션 실험실":
-    if _user_mode_unavailable("반사실 리텐션 실험실", "반사실 손익 비교는 churn·uplift·CLV·survival 신호를 사용합니다. 업로드 CSV에 Treatment/Control이 없으면 전처리 단계의 휴리스틱 개입효과 추정값으로 표시됩니다."):
+elif view == "13. 고객별 대응 전략 비교":
+    if _user_mode_unavailable("고객별 대응 전략 비교", "반사실 손익 비교는 churn·uplift·CLV·survival 신호를 사용합니다. 업로드 CSV에 Treatment/Control이 없으면 전처리 단계의 휴리스틱 개입효과 추정값으로 표시됩니다."):
         st.stop()
 
-    st.subheader("반사실 리텐션 실험실")
+    st.subheader("고객별 대응 전략 비교")
     _render_view_intro("13")
     st.caption("이 화면은 실제 집행 결과가 아니라, 이탈 가능성·고객가치·개입 반응 가능성·예상 이탈 시점을 조합해 만든 의사결정 비교표입니다. 실제 효과는 A/B 검증이나 검증용 미개입군으로 확인해야 합니다.")
 
