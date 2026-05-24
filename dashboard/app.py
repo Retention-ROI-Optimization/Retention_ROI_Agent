@@ -293,7 +293,7 @@ UI_TEXT["en"].update({
     "이탈 임계값": "Churn Threshold", "총 마케팅 예산": "Total Marketing Budget", "최대 타겟 고객 수": "Max Target Customers", "차트 기준 표시 고객 수": "Rows/Customers to Display", "고객당 추천 개수": "Recommendations per Customer",
     "총 예산": "Total Budget", "집행 예산": "Spent Budget", "잔여 예산": "Remaining Budget", "타겟 고객 수": "Target Customers", "예상 증분 이익": "Expected Incremental Profit",
     "표시 추천 행 수": "Displayed Recommendation Rows", "추천 대상 고객 수": "Recommended Customers", "평균 추천 수/고객": "Avg. Recommendations / Customer", "현재 최종 타겟 고객 수": "Current Final Target Customers", "추천 카테고리 분포": "Recommendation Category Distribution",
-    "이벤트 수": "Events", "실시간 고객 상태": "Live Customer States", "점수 고객 수": "Scored Customers", "Queued 액션": "Queued Actions", "평균 이탈 점수": "Avg. Churn Score", "고위험 고객": "High-risk Customers", "Live 추천": "Live Recommendations", "최신 점수 갱신": "Latest Score Update",
+    "이벤트 수": "Events", "상태 보유 고객 수": "Customers with Live State", "이탈점수 산출 고객 수": "Scored Customers", "Queued 액션": "Queued Actions", "평균 이탈 점수": "Avg. Churn Score", "현재 기준 이탈 위험 고객 수": "At-risk Customers by Current Threshold", "실시간 추천 후보 수": "Live Recommendation Candidates", "최신 점수 갱신": "Latest Score Update",
     "추적 고객 수": "Tracked Customers", "재최적화 트리거 수": "Re-optimization Triggers", "액션 큐 적재 수": "Action Queue Size", "임계 위험 고객 수": "Critical-risk Customers", "처리 이벤트 수": "Processed Events", "폐쇄루프 예산 사용": "Closed-loop Budget Used", "채널 할당 수": "Channel Allocations", "운영 모니터": "Operations Monitor", "재최적화 횟수": "Re-optimizations", "큐 적재 수": "Queued Actions", "채널 용량 사용률": "Channel Capacity Utilization", "고우선순위 큐": "High-priority Queue",
 })
 UI_TEXT["ja"].update({
@@ -301,7 +301,7 @@ UI_TEXT["ja"].update({
     "이탈 임계값": "離脱リスク基準", "총 마케팅 예산": "総マーケティング予算", "최대 타겟 고객 수": "最大対象顧客数", "차트 기준 표시 고객 수": "表示件数", "고객당 추천 개수": "顧客あたり推薦数",
     "총 예산": "総予算", "집행 예산": "使用予算", "잔여 예산": "残予算", "타겟 고객 수": "対象顧客数", "예상 증분 이익": "予想増分利益",
     "표시 추천 행 수": "表示推薦行数", "추천 대상 고객 수": "推薦対象顧客数", "평균 추천 수/고객": "平均推薦数/顧客", "현재 최종 타겟 고객 수": "現在の最終対象顧客数", "추천 카테고리 분포": "推薦カテゴリ分布",
-    "이벤트 수": "イベント数", "실시간 고객 상태": "リアルタイム顧客状態", "점수 고객 수": "スコア算出顧客数", "Queued 액션": "Queuedアクション", "평균 이탈 점수": "平均離脱スコア", "고위험 고객": "高リスク顧客", "Live 추천": "Live推薦", "최신 점수 갱신": "最新スコア更新",
+    "이벤트 수": "イベント数", "상태 보유 고객 수": "Live状態保有顧客数", "이탈점수 산출 고객 수": "離脱スコア算出顧客数", "Queued 액션": "Queuedアクション", "평균 이탈 점수": "平均離脱スコア", "현재 기준 이탈 위험 고객 수": "現在基準の離脱リスク顧客数", "실시간 추천 후보 수": "リアルタイム推薦候補数", "최신 점수 갱신": "最新スコア更新",
     "추적 고객 수": "追跡顧客数", "재최적화 트리거 수": "再最適化トリガー数", "액션 큐 적재 수": "アクションキュー数", "임계 위험 고객 수": "重大リスク顧客数", "처리 이벤트 수": "処理イベント数", "폐쇄루프 예산 사용": "閉ループ予算使用", "채널 할당 수": "チャネル割当数", "운영 모니터": "運用モニター", "재최적화 횟수": "再最適化回数", "큐 적재 수": "キュー数", "채널 용량 사용률": "チャネル容量使用率", "고우선순위 큐": "高優先度キュー",
 })
 
@@ -3238,7 +3238,7 @@ def _restore_live_dimension_columns(fixed: pd.DataFrame) -> pd.DataFrame:
     return fixed
 
 
-@st.cache_data(show_spinner=False, ttl=8)
+@st.cache_data(show_spinner=False, ttl=3)
 def _fetch_user_live_scores_cached(cache_key: str, limit: int, risk_threshold: float) -> tuple[dict, pd.DataFrame]:
     """Live scores는 summary는 전체 기준, records는 화면 후보 수만 조회한다.
 
@@ -3248,7 +3248,7 @@ def _fetch_user_live_scores_cached(cache_key: str, limit: int, risk_threshold: f
     return fetch_user_live_scores(limit=int(limit), risk_threshold=float(risk_threshold))
 
 
-@st.cache_data(show_spinner=False, ttl=5)
+@st.cache_data(show_spinner=False, ttl=2)
 def _fetch_user_live_health_cached(cache_key: str) -> dict:
     """Language/view reruns should not hit the health endpoint repeatedly."""
     return fetch_user_live_health()
@@ -3260,12 +3260,12 @@ def _fetch_user_live_seed_status_cached(cache_key: str) -> dict:
     return fetch_user_live_seed_status()
 
 
-@st.cache_data(show_spinner=False, ttl=15)
+@st.cache_data(show_spinner=False, ttl=3)
 def _fetch_user_live_actions_cached(cache_key: str, limit: int, status: str = "queued") -> tuple[dict, pd.DataFrame]:
     return fetch_user_live_actions(limit=limit, status=status)
 
 
-@st.cache_data(show_spinner=False, ttl=15)
+@st.cache_data(show_spinner=False, ttl=3)
 def _fetch_user_live_recommendations_cached(cache_key: str, limit: int) -> tuple[dict, pd.DataFrame]:
     return fetch_user_live_recommendations(limit=limit)
 
@@ -4054,10 +4054,13 @@ def _load_user_live_tables(*, top_n: int, target_cap: int, threshold: float = 0.
     try:
         seed_status = payload.get("seed_status", {}) or {}
         seed_inner = seed_status.get("status", {}) if isinstance(seed_status, dict) else {}
+        health = payload.get("health", {}) or {}
         score_cache_key = "|".join([
-            str((payload.get("health", {}) or {}).get("latest_event_time") or "no_event"),
-            str((payload.get("health", {}) or {}).get("latest_feature_update_time") or "no_feature_update"),
-            str(seed_inner.get("score_count") or 0),
+            str(health.get("latest_event_time") or "no_event"),
+            str(health.get("latest_event_created_at") or "no_event_insert"),
+            str(health.get("latest_feature_update_time") or "no_feature_update"),
+            str(health.get("latest_score_time") or "no_score_update"),
+            str(health.get("score_count") or seed_inner.get("score_count") or 0),
             str(seed_inner.get("latest_score_seeded_at") or "no_seed"),
             str(safe_limit),
             f"thr={float(threshold):.4f}",
@@ -4076,8 +4079,12 @@ def _load_user_live_tables(*, top_n: int, target_cap: int, threshold: float = 0.
     }
     if needs_actions:
         try:
+            health = payload.get("health", {}) or {}
             action_cache_key = "|".join([
-                str((payload.get("health", {}) or {}).get("latest_event_time") or "no_event"),
+                str(health.get("latest_event_time") or "no_event"),
+                str(health.get("latest_event_created_at") or "no_event_insert"),
+                str(health.get("latest_score_time") or "no_score_update"),
+                str(health.get("latest_action_update_time") or "no_action_update"),
                 str((payload.get("score_summary", {}) or {}).get("scored_customers") or 0),
                 str(safe_limit),
             ])
@@ -4090,8 +4097,11 @@ def _load_user_live_tables(*, top_n: int, target_cap: int, threshold: float = 0.
         # Recommendation summary is cheap and feeds the real-time KPI card. Fetch only
         # on action/recommendation views so normal churn view remains fast.
         try:
+            health = payload.get("health", {}) or {}
             rec_cache_key = "|".join([
-                str((payload.get("health", {}) or {}).get("latest_event_time") or "no_event"),
+                str(health.get("latest_event_time") or "no_event"),
+                str(health.get("latest_score_time") or "no_score_update"),
+                str(health.get("latest_recommendation_update_time") or "no_rec_update"),
                 str((payload.get("score_summary", {}) or {}).get("scored_customers") or 0),
                 "rec",
                 str(min(safe_limit, 5000)),
@@ -4112,7 +4122,7 @@ def _render_user_live_status(live_payload: dict[str, Any]) -> None:
     if health.get("status") == "ok":
         st.success(
             f"{T('자사 데이터 Live DB 연결됨')} · {T('이벤트 수')} {int(health.get('event_count') or 0):,} · "
-            f"{T('실시간 고객 상태')} {int(health.get('feature_state_count') or 0):,} · "
+            f"{T('상태 보유 고객 수')} {int(health.get('feature_state_count') or 0):,} · "
             f"{T('최신 이벤트')} {health.get('latest_event_time') or '-'}"
         )
     else:
@@ -5488,34 +5498,51 @@ def _series_id_set(df: pd.DataFrame, column: str = "customer_id") -> set[str]:
 
 
 def _live_payload_matches_current_dataset(live_payload: dict[str, Any], customers_df: pd.DataFrame) -> bool:
-    """DB가 현재 선택된 모드/데이터셋으로 seed된 경우에만 DB 값을 사용한다."""
-    if not _is_user_live_mode():
+    """Return True when the PostgreSQL live DB should drive dashboard-wide KPIs.
+
+    The first implementation required a local seed metadata file to match the
+    current CSV/result token exactly.  That was too strict for demos and patch
+    applications: when the API DB had been seeded but the local metadata file was
+    missing or stale, incoming live events updated PostgreSQL correctly while the
+    dashboard silently fell back to static CSV artifacts.  The result was the
+    symptom the user reported: top-level churn probability/customer counts never
+    changed.
+
+    We now prefer an exact metadata match when available, but also accept the
+    live DB when its scored customer IDs substantially overlap the currently
+    loaded customers.  New live customers may make live_ids larger than file_ids,
+    which is expected and must not invalidate the live view.
+    """
+    if not _is_user_live_mode() or not isinstance(live_payload, dict):
+        return False
+
+    scores_df = live_payload.get("scores", pd.DataFrame())
+    if not isinstance(scores_df, pd.DataFrame) or scores_df.empty:
+        return False
+
+    file_ids = _series_id_set(customers_df)
+    live_ids = _series_id_set(scores_df)
+    if not live_ids:
         return False
 
     mode = _business_mode()
     meta = _load_live_seed_metadata()
-    if not meta:
-        return False
-    if meta.get("source_mode") != mode:
-        return False
-    if meta.get("source_raw_token") != _raw_data_token(mode):
-        return False
-    if meta.get("source_result_token") != _result_data_token(mode):
-        return False
-    if not bool(meta.get("seed_success")):
-        return False
+    exact_meta_match = (
+        bool(meta)
+        and meta.get("source_mode") == mode
+        and meta.get("source_raw_token") == _raw_data_token(mode)
+        and meta.get("source_result_token") == _result_data_token(mode)
+        and bool(meta.get("seed_success"))
+    )
+    if exact_meta_match:
+        return True
 
-    scores_df = live_payload.get("scores", pd.DataFrame()) if isinstance(live_payload, dict) else pd.DataFrame()
-    file_ids = _series_id_set(customers_df)
-    live_ids = _series_id_set(scores_df)
-    if not file_ids or not live_ids:
-        return False
+    if file_ids:
+        seeded_coverage = len(file_ids & live_ids) / max(len(file_ids), 1)
+        return seeded_coverage >= 0.80
 
-    # Live 시연 중에는 신규 고객이 계속 생성되므로 live_ids가 file_ids보다 커지는 것이 정상이다.
-    # 기존 count_gap <= 20% 조건은 신규 고객이 누적되는 순간 Live DB를 "불일치"로 판정하여
-    # 이탈 현황/상단 KPI가 다시 정적 CSV 값으로 되돌아가는 원인이었다.
-    seeded_coverage = len(file_ids & live_ids) / max(len(file_ids), 1)
-    return seeded_coverage >= 0.80
+    health = live_payload.get("health", {}) or {}
+    return str(health.get("status", "")).lower() == "ok"
 
 
 @st.cache_data(show_spinner=False)
@@ -9246,14 +9273,14 @@ elif view == "6. 실시간 운영 모니터":
 
         c1, c2, c3, c4 = st.columns(4)
         c1.metric(T("이벤트 수"), f"{int(health.get('event_count') or 0):,}")
-        c2.metric(T("실시간 고객 상태"), f"{int(health.get('feature_state_count') or 0):,}")
-        c3.metric(T("점수 고객 수"), f"{int(score_summary.get('scored_customers') or 0):,}")
+        c2.metric(T("상태 보유 고객 수"), f"{int(health.get('feature_state_count') or 0):,}", help=T("이벤트가 한 번 이상 반영되어 customer_feature_state에 현재 상태가 있는 고객 수입니다."))
+        c3.metric(T("이탈점수 산출 고객 수"), f"{int(score_summary.get('scored_customers') or 0):,}", help=T("현재 customer_scores 테이블에 최신 이탈 점수가 저장된 고객 수입니다."))
         c4.metric(T("Queued 액션"), f"{int(action_summary.get('queued_actions') or 0):,}")
 
         c5, c6, c7, c8 = st.columns(4)
         c5.metric(T("평균 이탈 점수"), pct(float(score_summary.get("avg_churn_score") or 0.0)))
-        c6.metric(T("고위험 고객"), f"{int(score_summary.get('high_risk_customers') or 0):,}")
-        c7.metric(T("Live 추천"), f"{int(rec_summary.get('live_recommendations') or 0):,}")
+        c6.metric(T("현재 기준 이탈 위험 고객 수"), f"{int(score_summary.get('high_risk_customers') or 0):,}", help=f"{T('이탈 임계값')} ≥ {float(threshold):.2f}")
+        c7.metric(T("실시간 추천 후보 수"), f"{int(rec_summary.get('live_recommendations') or 0):,}", help=T("이벤트 이후 live 정책으로 생성된 recommendation_candidates 수입니다. 실제 큐 적재 수와는 다를 수 있습니다."))
         c8.metric(T("최신 점수 갱신"), str(score_summary.get("latest_scored_at") or "-"))
 
         scores_df = live_payload.get("scores", pd.DataFrame()).copy()
@@ -9270,14 +9297,21 @@ elif view == "6. 실시간 운영 모니터":
                     "customer_id",
                     "recommended_action",
                     "intervention_intensity",
+                    "coupon_cost",
                     "expected_profit",
                     "expected_incremental_profit",
                     "expected_roi",
                     "action_status",
                     "trigger_reason",
+                    "updated_at",
                 ]
                 if col in actions_df.columns
             ]
+            _queue_total = int(action_summary.get("queued_actions") or action_summary.get("total_actions") or len(actions_df))
+            st.caption(
+                f"{T('Live Action Queue')}: 전체 queued action {_queue_total:,}건 중 "
+                f"현재 표는 우선순위 상위 {len(actions_df):,}건을 표시합니다."
+            )
 
             _render_dataframe_with_count(
                 actions_df[display_cols],
@@ -9354,7 +9388,7 @@ elif view == "6. 실시간 운영 모니터":
     else:
         m1, m2, m3, m4 = st.columns(4)
         m1.metric(T("추적 고객 수"), f"{int(realtime_summary.get('tracked_customers', 0)):,}")
-        m2.metric(T("고위험 고객"), f"{int(realtime_summary.get('high_risk_customers', 0)):,}")
+        m2.metric(T("현재 기준 이탈 위험 고객 수"), f"{int(realtime_summary.get('high_risk_customers', 0)):,}", help=f"{T('이탈 임계값')} ≥ {float(threshold):.2f}")
         m3.metric(T("재최적화 트리거 수"), f"{int(realtime_summary.get('triggered_reoptimizations', 0)):,}")
         m4.metric(T("액션 큐 적재 수"), f"{int(realtime_summary.get('action_queue_size', 0)):,}")
 

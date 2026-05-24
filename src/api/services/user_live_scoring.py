@@ -724,7 +724,7 @@ def get_user_live_scores(
     cache_key = make_cache_key(
         "user-live",
         "scores",
-        "v4",
+        "v5",
         limit if limit is not None else "all",
         customer_id or "all",
         f"thr{safe_threshold:.4f}",
@@ -768,6 +768,10 @@ def get_user_live_scores(
                     COUNT(*) AS scored_customers,
                     AVG(churn_score) AS avg_churn_score,
                     SUM(CASE WHEN churn_score >= :risk_threshold THEN 1 ELSE 0 END) AS high_risk_customers,
+                    SUM(CASE WHEN churn_score >= 0.85 THEN 1 ELSE 0 END) AS critical_risk_customers,
+                    SUM(CASE WHEN churn_score >= 0.70 AND churn_score < 0.85 THEN 1 ELSE 0 END) AS high_band_customers,
+                    SUM(CASE WHEN churn_score >= 0.50 AND churn_score < 0.70 THEN 1 ELSE 0 END) AS medium_band_customers,
+                    SUM(CASE WHEN churn_score < 0.50 THEN 1 ELSE 0 END) AS low_band_customers,
                     MIN(churn_score) AS min_churn_score,
                     MAX(churn_score) AS max_churn_score,
                     MAX(scored_at) AS latest_scored_at
@@ -776,9 +780,17 @@ def get_user_live_scores(
                 {"risk_threshold": safe_threshold},
             ).mappings().first()
 
+        summary_dict = dict(summary or {})
+        summary_dict.update({
+            "risk_threshold": safe_threshold,
+            "records_returned": len(rows),
+            "record_limit": limit,
+            "records_are_limited": limit is not None,
+        })
+
         return {
             "success": True,
-            "summary": dict(summary or {}),
+            "summary": summary_dict,
             "records": [dict(row) for row in rows],
             "cache": {"key": cache_key, "ttl_seconds": 15, "risk_threshold": safe_threshold},
         }

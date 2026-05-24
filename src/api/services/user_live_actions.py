@@ -673,7 +673,7 @@ def get_live_recommendation_candidates(
 ) -> dict[str, Any]:
     ensure_user_live_action_columns(db_url)
     safe_limit = max(int(limit or 100), 1)
-    cache_key = make_cache_key("user-live", "recommendations", "v3", safe_limit, customer_id or "all", source_type or "all")
+    cache_key = make_cache_key("user-live", "recommendations", "v4", safe_limit, customer_id or "all", source_type or "all")
 
     def _load_payload() -> dict[str, Any]:
         with user_live_session(db_url) as conn:
@@ -721,9 +721,16 @@ def get_live_recommendation_candidates(
                 """)
             ).mappings().first()
 
-        return {"success": True, "summary": dict(summary or {}), "records": [dict(row) for row in rows]}
+        summary_dict = dict(summary or {})
+        summary_dict.update({
+            "records_returned": len(rows),
+            "record_limit": safe_limit,
+            "records_are_limited": True,
+            "source_type_filter": source_type,
+        })
+        return {"success": True, "summary": summary_dict, "records": [dict(row) for row in rows]}
 
-    return cached_json(cache_key, _load_payload, ttl_seconds=15, redis_url=redis_url)
+    return cached_json(cache_key, _load_payload, ttl_seconds=5, redis_url=redis_url)
 
 def get_live_action_queue(
     *,
@@ -736,7 +743,7 @@ def get_live_action_queue(
 ) -> dict[str, Any]:
     ensure_user_live_action_columns(db_url)
     safe_limit = max(int(limit or 100), 1)
-    cache_key = make_cache_key("user-live", "actions", "v3", safe_limit, customer_id or "all", source_type or "all", status or "all")
+    cache_key = make_cache_key("user-live", "actions", "v4", safe_limit, customer_id or "all", source_type or "all", status or "all")
 
     def _load_payload() -> dict[str, Any]:
         with user_live_session(db_url) as conn:
@@ -776,6 +783,14 @@ def get_live_action_queue(
                 """)
             ).mappings().first()
 
-        return {"success": True, "summary": dict(summary or {}), "records": [dict(row) for row in rows]}
+        summary_dict = dict(summary or {})
+        summary_dict.update({
+            "records_returned": len(rows),
+            "record_limit": safe_limit,
+            "records_are_limited": True,
+            "status_filter": status,
+            "source_type_filter": source_type,
+        })
+        return {"success": True, "summary": summary_dict, "records": [dict(row) for row in rows]}
 
-    return cached_json(cache_key, _load_payload, ttl_seconds=10, redis_url=redis_url)
+    return cached_json(cache_key, _load_payload, ttl_seconds=5, redis_url=redis_url)
