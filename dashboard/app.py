@@ -7936,19 +7936,17 @@ if _is_user_live_mode():
         st.info(T("현재 데이터셋과 Live DB가 일치하지 않아 CSV/결과 파일 기준으로 표시합니다."))
 
     # 시연 실행 중에는 어느 뷰에 있든 최신 event/score/action 지표를 보여줘야 한다.
-    # 기존에는 실시간 운영 모니터에서만 10초 auto-rerun이 있어 이탈 현황 등은 stale하게 보였다.
+    # 브라우저 location.reload()는 Streamlit 세션을 새로 만들어 사이드바 분석 컨트롤을
+    # 기본값으로 되돌릴 수 있다. 따라서 세션을 유지하는 st.rerun() 방식으로만 갱신한다.
     try:
         _global_demo_status = fetch_demo_status()
     except Exception:
         _global_demo_status = {}
-    if _global_demo_status.get("running") and view != "6. 실시간 운영 모니터":
+    _global_demo_autorefresh_active = bool(_global_demo_status.get("running")) and view != "6. 실시간 운영 모니터"
+    if _global_demo_autorefresh_active:
         st.caption(T("시연 실행 중: 10초마다 live 지표를 자동 갱신합니다."))
-        components.html(
-            """<script>
-            setTimeout(function(){ window.parent.location.reload(); }, 10000);
-            </script>""",
-            height=0,
-        )
+else:
+    _global_demo_autorefresh_active = False
 
 if _use_live_payload and not live_payload.get("scores", pd.DataFrame()).empty:
     customers = _rename_live_score_columns(live_payload["scores"])
@@ -8582,6 +8580,25 @@ elif view == "4. 예산 최적화 및 리텐션 타겟":
             max_customers=target_cap,
             budget_step=1_000_000,
         )
+
+        # user-live 점수 테이블에 비용 컬럼이 아직 충분히 없거나,
+        # 액션 큐 기준 후보만 존재하는 경우에는 현재 액션 큐를 후보 풀로 삼아 한 번 더 계산한다.
+        # 기존 customers 기반 계산 결과가 있으면 그대로 사용하므로 오프라인/업로드 기능은 건드리지 않는다.
+        if budget_sensitivity_table.empty and _use_live_payload:
+            live_actions_for_sensitivity = _normalize_live_actions_df(
+                _merge_live_score_dimensions(
+                    live_payload.get("actions", pd.DataFrame()),
+                    live_payload.get("scores", pd.DataFrame()),
+                )
+            )
+            if not live_actions_for_sensitivity.empty:
+                budget_sensitivity_summary, budget_sensitivity_table = build_budget_sensitivity_map(
+                    live_actions_for_sensitivity,
+                    budget=int(budget),
+                    threshold=float(threshold),
+                    max_customers=target_cap,
+                    budget_step=1_000_000,
+                )
     except Exception as exc:
         budget_sensitivity_summary, budget_sensitivity_table = {}, pd.DataFrame()
         st.warning(f"예산 민감도 지도를 계산하지 못했습니다: {exc}")
@@ -9271,17 +9288,17 @@ elif view == "6. 실시간 운영 모니터":
         action_summary = live_payload.get("action_summary", {}) or {}
         rec_summary = live_payload.get("recommendation_summary", {}) or {}
 
+        total_live_customers = max(
+            int(health.get('feature_state_count') or 0),
+            int(score_summary.get('scored_customers') or 0),
+        )
+
         c1, c2, c3, c4 = st.columns(4)
         c1.metric(T("이벤트 수"), f"{int(health.get('event_count') or 0):,}")
-        c2.metric(T("상태 보유 고객 수"), f"{int(health.get('feature_state_count') or 0):,}", help=T("이벤트가 한 번 이상 반영되어 customer_feature_state에 현재 상태가 있는 고객 수입니다."))
-        c3.metric(T("이탈점수 산출 고객 수"), f"{int(score_summary.get('scored_customers') or 0):,}", help=T("현재 customer_scores 테이블에 최신 이탈 점수가 저장된 고객 수입니다."))
-        c4.metric(T("Queued 액션"), f"{int(action_summary.get('queued_actions') or 0):,}")
-
-        c5, c6, c7, c8 = st.columns(4)
-        c5.metric(T("평균 이탈 점수"), pct(float(score_summary.get("avg_churn_score") or 0.0)))
-        c6.metric(T("현재 기준 이탈 위험 고객 수"), f"{int(score_summary.get('high_risk_customers') or 0):,}", help=f"{T('이탈 임계값')} ≥ {float(threshold):.2f}")
-        c7.metric(T("실시간 추천 후보 수"), f"{int(rec_summary.get('live_recommendations') or 0):,}", help=T("이벤트 이후 live 정책으로 생성된 recommendation_candidates 수입니다. 실제 큐 적재 수와는 다를 수 있습니다."))
-        c8.metric(T("최신 점수 갱신"), str(score_summary.get("latest_scored_at") or "-"))
+        c2.metric(T("전체 고객 수"), f"{total_live_customers:,}", help=T("현재 live DB에서 상태 또는 이탈 점수를 보유한 고유 고객 수입니다."))
+        c3.metric(T("액션 큐"), f"{int(action_summary.get('queued_actions') or 0):,}", help=T("현재 후속 조치 대기열에 올라간 고객 단위 액션 후보 수입니다."))
+        c4.metric(T("최신 점수 갱신"), str(score_summary.get("latest_scored_at") or "-"))
+        st.caption(T("액션 큐는 실시간 이벤트 반영 후 이탈 위험과 기대 효과 조건을 만족해 쿠폰, 상담, 알림 등 후속 조치 대상으로 대기 중인 고객 단위 후보 목록입니다."))
 
         scores_df = live_payload.get("scores", pd.DataFrame()).copy()
         actions_df = live_payload.get("actions", pd.DataFrame()).copy()
@@ -9356,6 +9373,7 @@ elif view == "6. 실시간 운영 모니터":
 
         if _page_demo_running:
             import time as _demo_time
+            _snapshot_analysis_controls()
             _placeholder = st.empty()
             _placeholder.caption(T("다음 자동 새로고침까지 10초..."))
             _demo_time.sleep(10)
@@ -9952,9 +9970,43 @@ elif view == "14. 주간 액션 성과 리뷰":
         st.warning(T("개인화 추천 또는 최적화 선정 고객 산출물이 없습니다."))
         st.stop()
 
-    st.subheader(T("주간 액션 성과 리뷰"))
-    _render_view_intro("14")
-    st.caption(T("이 화면은 실제 집행 결과가 아닌, 추천 데이터 기반의 시뮬레이션 리뷰입니다. 실행률과 성과 노이즈 슬라이더로 가상 시나리오를 조정할 수 있습니다."))
+    if "show_report_14" not in st.session_state:
+        st.session_state["show_report_14"] = False
+    if "review_memo_area" not in st.session_state:
+        st.session_state["review_memo_area"] = ""
+
+    _title_c, _btn_c = st.columns([5, 1])
+    with _title_c:
+        st.subheader(T("주간 액션 성과 리뷰"))
+    with _btn_c:
+        st.write("")
+        if st.button("📄 " + T("보고서 보기"), key="report_btn_14"):
+            st.session_state["show_report_14"] = True
+            st.rerun()
+
+    st.caption(T("추천 기반 시뮬레이션으로 지난주 리텐션 액션 성과를 리뷰합니다."))
+    with st.expander(T("이 화면 설명 보기"), expanded=False):
+        for _intro_line in VIEW_INTRO_LINES.get("14", []):
+            st.markdown(f"- {T(_intro_line)}")
+        st.info(T("이 화면은 실제 집행 결과가 아닌, 추천 데이터 기반의 시뮬레이션 리뷰입니다. 실행률과 성과 노이즈 슬라이더로 가상 시나리오를 조정할 수 있습니다."))
+
+    _today = pd.Timestamp.now().normalize()
+    _last_sunday = _today - pd.Timedelta(days=_today.dayofweek + 1)
+    _last_monday = _last_sunday - pd.Timedelta(days=6)
+    _week_options = [_last_monday - pd.Timedelta(weeks=i) for i in range(8)]
+    _week_labels = [f"{d.strftime('%Y-%m-%d')} ~ {(d + pd.Timedelta(days=6)).strftime('%Y-%m-%d')}" for d in _week_options]
+    _wk_col1, _wk_col2 = st.columns([1, 3])
+    with _wk_col1:
+        _selected_idx = st.selectbox(
+            T("주 선택"), range(len(_week_labels)),
+            format_func=lambda i: _week_labels[i],
+            key="review_week_idx",
+        )
+    _week_start = _week_options[_selected_idx]
+    _week_end = _week_start + pd.Timedelta(days=6)
+    with _wk_col2:
+        st.markdown("")
+        st.markdown(f"📅 **{T('분석 기간')}:** {_week_start.strftime('%Y-%m-%d')} ~ {_week_end.strftime('%Y-%m-%d')}")
 
     with st.sidebar.expander(T("시뮬레이션 설정"), expanded=False):
         _exec_rate = st.slider(T("전체 실행률"), 0.0, 1.0, 0.75, 0.05, key="review_exec_rate",
@@ -9965,12 +10017,15 @@ elif view == "14. 주간 액션 성과 리뷰":
                            help=T("실제 성과가 예상에서 벗어나는 정도"))
         _seed = st.number_input(T("시뮬레이션 시드"), value=42, min_value=0, max_value=9999, key="review_seed")
 
+    _week_hash = int(_week_start.strftime("%Y%m%d"))
+    _effective_seed = int(_seed) ^ _week_hash
+
     review_summary, action_log, policy_suggestions = _build_weekly_action_review(
         _review_reco_df, _review_sel_df,
         execution_rate=_exec_rate,
         high_coupon_execution_rate=_hc_exec_rate,
         noise_std=_noise,
-        seed=int(_seed),
+        seed=_effective_seed,
     )
 
     _data_dir = _project_root() / _domain_paths()["data"]
@@ -9987,175 +10042,423 @@ elif view == "14. 주간 액션 성과 리뷰":
 
     _review_events, _review_orders, _review_campaigns = _load_review_events(_raw_data_token())
 
+    _total = review_summary["total_actions"]
+    _executed_cnt = review_summary["total_executed"]
+    _exec_pct = review_summary["execution_rate"]
     _expected = review_summary["expected_profit_sum"]
     _actual = review_summary["actual_profit_sum"]
-    _gap = review_summary["profit_gap"]       # actual - expected
+    _gap = review_summary["profit_gap"]
     _budget = review_summary["total_budget_spent"]
     _gap_positive = _gap >= 0
 
-    _hero_color = "#e8f5e9" if _gap_positive else "#fbe9e7"
-    _hero_icon = "📈" if _gap_positive else "📉"
-    _hero_text_color = "#2e7d32" if _gap_positive else "#c62828"
-    _hero_label = T("예상보다 더 벌었습니다") if _gap_positive else T("예상보다 손해를 봤습니다")
+    _m1, _m2, _m3 = st.columns(3)
+    _m1.metric(T("총 추천 건수"), f"{_total:,}")
+    _m2.metric(T("총 집행 건수"), f"{_executed_cnt:,}")
+    _m3.metric(T("집행률"), f"{_exec_pct:.1%}")
 
-    st.markdown(
-        f"""<div style="background:{_hero_color};border-radius:16px;padding:28px 32px;margin-bottom:24px;">
-        <div style="font-size:15px;color:#666;margin-bottom:4px;">{T("지난주 리텐션 액션 결과")}</div>
-        <div style="font-size:36px;font-weight:700;color:{_hero_text_color};">
-            {_hero_icon} {_gap:+,.0f}{T("원")}
-        </div>
-        <div style="font-size:15px;color:{_hero_text_color};margin-top:2px;font-weight:600;">
-            {_hero_label}
-        </div>
-        <div style="font-size:13px;color:#888;margin-top:12px;">
-            {T("기대 이익")} <b>{money(_expected)}</b> &nbsp;→&nbsp;
-            {T("실제 이익")} <b style="color:{_hero_text_color}">{money(_actual)}</b> &nbsp;·&nbsp;
-            {T("총 집행 예산")} <b>{money(_budget)}</b> &nbsp;·&nbsp;
-            {T("집행")} <b>{review_summary['total_executed']:,}</b>{T("건")} / {review_summary['total_actions']:,}{T("건")}
-        </div>
-        </div>""",
-        unsafe_allow_html=True,
-    )
+    _gap_color = "#2e7d32" if _gap_positive else "#c62828"
+    _gap_bg = "#e8f5e9" if _gap_positive else "#fbe9e7"
+    _gap_icon = "📈" if _gap_positive else "📉"
 
-    st.markdown(f"### {T('다음 주 정책 조정 제안')}")
-    st.caption(T("아래 제안은 이번 주 시뮬레이션 성과를 기반으로 자동 생성된 운영 힌트입니다."))
-    for sug in policy_suggestions:
-        _sev = sug.get("severity", "info")
-        _sug_amt = float(sug.get("amount", 0))
-        _sug_what = sug.get("what", "")
-        _sug_who = sug.get("who", "")
-        _sug_action = sug.get("action", "")
+    def _budget_card(label: str, value: str, color: str = "#333", bg: str = "#f8f9fa") -> str:
+        return f"""<div style="background:{bg};border-radius:10px;padding:14px 16px;text-align:center;min-height:85px;display:flex;flex-direction:column;justify-content:center;">
+        <div style="font-size:12px;color:#888;margin-bottom:4px;">{label}</div>
+        <div style="font-size:20px;font-weight:700;color:{color};">{value}</div>
+        </div>"""
 
-        _sug_bg = {"warning": "#fff8e1", "info": "#e3f2fd", "success": "#e8f5e9"}.get(_sev, "#e3f2fd")
-        _sug_border = {"warning": "#f9a825", "info": "#1976d2", "success": "#388e3c"}.get(_sev, "#1976d2")
-
-        if _sug_amt < 0:
-            _amt_color = "#c62828"
-            _amt_str = f"-{abs(_sug_amt):,.0f}원"
-            _amt_label = T("손실")
-        elif _sug_amt > 0:
-            _amt_color = "#2e7d32"
-            _amt_str = f"+{_sug_amt:,.0f}원"
-            _amt_label = T("이득")
-        else:
-            _amt_color = "#666"
-            _amt_str = "-"
-            _amt_label = ""
-
-        st.markdown(
-            f"""<div style="border-left:4px solid {_sug_border};background:{_sug_bg};padding:16px 20px;border-radius:0 10px 10px 0;margin-bottom:12px;">
-            <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:8px;">
-                <span style="font-size:15px;font-weight:700;">{T(sug['title'])}</span>
-                <span style="font-size:22px;font-weight:800;color:{_amt_color};">{_amt_str}</span>
-                <span style="font-size:12px;color:{_amt_color};">{_amt_label}</span>
-            </div>
-            <div style="font-size:13px;color:#444;line-height:1.6;">
-                <span style="color:#888;">결정:</span> {T(_sug_what)}<br>
-                <span style="color:#888;">대상:</span> {T(_sug_who)}<br>
-                <span style="color:#888;">→ 조치:</span> <b>{T(_sug_action)}</b>
-            </div>
-            </div>""",
-            unsafe_allow_html=True,
-        )
+    _b1, _b2, _b3, _b4 = st.columns(4)
+    _b1.markdown(_budget_card(T("총 집행 예산"), money(_budget)), unsafe_allow_html=True)
+    _b2.markdown(_budget_card(T("기대 이익"), money(_expected)), unsafe_allow_html=True)
+    _b3.markdown(_budget_card(T("실제 이익"), money(_actual)), unsafe_allow_html=True)
+    _b4.markdown(_budget_card(T("예상 대비 손익"), f"{_gap_icon} {_gap:+,.0f}{T('원')}", color=_gap_color, bg=_gap_bg), unsafe_allow_html=True)
 
     st.divider()
 
     _outcome_config = [
-        ("적정 판단", "#2ecc71", "적절한 비용으로 기대 이상의 성과"),
-        ("기대 미달", "#f39c12", "이익은 있지만 ROI가 기대보다 낮음"),
-        ("과잉 투자", "#e74c3c", "쿠폰 비용 대비 성과 부족"),
-        ("타겟 오류", "#e67e22", "잘못된 대상에 액션 집행"),
-        ("실행 누락", "#9b59b6", "미실행으로 기회 손실 발생"),
+        ("적정 판단", "#2ecc71", "적절한 비용으로 전환에 성공한 건강한 액션 — 유사 고객 확대 근거"),
+        ("기대 미달", "#f39c12", "이익은 발생했으나 기대 ROI 대비 70% 미만 — 쿠폰 강도 또는 타이밍 점검"),
+        ("과잉 투자", "#e74c3c", "높은 쿠폰 비용 대비 전환 실패 — 비용 상한 재설정 필요"),
+        ("타겟 오류", "#e67e22", "반응 가능성이 낮은 대상에 실행 — 세그먼트 필터 재검토"),
+        ("실행 누락", "#9b59b6", "기대 ROI 1.0+ 고객을 미실행하여 이탈 — 다음 주 우선 실행 대상"),
     ]
     _oc = review_summary.get("outcome_counts", {})
-    _oc_cols = st.columns(len(_outcome_config))
-    for _col, (_label, _color, _desc) in zip(_oc_cols, _outcome_config):
-        _cnt = _oc.get(_label, 0)
-        _col.markdown(
-            f"""<div style="border-left:4px solid {_color};padding:8px 12px;margin-bottom:8px;border-radius:0 8px 8px 0;background:#fafafa;">
-            <div style="font-size:22px;font-weight:700;color:{_color};">{_cnt}</div>
-            <div style="font-size:13px;font-weight:600;">{T(_label)}</div>
-            <div style="font-size:11px;color:#999;">{T(_desc)}</div>
-            </div>""",
-            unsafe_allow_html=True,
-        )
+
+    st.markdown(f"### {T('판정 분포 차트')}")
+    _chart_col, _legend_col = st.columns([1, 1])
+    with _chart_col:
+        _donut_labels = []
+        _donut_values = []
+        _color_map = {T(_lbl): _clr for _lbl, _clr, _ in _outcome_config}
+        for _lbl, _clr, _ in _outcome_config:
+            _cnt = _oc.get(_lbl, 0)
+            if _cnt > 0:
+                _donut_labels.append(T(_lbl))
+                _donut_values.append(_cnt)
+        if _donut_values:
+            _donut_df = pd.DataFrame({"label": _donut_labels, "count": _donut_values})
+            _fig = px.pie(
+                _donut_df, names="label", values="count",
+                hole=0.45,
+                color="label",
+                color_discrete_map=_color_map,
+            )
+            _fig.update_traces(
+                textposition="inside", textinfo="label",
+                customdata=_donut_df["count"].values,
+                hovertemplate="%{label}: %{customdata[0]:,}건 (%{percent})<extra></extra>",
+            )
+            _fig.update_layout(showlegend=False, margin=dict(t=20, b=20, l=20, r=20), height=300)
+            st.plotly_chart(_fig, use_container_width=True)
+        else:
+            st.info(T("실행된 액션이 없습니다."))
+    with _legend_col:
+        for _lbl, _clr, _crm_desc in _outcome_config:
+            _cnt = _oc.get(_lbl, 0)
+            st.markdown(
+                f"""<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 12px;border-radius:8px;margin-bottom:6px;background:#fafafa;">
+                <div style="width:12px;height:12px;border-radius:50%;background:{_clr};flex-shrink:0;margin-top:3px;"></div>
+                <div>
+                    <div style="font-weight:600;font-size:14px;">{T(_lbl)} <span style="color:{_clr};font-weight:700;">{_cnt}</span></div>
+                    <div style="font-size:11px;color:#666;line-height:1.4;">{T(_crm_desc)}</div>
+                </div>
+                </div>""",
+                unsafe_allow_html=True,
+            )
 
     st.divider()
 
-    st.markdown(f"### {T('예상과 다른 반응을 보인 고객')}")
-    st.caption(T("클릭하면 해당 고객의 이벤트 로그, 주문 내역, 쿠폰 이력을 확인할 수 있습니다."))
+    _persona_kr = {
+        "price_sensitive": "가격 민감형",
+        "vip_loyal": "VIP 충성 고객",
+        "churn_progressing": "이탈 진행 고객",
+        "explorer": "탐색형 고객",
+        "coupon_sensitive": "쿠폰 민감형",
+        "loyal_regular": "충성 일반 고객",
+    }
 
-    _filter_options = [T("전체")] + [T(lbl) for lbl, _, _ in _outcome_config]
-    _selected_filter = st.radio(
-        T("판정 필터"), _filter_options, horizontal=True, key="review_filter", label_visibility="collapsed",
+    def _kr_persona(v: str) -> str:
+        return _persona_kr.get(str(v).strip(), str(v))
+
+    _exec_decision_kr = {
+        "executed_as_recommended": "추천대로 실행",
+        "executed_with_lower_intensity": "강도 낮춰 실행",
+        "executed_with_higher_intensity": "강도 높여 실행",
+        "skipped": "미실행",
+        "manual_override": "수동 변경",
+    }
+
+    _detail_col_rename = {
+        "customer_id": "고객 ID",
+        "persona": "페르소나",
+        "uplift_segment": "반응 유형",
+        "coupon_cost": "쿠폰 비용",
+        "actual_profit": "실제 이익",
+        "actual_roi": "ROI",
+        "outcome_label": "결과 분류",
+        "recommended_action": "추천 액션",
+        "executed": "실행 여부",
+    }
+    _detail_cols_order = ["customer_id", "persona", "outcome_label", "uplift_segment", "coupon_cost", "actual_profit", "actual_roi", "executed"]
+
+    def _format_detail_df(src: pd.DataFrame) -> pd.DataFrame:
+        cols = [c for c in _detail_cols_order if c in src.columns]
+        out = src[cols].copy()
+        if "persona" in out.columns:
+            out["persona"] = out["persona"].map(_kr_persona)
+        if "executed" in out.columns:
+            out["executed"] = out["executed"].map({True: "실행", False: "미실행"})
+        out = out.rename(columns=_detail_col_rename)
+        return out
+
+    _memo_json_path = _project_root() / "results_user" / "weekly_action_memos.json"
+
+    def _load_memos() -> list[dict]:
+        if _memo_json_path.exists():
+            try:
+                import json as _j
+                data = _j.loads(_memo_json_path.read_text())
+                if isinstance(data, list):
+                    return data
+            except Exception:
+                pass
+        return []
+
+    def _save_memos(memos: list[dict]) -> None:
+        import json as _j
+        _memo_json_path.parent.mkdir(parents=True, exist_ok=True)
+        _memo_json_path.write_text(_j.dumps(memos, ensure_ascii=False, indent=2))
+
+    st.markdown(f"### {T('다음 주 정책 조정 제안')}")
+    for _sug_idx, sug in enumerate(policy_suggestions):
+        _sev = sug.get("severity", "info")
+        _sug_amt = float(sug.get("amount", 0))
+        _sug_action_text = sug.get("action", "")
+        _sug_bg = {"warning": "#fff8e1", "info": "#e3f2fd", "success": "#e8f5e9"}.get(_sev, "#e3f2fd")
+        _sug_border = {"warning": "#f9a825", "info": "#1976d2", "success": "#388e3c"}.get(_sev, "#1976d2")
+        if _sug_amt < 0:
+            _status = T("손실")
+            _status_color = "#c62828"
+            _amt_str = f"-{abs(_sug_amt):,.0f}원"
+        elif _sug_amt > 0 and _sev == "success":
+            _status = T("유지추천")
+            _status_color = "#388e3c"
+            _amt_str = f"+{_sug_amt:,.0f}원"
+        elif _sug_amt > 0:
+            _status = T("이득")
+            _status_color = "#2e7d32"
+            _amt_str = f"+{_sug_amt:,.0f}원"
+        else:
+            _status = T("개선기회")
+            _status_color = "#1976d2"
+            _amt_str = "-"
+
+        _sug_title = sug["title"]
+        _outcome_map = {"고비용 쿠폰 조정": "과잉 투자", "타겟 대상 재검토": "타겟 오류", "기대 미달 액션 점검": "기대 미달", "실행 누락 고객 추가": "실행 누락"}
+        _mapped = _outcome_map.get(_sug_title, "")
+        _sug_cust = pd.DataFrame()
+        if _mapped and not action_log.empty:
+            _sug_cust = action_log[action_log["outcome_label"] == _mapped]
+        elif "세그먼트" in _sug_title and not action_log.empty and "uplift_segment" in action_log.columns:
+            _seg_n = _sug_title.replace(" 세그먼트 적자", "").replace(" 세그먼트 유지", "")
+            _sug_cust = action_log[action_log["uplift_segment"] == _seg_n]
+        _sug_cust_cnt = len(_sug_cust)
+
+        _card_c, _memo_c = st.columns([9, 1])
+        with _card_c:
+            st.markdown(
+                f"""<div style="border-left:4px solid {_sug_border};background:{_sug_bg};padding:10px 16px;border-radius:0 8px 8px 0;margin-bottom:2px;">
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                    <span style="font-size:14px;font-weight:700;">{T(_sug_title)}</span>
+                    <span style="font-size:18px;font-weight:800;color:{_status_color};">{_amt_str}</span>
+                    <span style="font-size:11px;background:{_status_color}15;color:{_status_color};padding:2px 8px;border-radius:10px;font-weight:600;">{_status}</span>
+                    <span style="font-size:12px;color:#666;">→ {T(_sug_action_text)}</span>
+                </div>
+                </div>""",
+                unsafe_allow_html=True,
+            )
+        with _memo_c:
+            if st.button("📝", key=f"add_memo_{_sug_idx}", help=T("메모에 추가")):
+                _top_ids = []
+                if not _sug_cust.empty and "customer_id" in _sug_cust.columns:
+                    _sorted_cust = _sug_cust.sort_values("actual_profit", ascending=True)
+                    _top_n = max(1, int(len(_sorted_cust) * 0.2))
+                    _top_ids = _sorted_cust["customer_id"].head(_top_n).tolist()
+                _new_memo = {
+                    "week_start": _week_start.strftime("%Y-%m-%d"),
+                    "week_end": _week_end.strftime("%Y-%m-%d"),
+                    "title": _sug_title,
+                    "impact_type": _status,
+                    "impact_amount": _sug_amt,
+                    "customer_count": _sug_cust_cnt,
+                    "recommended_action": _sug_action_text,
+                    "top_customers": _top_ids,
+                    "created_at": pd.Timestamp.now().isoformat(timespec="seconds"),
+                }
+                _existing = _load_memos()
+                _existing.append(_new_memo)
+                _save_memos(_existing)
+                _memo_line = f"[{_status}] {_sug_title} {_amt_str} | {_sug_cust_cnt}명 대상 | 조치: {_sug_action_text}"
+                if _top_ids:
+                    _top_str = ", ".join(str(x) for x in _top_ids[:5])
+                    _memo_line += f"\n  └ 상위 {len(_top_ids)}명(상위20%): {_top_str}" + ("..." if len(_top_ids) > 5 else "")
+                st.session_state["review_memo_area"] = st.session_state.get("review_memo_area", "") + f"• {_memo_line}\n"
+                st.rerun()
+
+        with st.expander(T("상세 보기"), expanded=False):
+            st.markdown(f"**{T('결정 근거')}:** {T(sug.get('what', ''))}")
+            st.markdown(f"**{T('추천 조치')}:** {T(_sug_action_text)}")
+            if not _sug_cust.empty:
+                st.caption(f"{T('관련 고객')} — {len(_sug_cust)}{T('건')}")
+                st.dataframe(_format_detail_df(_sug_cust.sort_values("actual_profit")), use_container_width=True, hide_index=True)
+
+    st.divider()
+
+    st.markdown(f"### {T('운영 메모')}")
+    if st.session_state.pop("_reset_review_memo_flag", False):
+        st.session_state["review_memo_area"] = ""
+    st.text_area(
+        T("운영 메모"), key="review_memo_area", height=100, label_visibility="collapsed",
+        placeholder=T("매주 월요일 리뷰 후 다음 주 액션을 메모하세요."),
     )
 
-    _t_reverse = {T(lbl): lbl for lbl, _, _ in _outcome_config}
-    if _selected_filter == T("전체"):
-        _filtered_log = action_log[action_log["outcome_label"] != "해당 없음"].copy()
+    _memo_btn1, _memo_btn2, _memo_btn3, _memo_btn4 = st.columns(4)
+    with _memo_btn1:
+        if st.button("💾 " + T("메모 저장"), key="save_memo_14"):
+            _text_memo = st.session_state.get("review_memo_area", "")
+            if _text_memo.strip():
+                _existing = _load_memos()
+                _existing.append({
+                    "week_start": _week_start.strftime("%Y-%m-%d"),
+                    "week_end": _week_end.strftime("%Y-%m-%d"),
+                    "title": "수동 메모",
+                    "impact_type": "-",
+                    "impact_amount": 0,
+                    "customer_count": 0,
+                    "recommended_action": _text_memo.strip(),
+                    "created_at": pd.Timestamp.now().isoformat(timespec="seconds"),
+                })
+                _save_memos(_existing)
+                st.success(T("저장 완료"))
+            else:
+                st.warning(T("메모 내용이 비어있습니다."))
+    with _memo_btn2:
+        _saved_memos = _load_memos()
+        if _saved_memos:
+            with st.expander(f"📂 {T('저장된 메모 보기')} ({len(_saved_memos)}{T('건')})"):
+                for _sm in reversed(_saved_memos[-20:]):
+                    _sm_icon = "🔴" if _sm.get("impact_type") == "손실" else ("🟢" if _sm.get("impact_type") in ("이득", "유지추천") else "🔵")
+                    _sm_amt = float(_sm.get("impact_amount", 0))
+                    _sm_line = f"{_sm_icon} **{_sm.get('title', '')}** {_sm_amt:+,.0f}원 · {_sm.get('customer_count', 0)}명 · {_sm.get('week_start', '')}"
+                    st.markdown(f"<div style='font-size:13px;padding:4px 0;'>{_sm_line}</div>", unsafe_allow_html=True)
+                    st.caption(f"  → {_sm.get('recommended_action', '')} ({_sm.get('created_at', '')[:16]})")
+        else:
+            st.caption(T("저장된 메모가 없습니다."))
+    with _memo_btn3:
+        _saved_for_dl = _load_memos()
+        if _saved_for_dl:
+            import json as _json_dl
+            st.download_button(
+                "📥 " + T("메모 JSON 다운로드"),
+                _json_dl.dumps(_saved_for_dl, ensure_ascii=False, indent=2).encode("utf-8"),
+                "weekly_action_memos.json", "application/json",
+                key="dl_memo_json_14",
+            )
+        else:
+            st.caption("-")
+    with _memo_btn4:
+        _confirm_reset = st.checkbox(T("정말 초기화하시겠습니까?"), key="confirm_memo_reset_14")
+        if _confirm_reset:
+            if st.button("🗑️ " + T("메모 초기화"), key="reset_memo_14"):
+                _save_memos([])
+                st.session_state["_reset_review_memo_flag"] = True
+                st.rerun()
+
+    st.divider()
+
+    _target_outcomes = ["실행 누락", "타겟 오류", "과잉 투자", "기대 미달"]
+    _csv_customers = action_log[action_log["outcome_label"].isin(_target_outcomes)].copy() if not action_log.empty else pd.DataFrame()
+    if not _csv_customers.empty:
+        _csv_customers = _csv_customers.sort_values("actual_profit", ascending=True)
+        _priority_map = {"실행 누락": "높음", "과잉 투자": "높음", "타겟 오류": "중간", "기대 미달": "낮음"}
+        _next_action_map = {
+            "실행 누락": "다음 주 우선 실행 대상에 추가",
+            "과잉 투자": "쿠폰 금액 하향 또는 메시지 전환",
+            "타겟 오류": "타겟에서 제외 또는 모니터링 전환",
+            "기대 미달": "쿠폰 강도 또는 타이밍 조정",
+        }
+        _reason_map = {
+            "실행 누락": "기대 ROI가 높았지만 지난주 실행되지 않아 기회손실 발생",
+            "과잉 투자": "쿠폰 비용 대비 전환 실패로 손실 발생",
+            "타겟 오류": "액션 실행했으나 고객 반응 없음",
+            "기대 미달": "이익 발생했으나 기대 ROI 대비 부족",
+        }
+        _csv_out = pd.DataFrame()
+        _csv_out["고객 ID"] = _csv_customers.get("customer_id", "")
+        _csv_out["페르소나"] = _csv_customers["persona"].map(_kr_persona) if "persona" in _csv_customers.columns else "-"
+        _csv_out["결과 분류"] = _csv_customers.get("outcome_label", "-")
+        _csv_out["지난주 추천 액션"] = _csv_customers.get("recommended_action", "-") if "recommended_action" in _csv_customers.columns else "-"
+        _csv_out["지난주 실행 판단"] = _csv_customers["executed"].map({True: "실행", False: "미실행"}) if "executed" in _csv_customers.columns else "-"
+        _csv_out["지난주 쿠폰 비용"] = _csv_customers.get("coupon_cost", 0)
+        _csv_out["지난주 실제 이익"] = _csv_customers.get("actual_profit", 0).round(0).astype(int)
+        _csv_out["지난주 ROI"] = _csv_customers.get("actual_roi", 0).round(2) if "actual_roi" in _csv_customers.columns else 0
+        _csv_out["다음 주 권장 액션"] = _csv_customers["outcome_label"].map(_next_action_map).fillna("-")
+        _csv_out["액션 사유"] = _csv_customers["outcome_label"].map(_reason_map).fillna("-")
+        _csv_out["우선순위"] = _csv_customers["outcome_label"].map(_priority_map).fillna("-")
+        _csv_out["예상 개선 금액"] = np.where(
+            _csv_customers["actual_profit"].values < 0,
+            (-_csv_customers["actual_profit"].values).round(0).astype(int),
+            (_csv_customers["expected_incremental_profit"].values * 0.5).round(0).astype(int) if "expected_incremental_profit" in _csv_customers.columns else 0,
+        )
+        _csv_fname = f"next_week_customer_actions_{_week_end.strftime('%Y-%m-%d')}.csv"
+        st.download_button(
+            f"📥 {T('다음 주 고객 액션 CSV')} ({len(_csv_out)}{T('건')})",
+            _csv_out.to_csv(index=False).encode("utf-8-sig"),
+            _csv_fname, "text/csv",
+            key="dl_customer_csv_14",
+        )
     else:
-        _orig_label = _t_reverse.get(_selected_filter, _selected_filter)
-        _filtered_log = action_log[action_log["outcome_label"] == _orig_label].copy()
+        st.caption(T("대상 고객이 없습니다."))
 
-    _filtered_log = _filtered_log.sort_values("actual_profit", ascending=True)
-    _display_limit = 30
-    _filtered_display = _filtered_log.head(_display_limit)
 
-    if _filtered_display.empty:
-        st.info(T("해당 판정의 고객이 없습니다."))
+    st.markdown(f"### {T('예상과 다른 반응을 보인 고객')}")
+    _all_actioned = action_log[action_log["outcome_label"] != "해당 없음"] if not action_log.empty else pd.DataFrame()
+    if _all_actioned.empty:
+        st.info(T("실행된 액션이 없습니다."))
     else:
-        for _, _row in _filtered_display.iterrows():
-            _cid = _row.get("customer_id", "?")
-            _persona = _row.get("persona", "-")
-            _seg = _row.get("uplift_segment", "-")
-            _outcome = _row.get("outcome_label", "-")
-            _a_profit = _row.get("actual_profit", 0)
-            _e_profit = _row.get("expected_incremental_profit", 0)
-            _coupon = _row.get("coupon_cost", 0)
-            _e_roi = _row.get("expected_roi", 0)
-            _a_roi = _row.get("actual_roi", 0)
-            _category = _row.get("recommended_category", "-")
-            _executed = _row.get("executed", False)
-            _converted = _row.get("actual_conversion", False)
-            _redeemed = _row.get("coupon_redeemed", False)
+        _cs1, _cs2, _cs3, _cs4 = st.columns(4)
+        _cs1.metric(T("대상 고객 수"), f"{len(_all_actioned):,}")
+        _cs2.metric(T("평균 기대 ROI"), f"{float(_all_actioned['expected_roi'].mean()):.2f}" if "expected_roi" in _all_actioned.columns else "-")
+        _cs3.metric(T("평균 실제 ROI"), f"{float(_all_actioned['actual_roi'].mean()):.2f}" if "actual_roi" in _all_actioned.columns else "-")
+        if "uplift_segment" in _all_actioned.columns:
+            _cs4.metric(T("주요 세그먼트"), T(str(_all_actioned["uplift_segment"].value_counts().idxmax())))
 
-            _oc_emoji = {"적정 판단": "🟢", "기대 미달": "🟡", "과잉 투자": "🔴", "타겟 오류": "🟠", "실행 누락": "🟣"}
-            _emoji = _oc_emoji.get(_outcome, "⚪")
-            _exec_badge = f"{'실행' if _executed else '미실행'}"
-            _profit_sign = "+" if _a_profit >= 0 else ""
+        def _on_filter_change():
+            st.session_state["review_search_cid_14"] = T("선택 안 함")
 
-            _header = (
-                f"{_emoji} **{_cid}** [{T(_outcome)}]  ·  "
-                f"{T(_persona)} / {T(_seg)}  ·  "
-                f"{T('쿠폰')} {money(_coupon)} → {T('손익')} **{_profit_sign}{money(_a_profit)}**"
+        _fc1, _fc2 = st.columns([1, 1])
+        with _fc1:
+            _filter_options = [T("전체")] + [T(lbl) for lbl, _, _ in _outcome_config]
+            _selected_filter = st.selectbox(
+                T("판정 필터"), _filter_options, key="review_filter_14",
+                on_change=_on_filter_change,
             )
 
-            with st.expander(_header, expanded=False):
+        _t_reverse = {T(lbl): lbl for lbl, _, _ in _outcome_config}
+        if _selected_filter == T("전체"):
+            _filtered_log = _all_actioned.copy()
+        else:
+            _orig_label = _t_reverse.get(_selected_filter, _selected_filter)
+            _filtered_log = _all_actioned[_all_actioned["outcome_label"] == _orig_label].copy()
+        _filtered_log = _filtered_log.sort_values("actual_profit", ascending=True)
+
+        _filtered_cid_list = sorted(_filtered_log["customer_id"].unique().tolist()) if not _filtered_log.empty and "customer_id" in _filtered_log.columns else []
+        with _fc2:
+            _search_cid = st.selectbox(
+                T("고객 ID 검색"), [T("선택 안 함")] + _filtered_cid_list, key="review_search_cid_14",
+            )
+
+        if _search_cid != T("선택 안 함"):
+            _match = _all_actioned[_all_actioned["customer_id"] == _search_cid]
+            if not _match.empty:
+                _row = _match.iloc[0]
+                _cid = _row.get("customer_id", "?")
+                _persona = _row.get("persona", "-")
+                _seg = _row.get("uplift_segment", "-")
+                _outcome = _row.get("outcome_label", "-")
+                _a_profit = _row.get("actual_profit", 0)
+                _e_profit = _row.get("expected_incremental_profit", 0)
+                _coupon = _row.get("coupon_cost", 0)
+                _e_roi = _row.get("expected_roi", 0)
+                _a_roi = _row.get("actual_roi", 0)
+                _category = _row.get("recommended_category", "-")
+                _executed = _row.get("executed", False)
+                _converted = _row.get("actual_conversion", False)
+                _redeemed = _row.get("coupon_redeemed", False)
+                _oc_emoji = {"적정 판단": "🟢", "기대 미달": "🟡", "과잉 투자": "🔴", "타겟 오류": "🟠", "실행 누락": "🟣"}
+                _emoji = _oc_emoji.get(_outcome, "⚪")
+                _exec_badge = "실행" if _executed else "미실행"
+                st.markdown(f"#### {_emoji} {_cid}  ·  {T(_outcome)}  ·  {T(_persona)} / {T(_seg)}")
                 _s1, _s2, _s3, _s4, _s5 = st.columns(5)
                 _s1.metric(T("실행 여부"), T(_exec_badge))
                 _s2.metric(T("쿠폰 비용"), money(_coupon))
                 _s3.metric(T("기대 이익"), money(_e_profit))
                 _s4.metric(T("실제 이익"), money(_a_profit), delta=f"{_a_profit - _e_profit:+,.0f}")
                 _s5.metric(T("ROI"), f"{_a_roi:.2f}", delta=f"{_a_roi - _e_roi:+.2f}")
-
                 _info_cols = st.columns(4)
                 _info_cols[0].markdown(f"**{T('추천 카테고리')}:** {T(_category)}")
                 _info_cols[1].markdown(f"**{T('쿠폰 사용')}:** {'O' if _redeemed else 'X'}")
                 _info_cols[2].markdown(f"**{T('전환')}:** {'O' if _converted else 'X'}")
                 _intensity = _row.get("intervention_intensity_label", "-")
                 _info_cols[3].markdown(f"**{T('개입 강도')}:** {T(_intensity)}")
-
                 _cid_val = _cid
                 _cust_events = _review_events[_review_events["customer_id"] == _cid_val] if not _review_events.empty and "customer_id" in _review_events.columns else pd.DataFrame()
                 _cust_orders = _review_orders[_review_orders["customer_id"] == _cid_val] if not _review_orders.empty and "customer_id" in _review_orders.columns else pd.DataFrame()
                 _cust_campaigns = _review_campaigns[_review_campaigns["customer_id"] == _cid_val] if not _review_campaigns.empty and "customer_id" in _review_campaigns.columns else pd.DataFrame()
-
                 _timeline_tab1, _timeline_tab2, _timeline_tab3 = st.tabs([
                     f"{T('이벤트 로그')} ({len(_cust_events)})",
                     f"{T('주문 내역')} ({len(_cust_orders)})",
                     f"{T('쿠폰 이력')} ({len(_cust_campaigns)})",
                 ])
-
                 with _timeline_tab1:
                     if not _cust_events.empty:
                         _evt_display = _cust_events.sort_values("timestamp", ascending=False).head(15)
@@ -10165,7 +10468,6 @@ elif view == "14. 주간 액션 성과 리뷰":
                             st.caption(f"{T('최근')} 15{T('건만 표시')} (전체 {len(_cust_events)}건)")
                     else:
                         st.caption(T("이벤트 기록 없음"))
-
                 with _timeline_tab2:
                     if not _cust_orders.empty:
                         _ord_display = _cust_orders.sort_values("order_time", ascending=False)
@@ -10176,7 +10478,6 @@ elif view == "14. 주간 액션 성과 리뷰":
                         st.caption(f"{T('총 구매')} {money(_total_spend)} · {T('쿠폰 사용')} {_coupon_used_cnt}{T('회')}")
                     else:
                         st.caption(T("주문 기록 없음"))
-
                 with _timeline_tab3:
                     if not _cust_campaigns.empty:
                         _camp_display = _cust_campaigns.sort_values("exposure_time", ascending=False)
@@ -10186,9 +10487,123 @@ elif view == "14. 주간 액션 성과 리뷰":
                         st.caption(f"{T('총 쿠폰 지급')} {money(_total_coupon)} · {len(_cust_campaigns)}{T('회')}")
                     else:
                         st.caption(T("쿠폰 이력 없음"))
+                st.divider()
 
-        if len(_filtered_log) > _display_limit:
-            st.caption(f"{T('상위')} {_display_limit}{T('건만 표시')} (전체 {len(_filtered_log)}건)")
+        _display_limit = 30
+        _filtered_display = _filtered_log.head(_display_limit)
+        if _filtered_display.empty:
+            st.info(T("해당 판정의 고객이 없습니다."))
+        else:
+            for _, _row in _filtered_display.iterrows():
+                _cid = _row.get("customer_id", "?")
+                _persona = _row.get("persona", "-")
+                _seg = _row.get("uplift_segment", "-")
+                _outcome = _row.get("outcome_label", "-")
+                _a_profit = _row.get("actual_profit", 0)
+                _coupon = _row.get("coupon_cost", 0)
+                _oc_emoji = {"적정 판단": "🟢", "기대 미달": "🟡", "과잉 투자": "🔴", "타겟 오류": "🟠", "실행 누락": "🟣"}
+                _emoji = _oc_emoji.get(_outcome, "⚪")
+                _profit_sign = "+" if _a_profit >= 0 else ""
+                _header = (
+                    f"{_emoji} **{_cid}** [{T(_outcome)}]  ·  "
+                    f"{T(_persona)} / {T(_seg)}  ·  "
+                    f"{T('쿠폰')} {money(_coupon)} → {T('손익')} **{_profit_sign}{money(_a_profit)}**"
+                )
+                with st.expander(_header, expanded=False):
+                    _e_profit = _row.get("expected_incremental_profit", 0)
+                    _e_roi = _row.get("expected_roi", 0)
+                    _a_roi = _row.get("actual_roi", 0)
+                    _executed = _row.get("executed", False)
+                    _exec_badge = "실행" if _executed else "미실행"
+                    _s1, _s2, _s3, _s4, _s5 = st.columns(5)
+                    _s1.metric(T("실행 여부"), T(_exec_badge))
+                    _s2.metric(T("쿠폰 비용"), money(_coupon))
+                    _s3.metric(T("기대 이익"), money(_e_profit))
+                    _s4.metric(T("실제 이익"), money(_a_profit), delta=f"{_a_profit - _e_profit:+,.0f}")
+                    _s5.metric(T("ROI"), f"{_a_roi:.2f}", delta=f"{_a_roi - _e_roi:+.2f}")
+            if len(_filtered_log) > _display_limit:
+                st.caption(f"{T('상위')} {_display_limit}{T('건만 표시')} (전체 {len(_filtered_log)}건)")
+
+    if st.session_state.get("show_report_14", False):
+        @st.dialog(T("주간 리텐션 액션 성과 보고서"), width="large")
+        def _report_dialog():
+            st.caption(f"{T('분석 기간')}: {_week_start.strftime('%Y-%m-%d')} ~ {_week_end.strftime('%Y-%m-%d')}")
+            st.markdown("## 1. 지난주 마케팅 현황")
+            st.markdown("### 1-1. 추천 고객과 실행 고객의 일치도")
+            st.markdown(f"- 전체 추천 대상: **{_total:,}명**")
+            st.markdown(f"- 실제 집행: **{_executed_cnt:,}명** (집행률 {_exec_pct:.1%})")
+            st.markdown(f"- 미집행: **{_total - _executed_cnt:,}명**")
+            st.markdown("### 1-2. 예산 사용 내역")
+            st.markdown(f"- 총 집행 예산: **{money(_budget)}**")
+            if not action_log.empty and "uplift_segment" in action_log.columns:
+                _rpt_exec = action_log[action_log["executed"]]
+                if not _rpt_exec.empty:
+                    _rpt_seg_budget = _rpt_exec.groupby("uplift_segment")["actual_coupon_cost"].sum().sort_values(ascending=False)
+                    for _rs, _ra in _rpt_seg_budget.items():
+                        st.markdown(f"  - {_rs}: {money(_ra)}")
+            st.markdown("### 1-3. 결과 및 기대 수익과의 차이")
+            st.markdown(f"- 기대 이익: **{money(_expected)}**")
+            st.markdown(f"- 실제 이익: **{money(_actual)}**")
+            st.markdown(f"- 차이: **{_gap:+,.0f}원** ({'초과 달성' if _gap_positive else '미달'})")
+            st.markdown("## 2. 분석")
+            st.markdown("### 2-1. 기대 수익이 나오지 않은 이유")
+            for _nl in ["과잉 투자", "타겟 오류", "기대 미달", "실행 누락"]:
+                _nl_df = action_log[action_log["outcome_label"] == _nl] if not action_log.empty else pd.DataFrame()
+                if _nl_df.empty:
+                    continue
+                st.markdown(f"**{_nl}** — {len(_nl_df)}건, {float(_nl_df['actual_profit'].sum()):+,.0f}원")
+                if "uplift_segment" in _nl_df.columns:
+                    _nl_segs = _nl_df["uplift_segment"].value_counts().head(3)
+                    st.markdown(f"  - 주요 세그먼트: {', '.join(f'{s} {c}건' for s, c in _nl_segs.items())}")
+                st.markdown(f"  - 평균 쿠폰 비용: {money(float(_nl_df['coupon_cost'].mean()))}")
+            st.markdown("### 2-2. 기대 수익보다 높았던 고객들의 특성")
+            _rpt_pos = action_log[action_log["outcome_label"] == "적정 판단"] if not action_log.empty else pd.DataFrame()
+            if _rpt_pos.empty:
+                st.markdown("해당 고객 없음")
+            else:
+                st.markdown(f"- 대상: **{len(_rpt_pos)}명**, 총 이익: **+{float(_rpt_pos['actual_profit'].sum()):,.0f}원**")
+                if "uplift_segment" in _rpt_pos.columns:
+                    st.markdown(f"- 주요 세그먼트: {_rpt_pos['uplift_segment'].value_counts().idxmax()}")
+                if "persona" in _rpt_pos.columns:
+                    st.markdown(f"- 주요 페르소나: {_rpt_pos['persona'].value_counts().idxmax()}")
+                st.markdown(f"- 평균 ROI: {float(_rpt_pos['actual_roi'].mean()):.2f}")
+            st.markdown("## 3. 다음 주 마케팅 전략 방안")
+            for sug in policy_suggestions:
+                _sa = float(sug.get("amount", 0))
+                st.markdown(f"**{sug['title']}** ({_sa:+,.0f}원)")
+                st.markdown(f"  - 결정: {sug.get('what', '')}")
+                st.markdown(f"  - 대상: {sug.get('who', '')}")
+                st.markdown(f"  - 조치: {sug.get('action', '')}")
+            _memo_content = st.session_state.get("review_memo_area", "")
+            if _memo_content:
+                st.markdown("## 4. 담당자 실행 메모")
+                st.markdown(_memo_content)
+            st.divider()
+            _rpt_plain = (
+                f"[주간 리텐션 액션 성과 보고서]\n"
+                f"기간: {_week_start.strftime('%Y-%m-%d')} ~ {_week_end.strftime('%Y-%m-%d')}\n\n"
+                f"■ 마케팅 현황\n"
+                f"  추천 대상: {_total:,}명 / 실제 집행: {_executed_cnt:,}명 (집행률 {_exec_pct:.1%})\n"
+                f"  총 집행 예산: {money(_budget)}\n"
+                f"  기대 이익: {money(_expected)} → 실제 이익: {money(_actual)} (Gap: {_gap:+,.0f}원)\n\n"
+                f"■ 분석\n"
+            )
+            for _nl in ["과잉 투자", "타겟 오류", "기대 미달", "실행 누락"]:
+                _nl_df = action_log[action_log["outcome_label"] == _nl] if not action_log.empty else pd.DataFrame()
+                if not _nl_df.empty:
+                    _rpt_plain += f"  {_nl}: {len(_nl_df)}건, {float(_nl_df['actual_profit'].sum()):+,.0f}원\n"
+            _rpt_plain += f"\n■ 다음 주 전략\n"
+            for sug in policy_suggestions:
+                _sa = float(sug.get("amount", 0))
+                _rpt_plain += f"  • {sug['title']} ({_sa:+,.0f}원): {sug.get('action', '')}\n"
+            if _memo_content:
+                _rpt_plain += f"\n■ 담당자 메모\n{_memo_content}\n"
+            with st.expander("📋 " + T("복사하기") + " — " + T("보고서 내용 (복사용)")):
+                st.code(_rpt_plain, language=None)
+            if st.button("✕ " + T("닫기"), key="close_report_dialog_14"):
+                st.session_state["show_report_14"] = False
+                st.rerun()
+        _report_dialog()
 
     llm_payload = {
         "review_summary": review_summary,
@@ -10200,6 +10615,8 @@ elif view == "14. 주간 액션 성과 리뷰":
             .to_dict(orient="records")
         ) if not action_log.empty and (action_log["actual_profit"] < 0).any() else [],
     }
+
+
 
 current_view_key = view.split(".")[0]
 current_model_name = llm_model.strip() or DEFAULT_MODEL_NAME
@@ -10227,3 +10644,10 @@ with st.sidebar:
         payload=llm_payload,
         model_name=current_model_name,
     )
+
+if globals().get("_global_demo_autorefresh_active", False):
+    import time as _demo_time
+    _snapshot_analysis_controls()
+    _demo_time.sleep(10)
+    clear_dashboard_caches()
+    st.rerun()
