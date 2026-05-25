@@ -7936,19 +7936,17 @@ if _is_user_live_mode():
         st.info(T("현재 데이터셋과 Live DB가 일치하지 않아 CSV/결과 파일 기준으로 표시합니다."))
 
     # 시연 실행 중에는 어느 뷰에 있든 최신 event/score/action 지표를 보여줘야 한다.
-    # 기존에는 실시간 운영 모니터에서만 10초 auto-rerun이 있어 이탈 현황 등은 stale하게 보였다.
+    # 브라우저 location.reload()는 Streamlit 세션을 새로 만들어 사이드바 분석 컨트롤을
+    # 기본값으로 되돌릴 수 있다. 따라서 세션을 유지하는 st.rerun() 방식으로만 갱신한다.
     try:
         _global_demo_status = fetch_demo_status()
     except Exception:
         _global_demo_status = {}
-    if _global_demo_status.get("running") and view != "6. 실시간 운영 모니터":
+    _global_demo_autorefresh_active = bool(_global_demo_status.get("running")) and view != "6. 실시간 운영 모니터"
+    if _global_demo_autorefresh_active:
         st.caption(T("시연 실행 중: 10초마다 live 지표를 자동 갱신합니다."))
-        components.html(
-            """<script>
-            setTimeout(function(){ window.parent.location.reload(); }, 10000);
-            </script>""",
-            height=0,
-        )
+else:
+    _global_demo_autorefresh_active = False
 
 if _use_live_payload and not live_payload.get("scores", pd.DataFrame()).empty:
     customers = _rename_live_score_columns(live_payload["scores"])
@@ -8582,6 +8580,25 @@ elif view == "4. 예산 최적화 및 리텐션 타겟":
             max_customers=target_cap,
             budget_step=1_000_000,
         )
+
+        # user-live 점수 테이블에 비용 컬럼이 아직 충분히 없거나,
+        # 액션 큐 기준 후보만 존재하는 경우에는 현재 액션 큐를 후보 풀로 삼아 한 번 더 계산한다.
+        # 기존 customers 기반 계산 결과가 있으면 그대로 사용하므로 오프라인/업로드 기능은 건드리지 않는다.
+        if budget_sensitivity_table.empty and _use_live_payload:
+            live_actions_for_sensitivity = _normalize_live_actions_df(
+                _merge_live_score_dimensions(
+                    live_payload.get("actions", pd.DataFrame()),
+                    live_payload.get("scores", pd.DataFrame()),
+                )
+            )
+            if not live_actions_for_sensitivity.empty:
+                budget_sensitivity_summary, budget_sensitivity_table = build_budget_sensitivity_map(
+                    live_actions_for_sensitivity,
+                    budget=int(budget),
+                    threshold=float(threshold),
+                    max_customers=target_cap,
+                    budget_step=1_000_000,
+                )
     except Exception as exc:
         budget_sensitivity_summary, budget_sensitivity_table = {}, pd.DataFrame()
         st.warning(f"예산 민감도 지도를 계산하지 못했습니다: {exc}")
@@ -9271,17 +9288,17 @@ elif view == "6. 실시간 운영 모니터":
         action_summary = live_payload.get("action_summary", {}) or {}
         rec_summary = live_payload.get("recommendation_summary", {}) or {}
 
+        total_live_customers = max(
+            int(health.get('feature_state_count') or 0),
+            int(score_summary.get('scored_customers') or 0),
+        )
+
         c1, c2, c3, c4 = st.columns(4)
         c1.metric(T("이벤트 수"), f"{int(health.get('event_count') or 0):,}")
-        c2.metric(T("상태 보유 고객 수"), f"{int(health.get('feature_state_count') or 0):,}", help=T("이벤트가 한 번 이상 반영되어 customer_feature_state에 현재 상태가 있는 고객 수입니다."))
-        c3.metric(T("이탈점수 산출 고객 수"), f"{int(score_summary.get('scored_customers') or 0):,}", help=T("현재 customer_scores 테이블에 최신 이탈 점수가 저장된 고객 수입니다."))
-        c4.metric(T("Queued 액션"), f"{int(action_summary.get('queued_actions') or 0):,}")
-
-        c5, c6, c7, c8 = st.columns(4)
-        c5.metric(T("평균 이탈 점수"), pct(float(score_summary.get("avg_churn_score") or 0.0)))
-        c6.metric(T("현재 기준 이탈 위험 고객 수"), f"{int(score_summary.get('high_risk_customers') or 0):,}", help=f"{T('이탈 임계값')} ≥ {float(threshold):.2f}")
-        c7.metric(T("실시간 추천 후보 수"), f"{int(rec_summary.get('live_recommendations') or 0):,}", help=T("이벤트 이후 live 정책으로 생성된 recommendation_candidates 수입니다. 실제 큐 적재 수와는 다를 수 있습니다."))
-        c8.metric(T("최신 점수 갱신"), str(score_summary.get("latest_scored_at") or "-"))
+        c2.metric(T("전체 고객 수"), f"{total_live_customers:,}", help=T("현재 live DB에서 상태 또는 이탈 점수를 보유한 고유 고객 수입니다."))
+        c3.metric(T("액션 큐"), f"{int(action_summary.get('queued_actions') or 0):,}", help=T("현재 후속 조치 대기열에 올라간 고객 단위 액션 후보 수입니다."))
+        c4.metric(T("최신 점수 갱신"), str(score_summary.get("latest_scored_at") or "-"))
+        st.caption(T("액션 큐는 실시간 이벤트 반영 후 이탈 위험과 기대 효과 조건을 만족해 쿠폰, 상담, 알림 등 후속 조치 대상으로 대기 중인 고객 단위 후보 목록입니다."))
 
         scores_df = live_payload.get("scores", pd.DataFrame()).copy()
         actions_df = live_payload.get("actions", pd.DataFrame()).copy()
@@ -9356,6 +9373,7 @@ elif view == "6. 실시간 운영 모니터":
 
         if _page_demo_running:
             import time as _demo_time
+            _snapshot_analysis_controls()
             _placeholder = st.empty()
             _placeholder.caption(T("다음 자동 새로고침까지 10초..."))
             _demo_time.sleep(10)
@@ -10625,4 +10643,11 @@ with st.sidebar:
         api_key=llm_api_key_value,
         payload=llm_payload,
         model_name=current_model_name,
-    )
+        )
+
+if globals().get("_global_demo_autorefresh_active", False):
+            import time as _demo_time
+            _snapshot_analysis_controls()
+            _demo_time.sleep(10)
+            clear_dashboard_caches()
+            st.rerun()

@@ -325,6 +325,117 @@ def _segment_order(customers: pd.DataFrame) -> List[str]:
 
 
 
+def _first_numeric_series(df: pd.DataFrame, columns: list[str], default: float | None = None) -> pd.Series:
+    """Return the first usable numeric value across aliases, row by row."""
+    out = pd.Series(float("nan"), index=df.index, dtype="float64")
+    for col in columns:
+        if col not in df.columns:
+            continue
+        values = pd.to_numeric(df[col], errors="coerce")
+        out = out.where(out.notna(), values)
+    if default is not None:
+        out = out.fillna(float(default))
+    return out
+
+
+def _first_positive_numeric_series(df: pd.DataFrame, columns: list[str], default: float | None = None) -> pd.Series:
+    """Return the first positive numeric value across aliases, row by row.
+
+    Live DB rows often contain zero-filled placeholder columns.  For budget
+    optimization, a placeholder 0 for CLV/uplift/profit/cost must be treated as
+    missing; otherwise every customer becomes either free, unprofitable, or both.
+    """
+    out = pd.Series(float("nan"), index=df.index, dtype="float64")
+    for col in columns:
+        if col not in df.columns:
+            continue
+        values = pd.to_numeric(df[col], errors="coerce")
+        values = values.where(values > 0)
+        out = out.where(out.notna(), values)
+    if default is not None:
+        out = out.fillna(float(default))
+    return out
+
+
+def _ensure_budgetable_customer_columns(customers: pd.DataFrame) -> pd.DataFrame:
+    """Fill only missing/zero economics needed by the budget optimizer.
+
+    Offline artifacts may already have real coupon_cost, CLV, uplift and profit;
+    those positive values are preserved.  PostgreSQL user-live score rows can be
+    sparse or zero-filled, so missing economics are derived only as a fallback.
+    This keeps the existing offline pipeline intact while making the live budget
+    view respond to the current sidebar budget.
+    """
+    if customers.empty:
+        return customers.copy()
+
+    df = customers.copy()
+
+    if "churn_probability" not in df.columns and "churn_score" in df.columns:
+        df["churn_probability"] = pd.to_numeric(df["churn_score"], errors="coerce")
+    df["churn_probability"] = _first_numeric_series(df, ["churn_probability", "churn_score", "risk_score"], 0.0).clip(0.0, 1.0)
+
+    clv_aliases = ["clv", "predicted_clv_12m", "predicted_clv", "customer_lifetime_value", "ltv"]
+    clv = _first_positive_numeric_series(df, clv_aliases, None)
+    if "monetary" in df.columns:
+        monetary_based = pd.to_numeric(df["monetary"], errors="coerce") * 6.0
+        clv = clv.where((clv.notna()) & (clv > 0), monetary_based.where(monetary_based > 0))
+    # Zero-filled live CLV is a placeholder, not a real zero-value customer.
+    df["clv"] = clv.fillna(50_000.0).clip(lower=1.0)
+
+    uplift = _first_positive_numeric_series(df, ["uplift_score", "uplift", "incremental_response", "treatment_effect"], None)
+    profit_alias = _first_positive_numeric_series(
+        df,
+        ["expected_incremental_profit", "expected_profit", "incremental_profit", "expected_net_profit"],
+        None,
+    )
+    # If only profit and CLV are available, infer uplift. Otherwise use a small
+    # conservative default so live score rows can still be ranked by budget.
+    implied_uplift = profit_alias / df["clv"].where(df["clv"] > 0, pd.NA)
+    uplift = uplift.where((uplift.notna()) & (uplift > 0), implied_uplift)
+    df["uplift_score"] = uplift.fillna(0.03).clip(lower=0.001)
+
+    roi = _first_positive_numeric_series(df, ["expected_roi", "roi"], None)
+    strategy_cost = _first_positive_numeric_series(df, ["strategy_cost", "coupon_cost", "action_cost", "intervention_cost", "cost"], None)
+    implied_cost_from_roi = profit_alias / roi.where(roi > 0, pd.NA)
+    # The previous fallback often produced 1,000~1,500 KRW costs, so the default
+    # 5M budget could already saturate the target cap and the metric cards looked
+    # fixed.  Use a still-conservative but budget-visible live fallback cost.
+    value_based_cost = (df["clv"] * 0.12).clip(lower=10_000.0, upper=80_000.0)
+    strategy_cost = strategy_cost.where((strategy_cost.notna()) & (strategy_cost > 0), implied_cost_from_roi)
+    strategy_cost = strategy_cost.where((strategy_cost.notna()) & (strategy_cost > 0), value_based_cost)
+    df["strategy_cost"] = strategy_cost.fillna(10_000.0).clip(lower=1.0)
+
+    # Keep coupon_cost available for downstream summaries, but do not overwrite a
+    # meaningful non-zero value from existing offline artifacts.
+    coupon_cost = _first_positive_numeric_series(df, ["coupon_cost"], None)
+    df["coupon_cost"] = coupon_cost.where((coupon_cost.notna()) & (coupon_cost > 0), df["strategy_cost"]).fillna(df["strategy_cost"])
+
+    profit = profit_alias
+    profit_from_roi = roi.where(roi > 0, pd.NA) * df["strategy_cost"]
+    profit_from_scores = df["clv"] * df["uplift_score"] * df["churn_probability"].clip(lower=0.50)
+    profit = profit.where((profit.notna()) & (profit > 0), profit_from_roi)
+    profit = profit.where((profit.notna()) & (profit > 0), profit_from_scores)
+    df["expected_incremental_profit"] = profit.fillna(0.0).clip(lower=0.0)
+
+    df["expected_roi"] = roi.where(
+        (roi.notna()) & (roi > 0),
+        df["expected_incremental_profit"] / df["strategy_cost"].where(df["strategy_cost"] > 0, pd.NA),
+    ).fillna(0.0)
+
+    if "uplift_segment" not in df.columns:
+        df["uplift_segment"] = "Persuadables"
+    else:
+        segment = df["uplift_segment"].fillna("").astype(str).str.strip()
+        missing_segment = segment.eq("") | segment.str.lower().isin({"nan", "none", "unknown", "live", "unknown_segment"})
+        inferred = pd.Series("Persuadables", index=df.index, dtype=object)
+        inferred = inferred.where(df["uplift_score"] >= 0.02, "Sure Things")
+        inferred = inferred.where(df["expected_incremental_profit"] > 0, "Lost Causes")
+        df["uplift_segment"] = segment.where(~missing_segment, inferred)
+
+    return df
+
+
 def _build_candidate_pool(
     customers: pd.DataFrame,
     threshold: float,
@@ -333,11 +444,12 @@ def _build_candidate_pool(
     if customers.empty:
         return customers.head(0).copy()
 
-    df = customers.copy()
+    df = _ensure_budgetable_customer_columns(customers)
     df["churn_probability"] = safe_numeric(df.get("churn_probability"), default=0.0)
     df["uplift_score"] = safe_numeric(df.get("uplift_score"), default=0.0)
     df["clv"] = safe_numeric(df.get("clv"), default=0.0)
     df["coupon_cost"] = safe_numeric(df.get("coupon_cost"), default=0.0)
+    df["strategy_cost"] = safe_numeric(df.get("strategy_cost"), default=0.0)
     df["expected_incremental_profit"] = safe_numeric(df.get("expected_incremental_profit"), default=0.0)
     df["expected_roi"] = safe_numeric(df.get("expected_roi"), default=0.0)
 
