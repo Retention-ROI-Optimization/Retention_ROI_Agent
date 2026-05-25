@@ -10643,11 +10643,11 @@ with st.sidebar:
         api_key=llm_api_key_value,
         payload=llm_payload,
         model_name=current_model_name,
-    )
+        )
 
 if globals().get("_global_demo_autorefresh_active", False):
-    import time as _demo_time
-    _snapshot_analysis_controls()
-    _demo_time.sleep(10)
-    clear_dashboard_caches()
-    st.rerun()
+            import time as _demo_time
+            _snapshot_analysis_controls()
+            _demo_time.sleep(10)
+            clear_dashboard_caches()
+            st.rerun()
