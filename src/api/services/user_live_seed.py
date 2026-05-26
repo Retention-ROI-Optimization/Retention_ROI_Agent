@@ -521,6 +521,8 @@ def _seed_customer_scores(
 
         uplift_segment = _safe_str(_get_first_value(row, UPLIFT_SEGMENT_ALIASES), None)
 
+        persona_value = _safe_str(_get_first_value(row, ["persona", "customer_persona", "customer_segment", "lifecycle_segment"]), None)
+
         conn.execute(
             text("""
             INSERT INTO customer_scores (
@@ -532,6 +534,7 @@ def _seed_customer_scores(
                 expected_incremental_profit,
                 risk_segment,
                 uplift_segment,
+                persona,
                 model_version,
                 score_payload,
                 seeded_at,
@@ -546,6 +549,7 @@ def _seed_customer_scores(
                 :expected_incremental_profit,
                 :risk_segment,
                 :uplift_segment,
+                :persona,
                 :model_version,
                 CAST(:score_payload AS JSONB),
                 now(),
@@ -560,6 +564,7 @@ def _seed_customer_scores(
                 expected_incremental_profit = EXCLUDED.expected_incremental_profit,
                 risk_segment = EXCLUDED.risk_segment,
                 uplift_segment = EXCLUDED.uplift_segment,
+                persona = COALESCE(EXCLUDED.persona, customer_scores.persona),                
                 model_version = EXCLUDED.model_version,
                 score_payload = EXCLUDED.score_payload,
                 seeded_at = now(),
@@ -574,6 +579,7 @@ def _seed_customer_scores(
                 "expected_incremental_profit": expected_profit,
                 "risk_segment": risk_segment,
                 "uplift_segment": uplift_segment,
+                "persona": persona_value,                
                 "model_version": "seeded_from_user_artifacts",
                 "score_payload": _row_payload(row),
             },
