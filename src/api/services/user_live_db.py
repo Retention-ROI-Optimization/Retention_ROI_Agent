@@ -240,6 +240,11 @@ def ensure_user_live_seed_columns(db_url: str) -> None:
         """))
 
         conn.execute(text("""
+        ALTER TABLE customer_scores
+        ADD COLUMN IF NOT EXISTS persona TEXT
+        """))
+
+        conn.execute(text("""
         ALTER TABLE recommendation_candidates
         ADD COLUMN IF NOT EXISTS source_payload JSONB DEFAULT '{}'::jsonb
         """))

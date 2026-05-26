@@ -3152,6 +3152,7 @@ def _is_placeholder_segment(value: Any) -> bool:
         "live_user",
         "unknown",
         "unknown_segment",
+        "unknown_persona",
         "nan",
         "none",
         "null",

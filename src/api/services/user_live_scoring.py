@@ -609,6 +609,9 @@ def score_changed_customers(
             is_cold = bool(cold_mask.iloc[feature_df.index.get_loc(feature_row.name)] if feature_row.name in feature_df.index else False)
             risk_segment = "new" if is_cold else _risk_segment_from_score(churn_score)
 
+            # customer_feature_state에서 persona를 가져온다
+            persona_value = str(feature_row.get("persona") or "").strip() or None
+
             score_payload = {
                 "customer_id": customer_id,
                 "live_scoring": True,
@@ -639,6 +642,7 @@ def score_changed_customers(
                     expected_incremental_profit,
                     risk_segment,
                     uplift_segment,
+                    persona,
                     model_version,
                     score_payload,
                     scored_at
@@ -652,6 +656,7 @@ def score_changed_customers(
                     :expected_incremental_profit,
                     :risk_segment,
                     :uplift_segment,
+                    :persona,
                     :model_version,
                     CAST(:score_payload AS JSONB),
                     now()
@@ -665,6 +670,7 @@ def score_changed_customers(
                     expected_incremental_profit = EXCLUDED.expected_incremental_profit,
                     risk_segment = EXCLUDED.risk_segment,
                     uplift_segment = COALESCE(EXCLUDED.uplift_segment, customer_scores.uplift_segment),
+                    persona = COALESCE(EXCLUDED.persona, customer_scores.persona),
                     model_version = EXCLUDED.model_version,
                     score_payload = EXCLUDED.score_payload,
                     scored_at = now()
@@ -678,6 +684,7 @@ def score_changed_customers(
                     "expected_incremental_profit": expected_incremental_profit,
                     "risk_segment": risk_segment,
                     "uplift_segment": existing.get("uplift_segment"),
+                    "persona": persona_value,
                     "model_version": "live_scoring_v1",
                     "score_payload": json.dumps(score_payload, ensure_ascii=False),
                 },
