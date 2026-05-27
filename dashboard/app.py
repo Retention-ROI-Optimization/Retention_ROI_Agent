@@ -2101,6 +2101,14 @@ def T(text: str) -> str:
     return raw
 
 
+def _replace_runtime_token(text: str, src: str, dst: str) -> str:
+    if not src:
+        return text
+    if re.search(r"[A-Za-z]", src):
+        return re.sub(rf"(?<![A-Za-z0-9_]){re.escape(src)}(?![A-Za-z0-9_])", dst, text)
+    return text.replace(src, dst)
+
+
 def _translate_runtime_text(text: Any) -> str:
     """Translate runtime/service/UI messages, including dynamic f-string fragments."""
     raw = str(text or "")
@@ -2119,8 +2127,7 @@ def _translate_runtime_text(text: Any) -> str:
     for mapping in (UI_TEXT.get(code, {}), PHRASE_LABELS.get(code, {}), VALUE_LABELS.get(code, {})):
         for src, dst in sorted(mapping.items(), key=lambda item: len(str(item[0])), reverse=True):
             src = str(src)
-            if src and src in out:
-                out = out.replace(src, str(dst))
+            out = _replace_runtime_token(out, src, str(dst))
 
     api_key_msg = "OpenAI API 키가 설정되지 않았습니다. 사이드바에 키를 입력하거나 OPENAI_API_KEY 환경변수를 설정하세요."
     out = out.replace(api_key_msg, T(api_key_msg))
