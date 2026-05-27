@@ -394,6 +394,14 @@ def translate_column(column: Any, lang: str = "ko") -> str:
     return raw.replace("_", " ")
 
 
+def _replace_token_variant(text: str, src: str, dst: str) -> str:
+    if not src:
+        return text
+    if re.search(r"[A-Za-z]", src):
+        return re.sub(rf"(?<![A-Za-z0-9_]){re.escape(src)}(?![A-Za-z0-9_])", dst, text)
+    return text.replace(src, dst)
+
+
 def _replace_known_tokens(text: str, mapping: dict[str, str]) -> str:
     out = text
     # Replace longest values first.
@@ -401,11 +409,13 @@ def _replace_known_tokens(text: str, mapping: dict[str, str]) -> str:
         src = str(src)
         if not src:
             continue
-        # snake/camel/code tokens and Korean tokens can appear inside a composite string.
-        out = re.sub(rf"(?<![A-Za-z0-9_]){re.escape(src)}(?![A-Za-z0-9_])", str(dst), out)
-        out = out.replace(src, str(dst))
-        out = out.replace(src.replace("_", " ").title(), str(dst))
-        out = out.replace(src.replace("_", " "), str(dst))
+
+        # Code-like English tokens must not match inside longer words such as
+        # "follow-up", while Korean/Japanese phrases still use plain matching.
+        dst = str(dst)
+        out = _replace_token_variant(out, src, dst)
+        out = _replace_token_variant(out, src.replace("_", " ").title(), dst)
+        out = _replace_token_variant(out, src.replace("_", " "), dst)
     return out
 
 
