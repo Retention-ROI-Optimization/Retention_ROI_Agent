@@ -682,8 +682,7 @@ def run_survival_pipeline(
         randomize=randomize_simulation,
     )
 
-    # horizon_days가 명시적으로 전달되면 modeling 함수로 전달,
-    # None이면 modeling 함수 내부에서 기본값(90) + 자동 조정 로직 적용
+
     survival_kwargs: Dict[str, Any] = dict(
         data_dir=data_dir,
         model_dir=model_dir,
