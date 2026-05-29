@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
-from src.features.engineering import build_feature_dataset
+from src.features.engineering import build_feature_dataset, _compute_data_span_days, auto_adjust_horizon_days
 
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -461,6 +461,48 @@ def _fit_cox_with_retry(
     ) from last_error
 
 
+def _prepare_current_features_for_prediction(
+    current_features: pd.DataFrame,
+    training_columns: list[str],
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    base = current_features.copy()
+    base = base.drop(columns=['label', 'duration_days', 'event_observed'], errors='ignore')
+    base = base.replace([np.inf, -np.inf], np.nan)
+
+    id_cols = ['customer_id']
+    feature_cols = [c for c in base.columns if c not in id_cols]
+    raw_features = base[id_cols + feature_cols].copy()
+
+    numeric_cols = [c for c in feature_cols if pd.api.types.is_numeric_dtype(base[c])]
+    categorical_cols = [c for c in feature_cols if c not in numeric_cols]
+
+    numeric_frame = pd.DataFrame(index=base.index)
+    if numeric_cols:
+        numeric_frame = base[numeric_cols].apply(pd.to_numeric, errors='coerce')
+        fill_values = {
+            col: float(numeric_frame[col].median()) if numeric_frame[col].notna().any() else 0.0
+            for col in numeric_frame.columns
+        }
+        numeric_frame = numeric_frame.fillna(fill_values).astype(float)
+
+    categorical_map: dict[str, pd.Series] = {}
+    for col in categorical_cols:
+        if col.startswith('recent_event_sequence_'):
+            categorical_map[col] = _collapse_rare_categories(base[col], max_levels=6, min_frequency=0.02)
+        elif base[col].nunique(dropna=True) > 20:
+            categorical_map[col] = _collapse_rare_categories(base[col], max_levels=10, min_frequency=0.01)
+        else:
+            categorical_map[col] = base[col].astype('object').where(base[col].notna(), 'unknown').astype(str)
+    categorical_frame = pd.DataFrame(categorical_map, index=base.index) if categorical_map else pd.DataFrame(index=base.index)
+
+    encoded_source = pd.concat([numeric_frame, categorical_frame], axis=1)
+    encoded = pd.get_dummies(encoded_source, drop_first=True, dtype=float)
+
+    aligned = encoded.reindex(columns=training_columns, fill_value=0.0)
+
+    return aligned, raw_features
+
+
 def run_survival_pipeline(
     data_dir: str | Path,
     model_dir: str | Path,
@@ -480,6 +522,30 @@ def run_survival_pipeline(
     model_dir = _ensure_dir(model_dir)
     result_dir = _ensure_dir(result_dir)
     survival_feature_dir = _ensure_dir(Path(feature_store_dir or Path('data/feature_store')) / 'survival')
+
+    import logging
+    _surv_logger = logging.getLogger(__name__)
+
+    data_span = _compute_data_span_days(data_dir)
+    original_horizon = int(horizon_days)
+    if data_span is not None:
+        adjusted, warning = auto_adjust_horizon_days(data_span, original_horizon)
+        if warning:
+            _surv_logger.warning("[생존분석 horizon 조정] %s", warning)
+        if adjusted == 0:
+            raise SurvivalModelError(
+                f"데이터 기간이 {data_span}일로 너무 짧아 생존분석을 수행할 수 없습니다. "
+                f"최소 60일 이상의 데이터가 필요합니다. "
+                f"이탈 확률(churn probability)은 정상 제공되며, 이탈 시점 예측만 비활성화됩니다."
+            )
+        horizon_days = adjusted
+        if adjusted != original_horizon:
+            _surv_logger.info(
+                "[생존분석] horizon_days 자동 조정: %d일 → %d일 (데이터 기간: %d일)",
+                original_horizon, adjusted, data_span,
+            )
+    else:
+        _surv_logger.info("[생존분석] 데이터 기간을 감지할 수 없어 기본 horizon(%d일)을 사용합니다.", original_horizon)
 
     feature_df, feature_metadata = _build_landmark_dataset(
         data_dir=data_dir,
@@ -510,24 +576,73 @@ def run_survival_pipeline(
         )
     )
 
-    prediction_frame = training_frame.drop(columns=['duration_days', 'event_observed'])
-    partial_hazard_all = model.predict_partial_hazard(prediction_frame).values.ravel()
     survival_times = sorted({1, min(30, horizon_days), min(60, horizon_days), min(90, horizon_days), int(horizon_days)})
-    survival_fn = model.predict_survival_function(prediction_frame, times=survival_times).T
-    survival_fn.columns = [f'survival_prob_{int(col)}d' for col in survival_fn.columns]
-    full_curve = model.predict_survival_function(prediction_frame, times=list(range(1, int(horizon_days) + 1))).T
-    median_times = full_curve.apply(lambda row: _median_survival_time(row, int(horizon_days)), axis=1)
 
-    predictions = pd.DataFrame(
-        {
-            'customer_id': feature_df['customer_id'].astype(int),
-            'duration_days': feature_df['duration_days'].astype(int),
-            'event_observed': feature_df['event_observed'].astype(int),
-            'predicted_hazard_ratio': partial_hazard_all.astype(float),
-            'predicted_median_time_to_churn_days': median_times.astype(float),
-        }
+    training_pred_frame = training_frame.drop(columns=['duration_days', 'event_observed'])
+    training_pred_columns = training_pred_frame.columns.tolist()
+
+    _landmark_hazard = model.predict_partial_hazard(training_pred_frame).values.ravel()
+    _plot_df = pd.DataFrame({
+        'duration_days': feature_df['duration_days'].astype(int),
+        'event_observed': feature_df['event_observed'].astype(int),
+        'predicted_hazard_ratio': _landmark_hazard.astype(float),
+    })
+    _plot_df['risk_group'] = pd.qcut(
+        _plot_df['predicted_hazard_ratio'].rank(method='first'),
+        q=3, labels=['Low risk', 'Mid risk', 'High risk'],
     )
-    predictions = pd.concat([predictions, survival_fn.reset_index(drop=True)], axis=1)
+
+    today = pd.Timestamp.today().floor('D')
+    prediction_base_date = feature_metadata.get('as_of_date')  # fallback: landmark
+
+    try:
+        current_built = build_feature_dataset(
+            data_dir=data_dir,
+            feature_store_dir=survival_feature_dir,
+            as_of_date=today,
+            horizon_days=int(horizon_days),
+        )
+        current_aligned, current_raw = _prepare_current_features_for_prediction(
+            current_built.features, training_pred_columns,
+        )
+
+        _pred_hazard = model.predict_partial_hazard(current_aligned).values.ravel()
+        _pred_full = model.predict_survival_function(
+            current_aligned, times=list(range(1, int(horizon_days) + 1))
+        ).T
+        _pred_medians = _pred_full.apply(
+            lambda row: _median_survival_time(row, int(horizon_days)), axis=1
+        )
+        _pred_surv = model.predict_survival_function(current_aligned, times=survival_times).T
+        _pred_surv.columns = [f'survival_prob_{int(col)}d' for col in _pred_surv.columns]
+
+        _pred_ids = current_built.features['customer_id'].astype(int)
+        _pred_raw = current_raw
+        prediction_base_date = str(today.date())
+        _surv_logger.info(
+            "[생존분석] 오늘(%s) 기준 재예측 완료: %d명", today.date(), len(current_aligned),
+        )
+    except Exception as exc:
+        _surv_logger.warning("[생존분석] 재예측 실패, landmark 예측 유지: %s", exc)
+        _pred_hazard = _landmark_hazard
+        _pred_full = model.predict_survival_function(
+            training_pred_frame, times=list(range(1, int(horizon_days) + 1))
+        ).T
+        _pred_medians = _pred_full.apply(
+            lambda row: _median_survival_time(row, int(horizon_days)), axis=1
+        )
+        _pred_surv = model.predict_survival_function(training_pred_frame, times=survival_times).T
+        _pred_surv.columns = [f'survival_prob_{int(col)}d' for col in _pred_surv.columns]
+
+        _pred_ids = feature_df['customer_id'].astype(int)
+        _pred_raw = raw_features
+
+    predictions = pd.DataFrame({
+        'customer_id': _pred_ids,
+        'predicted_hazard_ratio': _pred_hazard.astype(float),
+        'predicted_median_time_to_churn_days': _pred_medians.astype(float),
+    })
+    predictions = pd.concat([predictions, _pred_surv.reset_index(drop=True)], axis=1)
     if 'survival_prob_30d' not in predictions.columns:
         predictions['survival_prob_30d'] = predictions.filter(like='survival_prob_').iloc[:, 0]
     predictions['risk_percentile'] = predictions['predicted_hazard_ratio'].rank(pct=True, method='average')
@@ -537,7 +652,7 @@ def run_survival_pipeline(
         labels=['Low risk', 'Mid risk', 'High risk'],
     )
     predictions = predictions.merge(
-        raw_features[['customer_id'] + [c for c in ['persona', 'region', 'device_type', 'acquisition_channel'] if c in raw_features.columns]],
+        _pred_raw[['customer_id'] + [c for c in ['persona', 'region', 'device_type', 'acquisition_channel'] if c in _pred_raw.columns]],
         on='customer_id',
         how='left',
     )
@@ -560,7 +675,7 @@ def run_survival_pipeline(
     joblib.dump(model, model_path)
     predictions.to_csv(predictions_path, index=False)
     top_coefficients.head(30).to_csv(coefficients_path, index=False)
-    _plot_risk_groups(predictions, risk_plot_path, int(horizon_days))
+    _plot_risk_groups(_plot_df, risk_plot_path, int(horizon_days))
 
     metrics = {
         'model_name': 'CoxPHFitter',
@@ -569,7 +684,11 @@ def run_survival_pipeline(
         'coefficients_path': str(coefficients_path),
         'risk_plot_path': str(risk_plot_path),
         'landmark_as_of_date': feature_metadata.get('as_of_date'),
+        'prediction_as_of_date': prediction_base_date,
         'horizon_days': int(horizon_days),
+        'horizon_days_requested': original_horizon,
+        'horizon_auto_adjusted': (int(horizon_days) != original_horizon),
+        'data_span_days': data_span,
         'row_count': int(len(training_frame)),
         'event_rate': float(training_frame['event_observed'].mean()),
         'train_rows': int(len(train_df)),
