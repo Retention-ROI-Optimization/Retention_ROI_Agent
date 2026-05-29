@@ -669,6 +669,7 @@ def run_survival_pipeline(
     force_simulation: bool = False,
     simulation_seed: Optional[int] = None,
     randomize_simulation: bool = False,
+    horizon_days: int | None = None,
 ) -> Dict[str, Any]:
     model_dir = ensure_directory(model_dir)
     result_dir = ensure_directory(result_dir)
@@ -681,12 +682,17 @@ def run_survival_pipeline(
         randomize=randomize_simulation,
     )
 
-    artifacts = run_survival_modeling_pipeline(
+
+    survival_kwargs: Dict[str, Any] = dict(
         data_dir=data_dir,
         model_dir=model_dir,
         result_dir=result_dir,
         feature_store_dir=feature_store_dir,
     )
+    if horizon_days is not None:
+        survival_kwargs['horizon_days'] = horizon_days
+
+    artifacts = run_survival_modeling_pipeline(**survival_kwargs)
     return {
         'mode': 'survival',
         'model_path': artifacts.model_path,

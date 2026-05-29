@@ -135,16 +135,97 @@ def _load_csvs(data_dir: Path) -> Dict[str, pd.DataFrame]:
     }
 
 
+def _compute_data_span_days(data_dir: Path) -> int | None:
+    import logging
+    logger = logging.getLogger(__name__)
+
+    all_dates: list[pd.Timestamp] = []
+
+    events_path = data_dir / 'events.csv'
+    if events_path.exists():
+        try:
+            events = pd.read_csv(events_path, usecols=['timestamp'], parse_dates=['timestamp'])
+            ts = pd.to_datetime(events['timestamp'], errors='coerce').dropna()
+            if not ts.empty:
+                all_dates.extend([ts.min(), ts.max()])
+        except Exception:
+            pass
+
+    orders_path = data_dir / 'orders.csv'
+    if orders_path.exists():
+        try:
+            orders = pd.read_csv(orders_path, usecols=['order_time'], parse_dates=['order_time'])
+            ot = pd.to_datetime(orders['order_time'], errors='coerce').dropna()
+            if not ot.empty:
+                all_dates.extend([ot.min(), ot.max()])
+        except Exception:
+            pass
+
+    if len(all_dates) < 2:
+        return None
+
+    span = (max(all_dates) - min(all_dates)).days
+    logger.info("데이터 기간 감지: %d일 (%s ~ %s)", span, min(all_dates).date(), max(all_dates).date())
+    return max(span, 0)
+
+
+def auto_adjust_horizon_days(data_span_days: int, requested_horizon: int) -> tuple[int, str | None]:
+    if data_span_days < 60:
+        return 0, (
+            f"데이터 기간이 {data_span_days}일로 너무 짧아 생존분석을 수행할 수 없습니다. "
+            f"최소 60일 이상의 데이터가 필요합니다. 이탈 확률만 제공됩니다."
+        )
+
+    if data_span_days < 90:
+        adjusted = 30
+        if adjusted < requested_horizon:
+            return adjusted, (
+                f"데이터 기간이 {data_span_days}일로 짧아 horizon을 "
+                f"{requested_horizon}일 → {adjusted}일로 축소합니다. 단기 예측만 가능합니다."
+            )
+        return adjusted, None
+
+    if data_span_days < 180:
+        adjusted = max(30, data_span_days // 2)
+        if adjusted < requested_horizon:
+            return adjusted, (
+                f"데이터 기간이 {data_span_days}일이므로 horizon을 "
+                f"{requested_horizon}일 → {adjusted}일로 축소합니다."
+            )
+        return adjusted, None
+
+    return requested_horizon, None
+
+
 def _resolve_horizon_days(data_dir: Path, horizon_days: int | None) -> int:
+    import logging
+    logger = logging.getLogger(__name__)
+
     if horizon_days is not None:
-        return int(horizon_days)
+        base_horizon = int(horizon_days)
+    else:
+        metadata = _load_preprocessing_metadata(data_dir)
+        threshold = metadata.get('churn_inactivity_threshold_days')
+        if threshold is not None:
+            base_horizon = int(threshold)
+        else:
+            base_horizon = 45
 
-    metadata = _load_preprocessing_metadata(data_dir)
-    threshold = metadata.get('churn_inactivity_threshold_days')
-    if threshold is not None:
-        return int(threshold)
+    data_span = _compute_data_span_days(data_dir)
+    if data_span is not None:
+        adjusted, warning = auto_adjust_horizon_days(data_span, base_horizon)
+        if warning:
+            logger.warning("[horizon 자동조정] %s", warning)
+        if adjusted == 0:
+            fallback = min(base_horizon, max(15, data_span // 3))
+            logger.warning(
+                "[horizon 자동조정] 생존분석 불가 데이터 기간(%d일). "
+                "피처 엔지니어링용 horizon=%d일로 설정합니다.", data_span, fallback
+            )
+            return fallback
+        return adjusted
 
-    return 45
+    return base_horizon
 
 
 def _load_preprocessing_metadata(data_dir: Path) -> Dict:

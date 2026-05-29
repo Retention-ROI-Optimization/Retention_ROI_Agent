@@ -2872,7 +2872,7 @@ def _build_churn_timing_table(
     if limit is not None:
         out = out.head(max(int(limit), 1)).copy()
 
-    landmark_date = (metrics or {}).get("landmark_as_of_date") or (metrics or {}).get("as_of_date")
+    landmark_date = (metrics or {}).get("prediction_as_of_date") or (metrics or {}).get("landmark_as_of_date") or (metrics or {}).get("as_of_date")
     persona_series = out["persona"] if "persona" in out.columns else pd.Series(["-"] * len(out), index=out.index)
 
     display = pd.DataFrame({
@@ -9525,6 +9525,25 @@ elif view == "6. 실시간 운영 모니터":
 elif _is_churn_timing_view(view):
     st.subheader(T("이탈 시점 예측"))
     _render_view_intro("9")
+
+    _sv_data_span = (survival_metrics or {}).get("data_span_days")
+    _sv_horizon = (survival_metrics or {}).get("horizon_days")
+    _sv_auto_adjusted = (survival_metrics or {}).get("horizon_auto_adjusted", False)
+    if survival_error and _sv_data_span is not None and int(_sv_data_span) < 60:
+        st.error(
+            f"📊 입력한 데이터 기간은 **{_sv_data_span}일**로, "
+            f"이탈 시점 예측에 필요한 최소 기간(60일)에 미달하여 "
+            f"**생존분석이 비활성화**되었습니다. "
+            f"이탈 확률 등 다른 분석은 정상 제공됩니다."
+        )
+    elif _sv_data_span is not None and _sv_horizon is not None:
+        st.info(
+            f"📊 입력한 데이터 기간은 **{_sv_data_span}일**이며, "
+            f"예측 범위는 **{_sv_horizon}일**로 학습되었습니다."
+        )
+
+    st.caption(T("고객별로 언제쯤 이탈할 가능성이 큰지와 ..."))
+
     st.caption(T("고객별로 언제쯤 이탈할 가능성이 큰지와 그때 잃을 수 있는 금액만 표로 보여줍니다."))
     churn_timing_probability_threshold_pct = st.slider(
         T("30일 내 이탈 가능성 기준"),
