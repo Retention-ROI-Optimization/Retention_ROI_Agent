@@ -536,6 +536,42 @@ _PLAIN_KO_VALUE_SUPPLEMENTS: dict[str, str] = {
 }
 VALUE_LABELS.setdefault("ko", {}).update(_PLAIN_KO_VALUE_SUPPLEMENTS)
 
+_PLAIN_KO_CUSTOMER_TYPE_CODES: dict[str, str] = {
+    "dormant_risk": "활동이 줄어 이탈 위험이 큰 고객",
+    "dormant-risk": "활동이 줄어 이탈 위험이 큰 고객",
+    "dormant risk": "활동이 줄어 이탈 위험이 큰 고객",
+    "dormantrisk": "활동이 줄어 이탈 위험이 큰 고객",
+    "at_risk_dormant": "활동이 줄어 이탈 위험이 큰 고객",
+    "finance_dormant_risk": "활동이 줄어 이탈 위험이 큰 금융 고객",
+    "financial_dormant_risk": "활동이 줄어 이탈 위험이 큰 금융 고객",
+    "banking_dormant_risk": "활동이 줄어 이탈 위험이 큰 금융 고객",
+    "inactive_risk": "활동이 줄어 이탈 위험이 큰 고객",
+    "churn_risk": "이탈 위험이 큰 고객",
+    "high_churn_risk": "이탈 위험이 매우 큰 고객",
+    "medium_churn_risk": "이탈 위험이 보통인 고객",
+    "low_churn_risk": "이탈 위험이 낮은 고객",
+    "at_risk": "이탈 위험 고객",
+    "risk_customer": "이탈 위험 고객",
+    "high_risk": "이탈 위험이 큰 고객",
+    "medium_risk": "이탈 위험이 보통인 고객",
+    "low_risk": "이탈 위험이 낮은 고객",
+    "inactive_customer": "활동이 줄어든 고객",
+    "inactive_user": "활동이 줄어든 고객",
+    "dormant_customer": "휴면 고객",
+    "dormant_user": "휴면 고객",
+    "active_customer": "정상 활동 고객",
+    "active_user": "정상 활동 고객",
+    "loyal_customer": "충성 고객",
+    "loyal_user": "충성 고객",
+    "vip_customer": "VIP 고객",
+    "vip_user": "VIP 고객",
+    "benefit_sensitive": "혜택에 민감한 고객",
+    "price_sensitive": "혜택과 조건에 민감한 고객",
+    "unknown_persona": "고객 유형 미분류",
+    "unknown_customer_type": "고객 유형 미분류",
+}
+VALUE_LABELS.setdefault("ko", {}).update(_PLAIN_KO_CUSTOMER_TYPE_CODES)
+
 PHRASE_LABELS: dict[str, dict[str, str]] = {
     "en": {
         "이탈 위험이 높음": "High churn risk",
