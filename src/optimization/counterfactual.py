@@ -31,11 +31,11 @@ ACTION_CATALOG: tuple[CounterfactualAction, ...] = (
     ),
     CounterfactualAction(
         action_id="coupon_5000",
-        label="5,000원 쿠폰",
+        label="5,000원 혜택",
         cost=5000.0,
         uplift_multiplier=1.00,
-        channel="coupon",
-        description="쿠폰에 반응할 가능성이 있는 고객에게 5,000원 혜택을 제공하는 전략",
+        channel="benefit",
+        description="정해진 비용 안에서 고객에게 금융 혜택 또는 재방문 혜택을 제공하는 전략",
     ),
     CounterfactualAction(
         action_id="consult_call",
@@ -177,7 +177,7 @@ def _prepare_base_frame(
     if "intervention_window_days" not in pool.columns:
         pool["intervention_window_days"] = 90
     if "recommended_intervention_window" not in pool.columns:
-        pool["recommended_intervention_window"] = "Monitor (>60d)"
+        pool["recommended_intervention_window"] = "60일 이후 관찰"
     if "timing_urgency_score" not in pool.columns:
         pool["timing_urgency_score"] = 0.0
     if "churn_timing_weight" not in pool.columns:
