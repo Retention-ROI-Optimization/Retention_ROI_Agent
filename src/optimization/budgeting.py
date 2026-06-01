@@ -69,37 +69,37 @@ def _complete_segment_intensity_grid(allocation: pd.DataFrame, selected: pd.Data
 
 STRATEGY_BY_SEGMENT = {
     "High Value-Persuadables": {
-        "strategy_name": "VIP concierge + personalized offer",
+        "strategy_name": "VIP 고객 전담 상담 및 맞춤 혜택 안내",
         "cost": 30000,
         "effect_multiplier": 1.15,
     },
     "High Value-Sure Things": {
-        "strategy_name": "Loyalty touchpoint",
+        "strategy_name": "충성 고객 감사 안내",
         "cost": 8000,
         "effect_multiplier": 0.15,
     },
     "High Value-Lost Causes": {
-        "strategy_name": "Deep-dive outreach",
+        "strategy_name": "담당자 심층 상담",
         "cost": 12000,
         "effect_multiplier": 0.10,
     },
     "Low Value-Persuadables": {
-        "strategy_name": "Coupon campaign",
+        "strategy_name": "맞춤 혜택 안내",
         "cost": 7000,
         "effect_multiplier": 0.85,
     },
     "Low Value-Lost Causes": {
-        "strategy_name": "No Action",
+        "strategy_name": "미개입 관찰",
         "cost": 0,
         "effect_multiplier": 0.0,
     },
     "Low Value-Sure Things": {
-        "strategy_name": "Light reminder",
+        "strategy_name": "가벼운 재방문 안내",
         "cost": 3000,
         "effect_multiplier": 0.05,
     },
     "New Customers": {
-        "strategy_name": "Onboarding sequence",
+        "strategy_name": "가입 초기 이용 안내",
         "cost": 5000,
         "effect_multiplier": 0.20,
     },
