@@ -63,6 +63,23 @@ DEFAULT_UPLIFT_SEGMENTS = ["Persuadables", "Sure Things", "Lost Causes", "Sleepi
 
 CHUNK_SIZE = 50000  # rows per chunk for large file processing
 
+FINANCE_PRODUCT_CATEGORIES = [
+    "입출금계좌", "예·적금", "신용카드", "체크카드", "주택담보대출",
+    "신용대출", "펀드", "ETF", "보험", "퇴직연금", "외환/송금",
+]
+
+FINANCE_TRUTHY_VALUES = {
+    "1", "true", "t", "y", "yes", "used", "redeemed", "open", "opened", "exposed",
+    "sent", "delivered", "approved", "waived", "applied", "accepted", "activated",
+    "예", "사용", "승인", "발급", "노출", "면제", "수락", "활성",
+}
+
+FINANCE_STATUS_CHURN_VALUES = {
+    "closed", "inactive", "dormant", "cancelled", "canceled", "attrited", "left",
+    "defaulted", "charged_off", "delinquent", "terminated", "account_closed",
+    "해지", "해지완료", "휴면", "비활성", "연체", "부도", "탈회", "종료",
+}
+
 # ── Role / event_type 설명 사전 (UI 도움말용) ─────────────────────────
 
 ROLE_DESCRIPTIONS: Dict[str, str] = {
@@ -102,9 +119,11 @@ EVENT_VALUE_SYNONYMS: Dict[str, Set[str]] = {
         "renewal", "renew", "plan_change", "plan_upgrade", "plan_downgrade",
         "upgrade", "downgrade",
         "deposit", "withdrawal", "transfer", "wire_transfer", "bank_transfer", "remittance",
-        "card_payment", "card_use", "loan_payment", "repayment", "auto_payment",
-        "investment_order", "fund_purchase", "trade", "securities_trade",
-        "결제", "구매", "주문", "주문완료", "결제완료", "입금", "출금", "이체", "송금", "카드결제", "상환", "투자", "매매",
+        "card_payment", "card_use", "card_transaction", "loan_payment", "repayment", "auto_payment",
+        "investment_order", "fund_purchase", "trade", "securities_trade", "account_open",
+        "loan_disbursement", "card_approval", "card_issued", "premium_payment", "fee_payment",
+        "결제", "구매", "주문", "주문완료", "결제완료", "입금", "출금", "이체", "송금", "카드결제", "카드이용",
+        "상환", "투자", "매매", "계좌개설", "대출실행", "카드발급", "보험료납입",
     },
     "visit": {
         "visit", "visited", "session_start", "session_begin", "session_end",
@@ -112,7 +131,8 @@ EVENT_VALUE_SYNONYMS: Dict[str, Set[str]] = {
         "app_open", "app_close", "app_launch", "site_visit", "launch",
         "sign_in", "signin", "active_session", "push_open", "notification_open",
         "balance_check", "account_login", "mobile_banking_login", "statement_view",
-        "방문", "로그인", "접속", "세션시작", "세션종료", "잔고조회", "계좌조회",
+        "branch_visit", "atm_use", "banking_app_open", "online_banking_login",
+        "방문", "로그인", "접속", "세션시작", "세션종료", "잔고조회", "계좌조회", "영업점방문", "앱실행",
     },
     "page_view": {
         "page_view", "pageview", "view", "viewed", "product_view", "viewed_product",
@@ -122,18 +142,23 @@ EVENT_VALUE_SYNONYMS: Dict[str, Set[str]] = {
         "stream_start", "stream_complete", "stream_end", "watch", "watched",
         "video_play", "video_complete", "video_pause", "play", "pause", "resume",
         "push_received", "notification_received", "coupon_use", "coupon", "point_use", "points_use",
-        "조회", "상품조회", "페이지뷰", "둘러보기",
+        "account_view", "balance_view", "statement_download", "card_statement_view",
+        "loan_product_view", "fund_view", "insurance_view",
+        "조회", "상품조회", "페이지뷰", "둘러보기", "계좌조회", "명세서조회", "금융상품조회",
     },
     "search": {
         "search", "searched", "query", "find", "lookup", "filter", "sort",
         "loan_calculator", "rate_search", "product_compare", "eligibility_check",
-        "검색", "필터", "금리조회", "상품비교", "한도조회",
+        "limit_check", "credit_score_check", "branch_search", "atm_search", "fx_rate_search",
+        "검색", "필터", "금리조회", "상품비교", "한도조회", "신용점수조회", "환율조회",
     },
     "add_to_cart": {
         "add_to_cart", "addtocart", "cart_add", "add_cart", "added_to_cart",
         "remove_from_cart", "cart_remove", "wishlist_add", "favorite", "favorited",
         "like", "liked", "bookmark", "save",
-        "장바구니", "장바구니추가", "찜", "즐겨찾기",
+        "application_start", "loan_apply_start", "card_apply_start", "account_apply_start",
+        "quote_saved", "product_saved", "pre_approval", "preapproved", "limit_precheck",
+        "장바구니", "장바구니추가", "찜", "즐겨찾기", "신청시작", "대출신청시작", "카드신청시작", "관심상품저장",
     },
     "support_contact": {
         "support", "support_contact", "support_chat", "contact", "inquiry", "help",
@@ -142,7 +167,10 @@ EVENT_VALUE_SYNONYMS: Dict[str, Set[str]] = {
         "refund_request", "refund", "return", "returned", "return_request", "cancel_request",
         "cancel", "cancellation", "uninstall", "uninstall_signal", "unsubscribe",
         "loan_inquiry", "card_cancel", "account_close", "close_account", "delinquency_notice",
+        "chargeback", "fraud_report", "card_lost", "card_block", "limit_increase_request",
+        "deferment_request", "hardship_request", "complaint_banking",
         "문의", "상담", "고객센터", "신고", "환불", "반품", "취소", "해지", "계좌해지", "연체",
+        "분실신고", "카드정지", "한도상향요청", "상환유예요청",
     },
 }
 
@@ -226,6 +254,101 @@ def _mode_or_unknown(series: pd.Series) -> Any:
         return "unknown"
     mode = s.astype(str).mode(dropna=True)
     return mode.iloc[0] if not mode.empty else str(s.iloc[0])
+
+
+def _is_finance_domain(domain: str | None) -> bool:
+    return str(domain or "").strip().lower() == "finance"
+
+
+def _finance_category_from_event(event_type: str, fallback: str = "일반 금융거래") -> str:
+    text = str(fallback or "").strip()
+    if text and text.lower() not in {"general", "unknown", "nan", "none"}:
+        return text
+    if event_type == "purchase":
+        return "금융거래"
+    if event_type == "add_to_cart":
+        return "금융상품 신청/관심"
+    if event_type == "search":
+        return "금융상품 탐색"
+    if event_type == "support_contact":
+        return "상담/민원"
+    if event_type == "page_view":
+        return "계좌·상품 조회"
+    return "모바일/인터넷뱅킹 접속"
+
+
+def _attach_finance_alias_columns(df: pd.DataFrame, table: str) -> pd.DataFrame:
+    """Add finance-friendly aliases while keeping the internal schema intact."""
+    if not isinstance(df, pd.DataFrame) or df.empty:
+        return df
+    out = df.copy()
+    if "customer_id" in out.columns and "financial_customer_id" not in out.columns:
+        out["financial_customer_id"] = out["customer_id"]
+    if table == "events":
+        if "timestamp" in out.columns and "transaction_time" not in out.columns:
+            out["transaction_time"] = out["timestamp"]
+        if "event_type" in out.columns and "financial_event_type" not in out.columns:
+            event_label = {
+                "visit": "채널접속",
+                "page_view": "계좌·상품조회",
+                "search": "상품탐색",
+                "add_to_cart": "신청시작/관심상품",
+                "purchase": "금융거래",
+                "support_contact": "상담/민원",
+                "other": "기타 금융활동",
+            }
+            out["financial_event_type"] = out["event_type"].astype(str).map(event_label).fillna("기타 금융활동")
+        if "item_category" in out.columns and "financial_product" not in out.columns:
+            out["financial_product"] = [
+                _finance_category_from_event(evt, cat)
+                for evt, cat in zip(out.get("event_type", pd.Series("", index=out.index)), out["item_category"])
+            ]
+    elif table == "orders":
+        alias_map = {
+            "order_id": "transaction_id",
+            "order_time": "transaction_time",
+            "item_category": "financial_product",
+            "gross_amount": "transaction_amount",
+            "discount_amount": "benefit_amount",
+            "net_amount": "net_transaction_amount",
+            "coupon_used": "retention_benefit_used",
+        }
+        for src, dst in alias_map.items():
+            if src in out.columns and dst not in out.columns:
+                out[dst] = out[src]
+    elif table in {"customer_summary", "customers"}:
+        alias_map = {
+            "monetary": "total_financial_amount",
+            "frequency": "transaction_frequency",
+            "recency_days": "days_since_last_transaction",
+            "purchase_last_30": "transactions_last_30",
+            "purchase_prev_30": "transactions_prev_30",
+            "purchase_change_rate": "transaction_change_rate",
+            "coupon_cost": "intervention_cost",
+            "coupon_exposure_count": "benefit_offer_count",
+            "coupon_redeem_count": "benefit_accept_count",
+            "coupon_fatigue_score": "benefit_fatigue_score",
+            "discount_dependency_score": "rate_fee_benefit_dependency_score",
+            "discount_pressure_score": "benefit_pressure_score",
+            "discount_effect_penalty": "benefit_effect_penalty",
+            "price_sensitivity": "rate_fee_sensitivity",
+            "coupon_affinity": "financial_benefit_affinity",
+            "support_contact_propensity": "service_contact_propensity",
+        }
+        for src, dst in alias_map.items():
+            if src in out.columns and dst not in out.columns:
+                out[dst] = out[src]
+    elif table in {"treatment_assignments", "campaign_exposures"}:
+        alias_map = {
+            "coupon_cost": "intervention_cost",
+            "campaign_type": "retention_program_type",
+            "exposure_time": "offer_time",
+            "exposure_id": "offer_id",
+        }
+        for src, dst in alias_map.items():
+            if src in out.columns and dst not in out.columns:
+                out[dst] = out[src]
+    return out
 
 
 def _looks_datetime(series: pd.Series) -> bool:
@@ -345,7 +468,7 @@ def _attach_external_features(customer_summary: pd.DataFrame, external_features:
     return customer_summary.merge(dedup, on="customer_id", how="left")
 
 
-def _coalesce_known_external_columns(customer_summary: pd.DataFrame, df: pd.DataFrame, schema: Dict[str, str]) -> pd.DataFrame:
+def _coalesce_known_external_columns(customer_summary: pd.DataFrame, df: pd.DataFrame, schema: Dict[str, str], *, domain: str = "ecommerce") -> pd.DataFrame:
     """Map common external retail columns to existing dashboard/core features."""
     out = customer_summary.copy()
 
@@ -570,6 +693,59 @@ def _coalesce_known_external_columns(customer_summary: pd.DataFrame, df: pd.Data
             else:
                 base_support = pd.Series(0.1, index=out.index)
             out["support_contact_propensity"] = np.where(has_issue, np.maximum(base_support, 0.65), base_support)
+
+    if _is_finance_domain(domain):
+        finance_numeric_map = {
+            "account_balance_current": ["account_balance", "balance", "current_balance", "잔고", "계좌잔고"],
+            "avg_balance": ["avg_balance", "average_balance", "평균잔고"],
+            "loan_balance": ["loan_balance", "outstanding_balance", "principal_balance", "대출잔액"],
+            "loan_amount": ["loan_amount", "대출금액"],
+            "credit_limit": ["credit_limit", "available_credit", "한도", "카드한도"],
+            "card_spend_total": ["card_spend", "card_amount", "카드이용금액"],
+            "deposit_amount_total": ["deposit_amount", "입금액", "예금액"],
+            "withdrawal_amount_total": ["withdrawal_amount", "출금액"],
+            "transfer_amount_total": ["transfer_amount", "이체금액"],
+            "aum": ["aum", "asset", "assets", "자산", "운용자산"],
+            "credit_score": ["credit_score", "신용점수"],
+            "delinquency_days": ["delinquency_days", "days_past_due", "dpd", "연체일수"],
+            "missed_payment_count": ["missed_payment_count", "연체횟수", "미납횟수"],
+            "tenure_months": ["tenure_months", "relationship_months", "거래개월수", "가입개월수"],
+            "digital_login_count": ["digital_login_count", "mobile_login_count", "app_login_count", "모바일로그인횟수"],
+            "branch_visit_count": ["branch_visit_count", "영업점방문횟수"],
+            "product_count": ["product_count", "num_products", "보유상품수"],
+        }
+        for dst, candidates in finance_numeric_map.items():
+            src = _first_existing_column(df, candidates)
+            if src and dst not in out.columns:
+                agg = "sum" if dst.endswith("_total") or dst.endswith("_count") else "max"
+                val = _customer_numeric(src, agg)
+                if val is not None:
+                    out[dst] = out["customer_id"].map(val).fillna(0)
+
+        finance_mode_map = {
+            "financial_product": ["financial_product", "product_type", "product_name", "account_type", "card_type", "loan_type", "fund_type", "금융상품", "상품유형"],
+            "risk_grade": ["risk_grade", "credit_grade", "리스크등급", "신용등급"],
+            "account_status": ["account_status", "relationship_status", "status", "계좌상태", "고객상태"],
+            "income_band": ["income_band", "소득구간"],
+        }
+        for dst, candidates in finance_mode_map.items():
+            src = _first_existing_column(df, candidates)
+            if src and dst not in out.columns:
+                val = _customer_mode(src)
+                if val is not None:
+                    out[dst] = out["customer_id"].map(val).fillna("unknown")
+
+        if "delinquency_days" in out.columns:
+            delinquency = pd.to_numeric(out["delinquency_days"], errors="coerce").fillna(0)
+            base_support = pd.to_numeric(out.get("support_contact_propensity", pd.Series(0.1, index=out.index)), errors="coerce").fillna(0.1)
+            out["service_contact_propensity"] = np.where(delinquency > 0, np.maximum(base_support, 0.55), base_support)
+            out["support_contact_propensity"] = out["service_contact_propensity"]
+        if "credit_score" in out.columns:
+            credit_score = pd.to_numeric(out["credit_score"], errors="coerce").fillna(700)
+            out["credit_risk_score"] = np.clip((750 - credit_score) / 350, 0, 1)
+        if "account_balance_current" in out.columns or "avg_balance" in out.columns:
+            balance_signal = pd.to_numeric(out.get("account_balance_current", out.get("avg_balance", pd.Series(0, index=out.index))), errors="coerce").fillna(0)
+            out["balance_value_score"] = np.clip(np.log1p(np.maximum(balance_signal, 0)) / 16.0, 0, 1)
 
     return out
 
@@ -820,6 +996,8 @@ def _extract_real_events(
     df: pd.DataFrame,
     schema: Dict[str, str],
     user_mapping: Optional[Dict[str, str]] = None,
+    *,
+    domain: str = "ecommerce",
 ) -> Tuple[Optional[pd.DataFrame], Optional[Dict[str, Any]]]:
 
     ev_col = schema.get("event_type")
@@ -894,6 +1072,8 @@ def _extract_real_events(
         "event_id", "source_row_id", "customer_id", "timestamp", "event_type",
         "event_type_original", "session_id", "item_category", "quantity",
     ]]
+    if _is_finance_domain(domain):
+        events_df = _attach_finance_alias_columns(events_df, "events")
 
     return events_df, mapping_report
 
@@ -903,6 +1083,8 @@ def _build_orders_from_real_events(
     real_events: pd.DataFrame,
     schema: Dict[str, str],
     rng: np.random.Generator,
+    *,
+    domain: str = "ecommerce",
 ) -> pd.DataFrame:
 
     amount_col = schema["amount"]
@@ -910,10 +1092,13 @@ def _build_orders_from_real_events(
 
     purchase_mask = real_events["event_type"] == "purchase"
     if purchase_mask.sum() == 0:
-        return pd.DataFrame(columns=[
+        cols = [
             "order_id", "customer_id", "order_time", "item_category",
             "quantity", "gross_amount", "discount_amount", "net_amount", "coupon_used",
-        ])
+        ]
+        if _is_finance_domain(domain):
+            cols += ["financial_customer_id", "transaction_id", "transaction_time", "financial_product", "transaction_amount", "benefit_amount", "net_transaction_amount", "retention_benefit_used"]
+        return pd.DataFrame(columns=cols)
 
     discount_col = _first_existing_column(df, ["discount_amount", "discount", "coupon_discount"])
     coupon_col = _first_existing_column(df, ["coupon_used", "coupon_use", "coupon_redeemed"])
@@ -965,10 +1150,12 @@ def _build_orders_from_real_events(
         "net_amount": np.round(purchases["_amount"].values - discount, 2),
         "coupon_used": coupon_used.astype(int),
     })
+    if _is_finance_domain(domain):
+        orders = _attach_finance_alias_columns(orders, "orders")
     return orders
 
 
-def _generate_synthetic_events(customer_summary: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame:
+def _generate_synthetic_events(customer_summary: pd.DataFrame, rng: np.random.Generator, *, domain: str = "ecommerce") -> pd.DataFrame:
     """Generate minimal synthetic event data from customer summary for pipeline compatibility."""
     rows = []
     event_types = ["visit", "page_view", "search", "add_to_cart", "purchase", "support_contact"]
@@ -990,17 +1177,23 @@ def _generate_synthetic_events(customer_summary: pd.DataFrame, rng: np.random.Ge
                 "timestamp": ts,
                 "event_type": event_type,
                 "session_id": f"SES-{cid}-{i // 3}",
-                "item_category": rng.choice(["fashion", "beauty", "grocery", "sports", "health"]),
+                "item_category": rng.choice(FINANCE_PRODUCT_CATEGORIES if _is_finance_domain(domain) else ["fashion", "beauty", "grocery", "sports", "health"]),
                 "quantity": int(rng.integers(1, 4)),
             })
-    return pd.DataFrame(rows)
+    out = pd.DataFrame(rows)
+    if _is_finance_domain(domain):
+        out = _attach_finance_alias_columns(out, "events")
+    return out
 
 
-def _generate_synthetic_orders(customer_summary: pd.DataFrame, events_df: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame:
+def _generate_synthetic_orders(customer_summary: pd.DataFrame, events_df: pd.DataFrame, rng: np.random.Generator, *, domain: str = "ecommerce") -> pd.DataFrame:
     """Generate order data from purchase events."""
     purchase_events = events_df[events_df["event_type"] == "purchase"].copy()
     if purchase_events.empty:
-        return pd.DataFrame(columns=["order_id", "customer_id", "order_time", "item_category", "quantity", "gross_amount", "discount_amount", "net_amount", "coupon_used"])
+        cols = ["order_id", "customer_id", "order_time", "item_category", "quantity", "gross_amount", "discount_amount", "net_amount", "coupon_used"]
+        if _is_finance_domain(domain):
+            cols += ["financial_customer_id", "transaction_id", "transaction_time", "financial_product", "transaction_amount", "benefit_amount", "net_transaction_amount", "retention_benefit_used"]
+        return pd.DataFrame(columns=cols)
 
     monetary_lookup = customer_summary.set_index("customer_id")["monetary"].to_dict()
     freq_lookup = customer_summary.set_index("customer_id")["frequency"].to_dict()
@@ -1026,24 +1219,30 @@ def _generate_synthetic_orders(customer_summary: pd.DataFrame, events_df: pd.Dat
             "net_amount": round(gross - discount, 2),
             "coupon_used": coupon_used,
         })
-    return pd.DataFrame(orders)
+    out = pd.DataFrame(orders)
+    if _is_finance_domain(domain):
+        out = _attach_finance_alias_columns(out, "orders")
+    return out
 
 
-def _generate_treatment_assignments(customer_summary: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame:
+def _generate_treatment_assignments(customer_summary: pd.DataFrame, rng: np.random.Generator, *, domain: str = "ecommerce") -> pd.DataFrame:
     """Generate treatment/control assignments."""
     n = len(customer_summary)
     treatment_flags = rng.binomial(1, 0.5, size=n)
 
     base_cost = _safe_numeric(customer_summary.get("coupon_cost", pd.Series(8000, index=customer_summary.index)), 8000)
 
-    return pd.DataFrame({
+    out = pd.DataFrame({
         "customer_id": customer_summary["customer_id"].astype(int),
         "treatment_group": np.where(treatment_flags, "treatment", "control"),
         "treatment_flag": treatment_flags,
-        "campaign_type": "retention_coupon",
+        "campaign_type": "financial_retention_offer" if _is_finance_domain(domain) else "retention_coupon",
         "coupon_cost": base_cost.astype(int),
         "assigned_at": customer_summary.get("signup_date", pd.Timestamp("2025-01-01")),
     })
+    if _is_finance_domain(domain):
+        out = _attach_finance_alias_columns(out, "treatment_assignments")
+    return out
 
 
 def _generate_state_snapshots(
@@ -1291,7 +1490,7 @@ def _generate_activity_state_snapshots(
     ]
 
 
-def _generate_campaign_exposures(treatment_assignments: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame:
+def _generate_campaign_exposures(treatment_assignments: pd.DataFrame, rng: np.random.Generator, *, domain: str = "ecommerce") -> pd.DataFrame:
     """Generate campaign exposure records for treatment customers — vectorized."""
     treated = treatment_assignments[treatment_assignments["treatment_flag"] == 1]
     if treated.empty:
@@ -1319,13 +1518,16 @@ def _generate_campaign_exposures(treatment_assignments: pd.DataFrame, rng: np.ra
     seq = np.concatenate([np.arange(n) for n in n_exposures])
     exposure_ids = [f"EXP-{c}-{s}" for c, s in zip(cid_rep, seq)]
 
-    return pd.DataFrame({
+    out = pd.DataFrame({
         "exposure_id": exposure_ids,
         "customer_id": cid_rep,
         "exposure_time": exposure_times,
         "campaign_type": campaign_rep,
         "coupon_cost": cost_rep,
     })
+    if _is_finance_domain(domain):
+        out = _attach_finance_alias_columns(out, "campaign_exposures")
+    return out
 
 
 def _build_cohort_retention(
@@ -1411,6 +1613,7 @@ def preprocess_uploaded_data(
     allow_synthetic_fallback: bool = True,
     churn_inactivity_days: int = 30,
     seed: int = 42,
+    domain: str = "ecommerce",
 ) -> PreprocessingResult:
     """Transform uploaded data into the full internal schema."""
     rng = np.random.default_rng(seed)
@@ -1419,6 +1622,7 @@ def preprocess_uploaded_data(
     warnings: List[str] = []
     metadata: Dict[str, Any] = {
         "source": "user_upload",
+        "domain": str(domain or "ecommerce"),
         "original_rows": len(df),
         "original_columns": len(df.columns),
         "original_column_names": list(df.columns),
@@ -1519,7 +1723,7 @@ def preprocess_uploaded_data(
                 customer_summary["signup_date"] = pd.Timestamp("2025-01-01")
 
     customer_summary = _attach_external_features(customer_summary, external_customer_features)
-    customer_summary = _coalesce_known_external_columns(customer_summary, df, schema)
+    customer_summary = _coalesce_known_external_columns(customer_summary, df, schema, domain=domain)
     customer_summary = _deduplicate_customer_summary(customer_summary)
 
     customer_summary["signup_date"] = pd.to_datetime(customer_summary["signup_date"], errors="coerce").fillna(pd.Timestamp("2025-01-01"))
@@ -1527,6 +1731,15 @@ def preprocess_uploaded_data(
 
     # ── Step 6: Infer churn label and continuous churn probability ──
     churn_labels = _infer_churn_label(df, schema, inactivity_threshold_days=churn_inactivity_days)
+    if _is_finance_domain(domain) and schema.get("churn_flag") in df.columns:
+        _status_col = schema.get("churn_flag")
+        _status_norm = df[_status_col].astype(str).str.strip().str.lower()
+        _finance_status_label = _status_norm.isin(FINANCE_STATUS_CHURN_VALUES)
+        _numeric_status = pd.to_numeric(df[_status_col], errors="coerce")
+        churn_labels = pd.Series(
+            np.where(_numeric_status.notna(), _numeric_status.fillna(0) > 0, _finance_status_label),
+            index=df.index,
+        ).astype(float)
     metadata["churn_inactivity_threshold_days"] = int(churn_inactivity_days)
     has_explicit_churn_label = "churn_flag" in schema and schema.get("churn_flag") in df.columns
     metadata["churn_label_source"] = "uploaded_churn_flag" if has_explicit_churn_label else "inactivity_rule"
@@ -1624,7 +1837,12 @@ def preprocess_uploaded_data(
         ).clip(lower=15000)
 
     if "coupon_cost" not in customer_summary.columns:
-        customer_summary["coupon_cost"] = rng.integers(5000, 15000, size=len(customer_summary))
+        if _is_finance_domain(domain):
+            # Fee waiver/rate benefit/contact cost proxy for finance retention actions.
+            base_value = pd.to_numeric(customer_summary.get("monetary", pd.Series(0, index=customer_summary.index)), errors="coerce").fillna(0)
+            customer_summary["coupon_cost"] = np.clip(base_value * 0.0025, 3000, 30000).astype(int)
+        else:
+            customer_summary["coupon_cost"] = rng.integers(5000, 15000, size=len(customer_summary))
 
     customer_summary["expected_incremental_profit"] = np.maximum(
         customer_summary["clv"] * customer_summary["uplift_score"], -50000
@@ -1655,7 +1873,10 @@ def preprocess_uploaded_data(
     customer_summary = _deduplicate_customer_summary(customer_summary)
 
     # ── Step 11: Generate auxiliary tables ──
-    treatment_assignments = _generate_treatment_assignments(customer_summary, rng)
+    if _is_finance_domain(domain):
+        customer_summary = _attach_finance_alias_columns(customer_summary, "customer_summary")
+
+    treatment_assignments = _generate_treatment_assignments(customer_summary, rng, domain=domain)
     customer_summary = customer_summary.merge(
         treatment_assignments[["customer_id", "treatment_group", "treatment_flag", "coupon_cost"]],
         on="customer_id", how="left", suffixes=("", "_ta"),
@@ -1666,7 +1887,7 @@ def preprocess_uploaded_data(
             customer_summary = customer_summary.drop(columns=[f"{col}_ta"])
 
     # ── 실제 사용자 event가 있으면 우선 사용, 없으면 합성 fallback ──
-    real_events, mapping_report = _extract_real_events(df, schema, user_mapping=event_value_mapping)
+    real_events, mapping_report = _extract_real_events(df, schema, user_mapping=event_value_mapping, domain=domain)
     if real_events is not None and len(real_events) > 0:
         events_df = real_events
         metadata["events_source"] = "user_upload"
@@ -1680,9 +1901,9 @@ def preprocess_uploaded_data(
             )
         amount_col_for_orders = schema.get("amount")
         if amount_col_for_orders and amount_col_for_orders in df.columns:
-            orders_df = _build_orders_from_real_events(df, real_events, schema, rng)
+            orders_df = _build_orders_from_real_events(df, real_events, schema, rng, domain=domain)
         else:
-            orders_df = _generate_synthetic_orders(customer_summary, events_df, rng)
+            orders_df = _generate_synthetic_orders(customer_summary, events_df, rng, domain=domain)
     else:
         if not allow_synthetic_fallback:
             raise ValueError(
@@ -1690,10 +1911,10 @@ def preprocess_uploaded_data(
                 "event_type + timestamp 컬럼이 있는 데이터를 올리거나, "
                 "합성 이벤트로 진행에 명시적으로 동의해주세요."
             )
-        events_df = _generate_synthetic_events(customer_summary, rng)
+        events_df = _generate_synthetic_events(customer_summary, rng, domain=domain)
         metadata["events_source"] = "synthetic"
-        orders_df = _generate_synthetic_orders(customer_summary, events_df, rng)
-    campaign_exposures = _generate_campaign_exposures(treatment_assignments, rng)
+        orders_df = _generate_synthetic_orders(customer_summary, events_df, rng, domain=domain)
+    campaign_exposures = _generate_campaign_exposures(treatment_assignments, rng, domain=domain)
     state_snapshots = _generate_state_snapshots(
         customer_summary,
         rng,
@@ -1711,6 +1932,13 @@ def preprocess_uploaded_data(
         "customer_id", "customer_id_original", "persona", "signup_date", "acquisition_month",
         "region", "device_type", "acquisition_channel", "gender", "age_group",
         "payment_method", "delivery_type", "refund_reason", "churn_label_observed",
+        "financial_product", "risk_grade", "account_status", "income_band",
+        "account_balance_current", "avg_balance", "loan_balance", "loan_amount", "credit_limit",
+        "card_spend_total", "deposit_amount_total", "withdrawal_amount_total", "transfer_amount_total",
+        "aum", "credit_score", "credit_risk_score", "delinquency_days", "missed_payment_count",
+        "tenure_months", "digital_login_count", "branch_visit_count", "product_count", "balance_value_score",
+        "transaction_frequency", "days_since_last_transaction", "total_financial_amount",
+        "rate_fee_sensitivity", "financial_benefit_affinity", "service_contact_propensity",
         "price_sensitivity", "coupon_affinity", "support_contact_propensity",
         # 시뮬레이터 전용이지만 CLV 모델이 요구함
         "treatment_lift_base", "basket_size_preference",
@@ -1719,13 +1947,15 @@ def preprocess_uploaded_data(
     external_cols = [
         c for c in customer_summary.columns
         if c.startswith(("ext_num__", "ext_cat__", "ext_date__"))
-        or c in {"avg_session_duration_sec_uploaded", "pageviews_per_session_uploaded", "discount_amount_total", "point_used_total", "customer_age_days_uploaded"}
+        or c in {"avg_session_duration_sec_uploaded", "pageviews_per_session_uploaded", "discount_amount_total", "point_used_total", "customer_age_days_uploaded", "intervention_cost", "benefit_offer_count", "benefit_accept_count", "benefit_fatigue_score", "rate_fee_benefit_dependency_score", "benefit_pressure_score", "benefit_effect_penalty"}
     ]
     _existing_customers_cols = []
     for c in _customers_cols + external_cols:
         if c in customer_summary.columns and c not in _existing_customers_cols:
             _existing_customers_cols.append(c)
     customers_df = customer_summary[_existing_customers_cols].copy()
+    if _is_finance_domain(domain):
+        customers_df = _attach_finance_alias_columns(customers_df, "customers")
 
     # Sort and reset
     customer_summary = customer_summary.sort_values("customer_id").reset_index(drop=True)
@@ -1738,6 +1968,7 @@ def preprocess_uploaded_data(
         "observed_churn_label_rate": float(customer_summary["churn_label_observed"].mean()),
         "avg_clv": float(customer_summary["clv"].mean()),
         "preprocessing_complete": True,
+        "finance_alias_columns_added": bool(_is_finance_domain(domain)),
     })
 
     return PreprocessingResult(
