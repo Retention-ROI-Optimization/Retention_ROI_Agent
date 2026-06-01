@@ -39,3 +39,9 @@ results_user/*
 !results_user/.gitkeep
 results_ecommerce/*
 !results_ecommerce/.gitkeep 
+
+#finance
+models_finance/*
+results_finance/*
+
+
