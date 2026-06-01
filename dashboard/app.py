@@ -1107,7 +1107,7 @@ COUNTERFACTUAL_UI_TEXT: dict[str, dict[str, str]] = {
         "고객별 반사실 손익 비교": "Customer-level counterfactual profit comparison",
         "고객별 시나리오 상세": "Customer scenario details",
         "무개입": "No action",
-        "5,000원 쿠폰": "5,000 KRW coupon",
+        "5,000원 혜택": "5,000 KRW benefit",
         "상담 전화": "Consultation call",
         "푸시/이메일": "Push/email",
         "7일 대기": "Wait 7 days",
@@ -1122,7 +1122,7 @@ COUNTERFACTUAL_UI_TEXT: dict[str, dict[str, str]] = {
         "고객별 반사실 손익 비교": "顧客別反事実損益比較",
         "고객별 시나리오 상세": "顧客別シナリオ詳細",
         "무개입": "無介入",
-        "5,000원 쿠폰": "5,000ウォンクーポン",
+        "5,000원 혜택": "5,000ウォン特典",
         "상담 전화": "相談電話",
         "푸시/이메일": "プッシュ/メール",
         "7일 대기": "7日待機",
@@ -2408,6 +2408,348 @@ _FINANCE_RUNTIME_REPLACEMENTS_KO_PATCH: dict[str, str] = {
 }
 FINANCE_RUNTIME_REPLACEMENTS.setdefault("ko", {}).update(_FINANCE_RUNTIME_REPLACEMENTS_KO_PATCH)
 
+
+# Plain Korean display labels for customer groups, product names, and action text.
+# These are presentation labels only; model-facing columns such as coupon_cost or
+# action_id remain unchanged for compatibility with the existing pipeline.
+_BUSINESS_CUSTOMER_TYPE_KO_PATCH: dict[str, str] = {
+    "High Value-Persuadables": "가치가 높고 연락하면 반응할 가능성이 큰 고객",
+    "High Value-Sure Things": "가치가 높고 이미 반응 가능성이 큰 고객",
+    "High Value-Lost Causes": "가치는 높지만 지금 개입 효과가 낮은 고객",
+    "Low Value-Persuadables": "가치는 낮지만 연락하면 반응할 수 있는 고객",
+    "Low Value-Sure Things": "가치는 낮고 이미 반응 가능성이 있는 고객",
+    "Low Value-Lost Causes": "가치와 개입 효과가 모두 낮은 고객",
+    "New Customers": "가입 초기 고객",
+    "Persuadables": "연락하면 반응할 가능성이 큰 고객",
+    "Sure Things": "이미 반응 가능성이 큰 고객",
+    "Lost Causes": "지금 개입 효과가 낮은 고객",
+    "Sleeping Dogs": "불필요한 개입을 피해야 하는 고객",
+    "persuadables": "연락하면 반응할 가능성이 큰 고객",
+    "sure_things": "이미 반응 가능성이 큰 고객",
+    "lost_causes": "지금 개입 효과가 낮은 고객",
+    "sleeping_dogs": "불필요한 개입을 피해야 하는 고객",
+    "vip_loyal": "VIP 충성 고객",
+    "regular_loyal": "일반 충성 고객",
+    "loyal_regular": "일반 충성 고객",
+    "loyal_vip_customer": "VIP 충성 고객",
+    "loyal regular customer": "일반 충성 고객",
+    "vip_at_risk": "이탈 위험이 큰 VIP 고객",
+    "regular_at_risk": "이탈 위험이 큰 일반 고객",
+    "new_customer": "신규 고객",
+    "new_signup": "가입 초기 고객",
+    "churn_progressing": "이탈 조짐이 보이는 고객",
+    "price_sensitive": "가격·혜택에 민감한 고객",
+    "coupon_sensitive": "혜택에 민감한 고객",
+    "explorer": "상품을 둘러보는 탐색 고객",
+    "dormant": "휴면 고객",
+    "unknown_segment": "고객 유형 미분류",
+    "live": "실시간 고객",
+    "live_user": "실시간 고객",
+    "high_uplift": "개입하면 반응할 가능성이 높은 고객",
+    "very_high_uplift": "개입 반응 가능성이 매우 높은 고객",
+    "medium_uplift": "개입 반응 가능성이 보통인 고객",
+    "low_uplift": "개입 반응 가능성이 낮은 고객",
+    "negative_uplift": "개입을 권장하지 않는 고객",
+}
+VALUE_LABELS.setdefault("ko", {}).update(_BUSINESS_CUSTOMER_TYPE_KO_PATCH)
+PHRASE_LABELS.setdefault("ko", {}).update(_BUSINESS_CUSTOMER_TYPE_KO_PATCH)
+
+_FINANCE_PRODUCT_ACTION_KO_PATCH: dict[str, str] = {
+    # Finance products/services that may come from uploaded CSVs or generated recommendations.
+    "deposit": "예금",
+    "deposits": "예금",
+    "savings": "적금",
+    "saving": "적금",
+    "savings_account": "적금",
+    "checking": "입출금계좌",
+    "checking_account": "입출금계좌",
+    "account": "입출금계좌",
+    "credit_card": "신용카드",
+    "debit_card": "체크카드",
+    "card": "카드",
+    "loan": "대출",
+    "loans": "대출",
+    "mortgage": "주택담보대출",
+    "personal_loan": "신용대출",
+    "insurance": "보험",
+    "pension": "연금",
+    "fund": "펀드",
+    "funds": "펀드",
+    "investment": "투자상품",
+    "wealth": "자산관리",
+    "wealth_management": "자산관리",
+    "asset_management": "자산관리",
+    "remittance": "송금",
+    "transfer": "이체",
+    "digital_banking": "디지털금융",
+    "mobile_banking": "모바일뱅킹",
+    "retention_action": "고객 유지 상담",
+    "generic_retention_offer": "고객 유지 상담 및 금융 혜택 안내",
+    "Generic retention offer": "고객 유지 상담 및 금융 혜택 안내",
+    "generic retention offer": "고객 유지 상담 및 금융 혜택 안내",
+    "personalized_retention_offer": "고객 맞춤 금융 혜택 안내",
+    "Personalized retention offer": "고객 맞춤 금융 혜택 안내",
+    "high_value_retention_coupon": "고가치 고객 전담 상담 및 우대조건 제안",
+    "coupon_offer": "금리·수수료 우대 혜택 안내",
+    "Coupon campaign": "금리·수수료 우대 혜택 안내",
+    "coupon": "금리·수수료 우대 혜택",
+    "coupon_5000": "금리·수수료 우대 혜택",
+    "5,000원 쿠폰": "금리·수수료 우대 혜택",
+    "5,000원 혜택": "금리·수수료 우대 혜택",
+    "discount_offer": "금리·수수료 우대조건 안내",
+    "loyalty_reward": "우수 고객 우대조건 안내",
+    "service_recovery": "불편사항 해결 상담",
+    "service_recovery_message": "불편사항 해결 상담 안내",
+    "retention_message": "금융상품 이용 안내 메시지",
+    "light_retention_message": "가벼운 금융상품 이용 안내",
+    "priority_human_followup": "담당자 우선 상담",
+    "low_risk_upsell_offer": "관심 금융상품 추가 안내",
+    "monitor_only": "추가 행동 관찰",
+    "monitoring": "관찰",
+    "benefit": "금융 혜택",
+    "crm": "담당자 상담",
+    "message": "안내 메시지",
+    "upsell": "추가 금융상품 안내",
+    # Existing retail categories reused by the common simulator are displayed as finance products.
+    "fashion": "카드/소비",
+    "beauty": "예·적금",
+    "personal_care": "생활금융",
+    "grocery": "입출금계좌",
+    "sports": "대출",
+    "health": "보험/연금",
+    "electronics": "디지털금융",
+    "home": "주거금융",
+    "books": "금융교육/콘텐츠",
+    "kids": "가족금융",
+    "pet": "펫보험/특화상품",
+}
+FINANCE_VALUE_LABELS.setdefault("ko", {}).update(_FINANCE_PRODUCT_ACTION_KO_PATCH)
+
+_BUSINESS_ACTION_KO_PATCH: dict[str, str] = {
+    "VIP concierge + personalized offer": "VIP 고객 전담 상담 및 맞춤 혜택 안내",
+    "Loyalty touchpoint": "충성 고객 감사 안내",
+    "Deep-dive outreach": "담당자 심층 상담",
+    "Coupon campaign": "맞춤 혜택 안내",
+    "No Action": "미개입 관찰",
+    "Light reminder": "가벼운 재방문 안내",
+    "Onboarding sequence": "가입 초기 이용 안내",
+    "Immediate (<=14d)": "14일 이내 즉시 연락",
+    "Near-term (15-30d)": "15~30일 안에 연락",
+    "Planned (31-60d)": "31~60일 안에 계획적으로 연락",
+    "Monitor (>60d)": "60일 이후 관찰",
+    "Monitor(>60d)": "60일 이후 관찰",
+    "Monitor >60d": "60일 이후 관찰",
+    "low": "낮은 수준 개입",
+    "mid": "보통 수준 개입",
+    "medium": "보통 수준 개입",
+    "high": "높은 수준 개입",
+    "저강도": "낮은 수준 개입",
+    "중강도": "보통 수준 개입",
+    "고강도": "높은 수준 개입",
+}
+VALUE_LABELS.setdefault("ko", {}).update(_BUSINESS_ACTION_KO_PATCH)
+PHRASE_LABELS.setdefault("ko", {}).update(_BUSINESS_ACTION_KO_PATCH)
+FINANCE_VALUE_LABELS.setdefault("ko", {}).update(_BUSINESS_ACTION_KO_PATCH)
+
+_FINANCE_RUNTIME_ACTION_REPLACEMENTS: dict[str, str] = {
+    "5,000원 쿠폰 예상 순이익": "금리·수수료 우대 혜택 예상 순이익",
+    "5,000원 혜택 예상 순이익": "금리·수수료 우대 혜택 예상 순이익",
+    "쿠폰 예상 순이익": "금융 혜택 예상 순이익",
+    "쿠폰에 반응할 가능성이 있는 고객에게 5,000원 혜택을 제공하는 전략": "금리·수수료 우대나 수수료 면제처럼 비용이 정해진 금융 혜택을 제안하는 전략",
+    "쿠폰보다 서비스 회복 메시지나 CS 해결": "금융 혜택보다 불편사항 해결 상담",
+    "쿠폰, 상담, 알림": "금융 혜택, 상담, 알림",
+    "쿠폰": "금융 혜택",
+}
+FINANCE_RUNTIME_REPLACEMENTS.setdefault("ko", {}).update(_FINANCE_RUNTIME_ACTION_REPLACEMENTS)
+
+_ACTION_NAME_FINANCE_KO: dict[str, str] = {
+    **_FINANCE_PRODUCT_ACTION_KO_PATCH,
+    "기본 리텐션 혜택": "고객 유지 상담 및 금융 혜택 안내",
+    "기본 리텐션 혜택 제안": "고객 유지 상담 및 금융 혜택 안내",
+    "기본 고객 유지 혜택 안내": "고객 유지 상담 및 금융 혜택 안내",
+    "개인 맞춤 리텐션 혜택 제안": "고객 맞춤 금융 혜택 안내",
+    "개인화 리텐션 혜택": "고객 맞춤 금융 혜택 안내",
+    "개인 맞춤 쿠폰": "고객 맞춤 금융 혜택 안내",
+    "쿠폰 혜택": "금리·수수료 우대 혜택 안내",
+    "쿠폰 혜택 제안": "금리·수수료 우대 혜택 안내",
+    "할인 혜택": "금리·수수료 우대조건 안내",
+    "할인 혜택 제안": "금리·수수료 우대조건 안내",
+}
+
+_ACTION_NAME_ECOMMERCE_KO: dict[str, str] = {
+    "generic_retention_offer": "기본 재방문 혜택 안내",
+    "Generic retention offer": "기본 재방문 혜택 안내",
+    "generic retention offer": "기본 재방문 혜택 안내",
+    "personalized_retention_offer": "고객 맞춤 혜택 안내",
+    "Personalized retention offer": "고객 맞춤 혜택 안내",
+    "high_value_retention_coupon": "고가치 고객 맞춤 쿠폰 안내",
+    "coupon_offer": "쿠폰 혜택 안내",
+    "Coupon campaign": "쿠폰 혜택 안내",
+    "discount_offer": "할인 혜택 안내",
+    "loyalty_reward": "충성 고객 보상 안내",
+    "service_recovery": "서비스 불편 회복 안내",
+    "service_recovery_message": "서비스 불편 회복 안내",
+    "retention_message": "재방문 안내 메시지",
+    "light_retention_message": "가벼운 재방문 안내",
+    "priority_human_followup": "담당자 우선 연락",
+    "low_risk_upsell_offer": "관심 상품 추가 추천",
+    "monitor_only": "추가 행동 관찰",
+    "retention_action": "고객 유지 액션",
+    "기본 고객 유지 혜택 안내": "기본 재방문 혜택 안내",
+    "기본 리텐션 혜택": "기본 재방문 혜택 안내",
+    "기본 리텐션 혜택 제안": "기본 재방문 혜택 안내",
+}
+
+_WINDOW_LABELS_KO: dict[str, str] = {
+    "Immediate (<=14d)": "14일 이내 즉시 연락",
+    "Near-term (15-30d)": "15~30일 안에 연락",
+    "Planned (31-60d)": "31~60일 안에 계획적으로 연락",
+    "Monitor (>60d)": "60일 이후 관찰",
+    "Monitor(>60d)": "60일 이후 관찰",
+    "Monitor >60d": "60일 이후 관찰",
+    "14일 이내 즉시 연락": "14일 이내 즉시 연락",
+    "15~30일 안에 연락": "15~30일 안에 연락",
+    "31~60일 안에 계획적으로 연락": "31~60일 안에 계획적으로 연락",
+    "60일 이후 관찰": "60일 이후 관찰",
+}
+
+_INTENSITY_DESCRIPTIONS_FINANCE_KO: dict[str, str] = {
+    "low": "낮은 수준: 문자·앱 알림처럼 부담이 작은 안내부터 진행합니다.",
+    "mid": "보통 수준: 맞춤 금융 혜택 안내와 상담 연결을 함께 진행합니다.",
+    "medium": "보통 수준: 맞춤 금융 혜택 안내와 상담 연결을 함께 진행합니다.",
+    "high": "높은 수준: 담당자 상담과 우대조건 제안을 우선 진행합니다.",
+    "저강도": "낮은 수준: 문자·앱 알림처럼 부담이 작은 안내부터 진행합니다.",
+    "중강도": "보통 수준: 맞춤 금융 혜택 안내와 상담 연결을 함께 진행합니다.",
+    "고강도": "높은 수준: 담당자 상담과 우대조건 제안을 우선 진행합니다.",
+    "낮은 수준 개입": "낮은 수준: 문자·앱 알림처럼 부담이 작은 안내부터 진행합니다.",
+    "보통 수준 개입": "보통 수준: 맞춤 금융 혜택 안내와 상담 연결을 함께 진행합니다.",
+    "높은 수준 개입": "높은 수준: 담당자 상담과 우대조건 제안을 우선 진행합니다.",
+}
+
+_INTENSITY_DESCRIPTIONS_ECOMMERCE_KO: dict[str, str] = {
+    "low": "낮은 수준: 푸시·이메일 같은 가벼운 안내부터 진행합니다.",
+    "mid": "보통 수준: 맞춤 혜택 안내와 재방문 유도를 함께 진행합니다.",
+    "medium": "보통 수준: 맞춤 혜택 안내와 재방문 유도를 함께 진행합니다.",
+    "high": "높은 수준: 고가치 고객에게 더 적극적인 혜택과 연락을 진행합니다.",
+    "저강도": "낮은 수준: 푸시·이메일 같은 가벼운 안내부터 진행합니다.",
+    "중강도": "보통 수준: 맞춤 혜택 안내와 재방문 유도를 함께 진행합니다.",
+    "고강도": "높은 수준: 고가치 고객에게 더 적극적인 혜택과 연락을 진행합니다.",
+    "낮은 수준 개입": "낮은 수준: 푸시·이메일 같은 가벼운 안내부터 진행합니다.",
+    "보통 수준 개입": "보통 수준: 맞춤 혜택 안내와 재방문 유도를 함께 진행합니다.",
+    "높은 수준 개입": "높은 수준: 고가치 고객에게 더 적극적인 혜택과 연락을 진행합니다.",
+}
+
+
+def _lookup_plain_korean_label(raw: Any, mapping: dict[str, str]) -> str | None:
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    if text in mapping:
+        return mapping[text]
+    norm = re.sub(r"[\s_\-:：/\.()\[\]{}]+", "", text).lower()
+    for src, dst in mapping.items():
+        if norm == re.sub(r"[\s_\-:：/\.()\[\]{}]+", "", str(src)).lower():
+            return str(dst)
+    return None
+
+
+def _humanize_business_action_text(value: Any) -> str:
+    """Turn generated action codes into a sentence that a business user can execute."""
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    # Only action-like strings should be rewritten as sentences.
+    has_action_signal = any(token in raw for token in ["·", "|", "Near-term", "Immediate", "Planned", "Monitor", "retention", "coupon", "Coupon", "혜택", "개입"])
+    if not has_action_signal:
+        return raw
+
+    mode = "finance" if _is_finance_display_mode() else "ecommerce"
+    action_map = _ACTION_NAME_FINANCE_KO if mode == "finance" else _ACTION_NAME_ECOMMERCE_KO
+    intensity_map = _INTENSITY_DESCRIPTIONS_FINANCE_KO if mode == "finance" else _INTENSITY_DESCRIPTIONS_ECOMMERCE_KO
+
+    normalized = raw.replace(" | ", " · ").replace(";", " · ")
+    parts = [part.strip() for part in re.split(r"\s*·\s*", normalized) if part.strip()]
+    if not parts:
+        return raw
+
+    action_label = None
+    intensity_desc = None
+    window_label = None
+    other_parts: list[str] = []
+
+    for part in parts:
+        mapped_window = _lookup_plain_korean_label(part, _WINDOW_LABELS_KO)
+        mapped_intensity = _lookup_plain_korean_label(part, intensity_map)
+        mapped_action = _lookup_plain_korean_label(part, action_map)
+        if mapped_window:
+            window_label = mapped_window
+        elif mapped_intensity:
+            intensity_desc = mapped_intensity
+        elif mapped_action:
+            action_label = mapped_action
+        else:
+            # The part may already be partially translated. Try finance/e-commerce value labels too.
+            mapped_value = _lookup_plain_korean_label(part, FINANCE_VALUE_LABELS.get("ko", {})) if mode == "finance" else _lookup_plain_korean_label(part, VALUE_LABELS.get("ko", {}))
+            if mapped_value and mapped_value != part:
+                if any(keyword in mapped_value for keyword in ["일", "관찰", "연락"]):
+                    window_label = mapped_value
+                elif "수준" in mapped_value or mapped_value in {"높음", "보통", "낮음"}:
+                    intensity_desc = intensity_map.get(mapped_value, mapped_value)
+                else:
+                    action_label = mapped_value
+            else:
+                other_parts.append(part)
+
+    if not action_label:
+        if len(parts) == 1:
+            mapped_single = _lookup_plain_korean_label(parts[0], action_map)
+            return mapped_single or raw
+        return raw
+
+    if action_label in {"관찰", "추가 행동 관찰", "미개입 관찰"}:
+        base_sentence = "추가 비용을 바로 쓰지 않고 고객 행동을 더 관찰합니다."
+    else:
+        base_sentence = f"{action_label}를 진행합니다."
+    if window_label:
+        base_sentence = f"{window_label} {base_sentence}"
+    if intensity_desc:
+        base_sentence = f"{base_sentence} {intensity_desc}"
+    if other_parts and len(parts) <= 3:
+        # Preserve a short unknown qualifier without exposing code-like separators.
+        base_sentence = f"{base_sentence} 참고: {' / '.join(other_parts)}."
+    return re.sub(r"\s+", " ", base_sentence).strip()
+
+
+def _humanize_business_display_value(column: Any, value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+    raw = value.strip()
+    if not raw:
+        return ""
+    column_norm = re.sub(r"[\s_\-:：/\.()\[\]{}]+", "", str(column or "")).lower()
+
+    if "persona" in column_norm or "segment" in column_norm or "customer_type" in column_norm or "고객유형" in column_norm:
+        label = _lookup_plain_korean_label(raw, _BUSINESS_CUSTOMER_TYPE_KO_PATCH)
+        if label:
+            return label
+
+    if "recommendedaction" in column_norm or "queuedrecommendedaction" in column_norm or "action" in column_norm or "추천액션" in column_norm:
+        sentence = _humanize_business_action_text(raw)
+        if sentence != raw:
+            return sentence
+
+    if _is_finance_display_mode() and ("category" in column_norm or "product" in column_norm or "상품" in column_norm or "recommended" in column_norm):
+        label = _lookup_plain_korean_label(raw, _FINANCE_PRODUCT_ACTION_KO_PATCH)
+        if label:
+            return label
+
+    # Values that look like generated actions should be sentence-like even when
+    # they arrive through generic log/detail columns.
+    sentence = _humanize_business_action_text(raw)
+    if sentence != raw:
+        return sentence
+    return raw
+
 LEGACY_VIEW_REDIRECTS: dict[str, str] = {
     "2. 예산 배분·타겟 고객": "4. 예산 최적화 및 리텐션 타겟",
     "3. 개인화 추천": "5. 개인화 추천",
@@ -2589,6 +2931,10 @@ def _translate_cell_value(value: Any) -> Any:
     stripped = value.strip()
     if not stripped:
         return ""
+
+    humanized = _humanize_business_display_value("__value__", stripped)
+    if isinstance(humanized, str) and humanized != stripped:
+        return _collapse_repeated_customer_words(humanized)
 
     # In finance mode, convert raw product/event/feature values to finance terms
     # before generic e-commerce labels can translate values such as ``purchase``
@@ -2809,6 +3155,9 @@ def _format_table_value_by_column(column: str, value: Any) -> Any:
     if _is_probability_column(column):
         return _format_probability_display(value)
     if isinstance(value, str):
+        humanized = _humanize_business_display_value(column, value)
+        if isinstance(humanized, str) and humanized != value:
+            return _collapse_repeated_customer_words(humanized)
         domain_first = _domain_translate_value(column, value)
         return _translate_cell_value(domain_first)
     return value
@@ -9306,6 +9655,13 @@ elif view == "13. 고객별 대응 전략 비교":
         if pd.isna(value):
             return ""
         text = str(value)
+        if _is_finance_display_mode():
+            finance_value = _domain_translate_value("__counterfactual__", text)
+            if isinstance(finance_value, str) and finance_value != text:
+                return finance_value
+        humanized = _humanize_business_display_value("recommended_action", text)
+        if isinstance(humanized, str) and humanized != text:
+            return humanized
         ko_map = VALUE_LABELS.get("ko", {})
         return ko_map.get(text, ko_map.get(text.lower(), text))
 
@@ -9323,7 +9679,7 @@ elif view == "13. 고객별 대응 전략 비교":
         "clv": "고객 생애가치",
         "recommended_action": "기존 추천 액션",
         "expected_no_action_net_profit": "무개입 예상 순이익",
-        "expected_net_profit_coupon_5000": "5,000원 쿠폰 예상 순이익",
+        "expected_net_profit_coupon_5000": "5,000원 혜택 예상 순이익",
         "expected_net_profit_consult_call": "상담 전화 예상 순이익",
         "expected_net_profit_push_email": "푸시/이메일 예상 순이익",
         "expected_net_profit_wait_7d": "7일 대기 예상 순이익",
