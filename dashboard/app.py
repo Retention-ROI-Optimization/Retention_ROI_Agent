@@ -2154,6 +2154,260 @@ for _lang, _mapping in _HUMAN_TERM_CAPTIONS_PATCH.items():
 # [/PATCH]
 # ============================================================
 
+# Data-facing labels are fixed to Korean for finance/e-commerce tables and charts.
+# Keep this patch close to the final label dictionaries so it wins over generic
+# multilingual mappings without touching backend schemas or model inputs.
+_DATA_KO_COLUMN_PATCH: dict[str, str] = {
+    # Common source/detail table columns
+    "timestamp": "이벤트 시각",
+    "event_time": "이벤트 시각",
+    "event_type": "이벤트 유형",
+    "last_event_type": "최근 이벤트 유형",
+    "item_category": "상품/서비스 카테고리",
+    "category": "카테고리",
+    "quantity": "수량",
+    "session_id": "세션 ID",
+    "event_id": "이벤트 ID",
+    "order_id": "주문 ID",
+    "order_time": "주문 시각",
+    "gross_amount": "주문 금액",
+    "discount_amount": "할인 금액",
+    "net_amount": "실결제 금액",
+    "coupon_used": "쿠폰 사용 여부",
+    "campaign_id": "캠페인 ID",
+    "campaign_type": "캠페인 유형",
+    "exposure_time": "노출 시각",
+    "channel": "채널",
+    "redeemed": "사용 여부",
+    "redeem_time": "사용 시각",
+    "cost": "비용",
+    "discount_rate": "할인율",
+    "assigned_at": "배정 시각",
+    "treatment_group": "실험군",
+    "treatment_flag": "개입 여부",
+    "control_group": "대조군",
+    "actual_profit": "실제 이익",
+    "actual_roi": "실제 ROI",
+    "actual_conversion": "실제 전환 여부",
+    "coupon_redeemed": "쿠폰 사용 여부",
+    "outcome_label": "결과 분류",
+    "executed": "실행 여부",
+    "intervention_intensity_label": "개입 강도",
+    # Feature names that often appear as values in feature importance tables too.
+    "recency_days": "마지막 활동 경과일",
+    "frequency": "활동 빈도",
+    "monetary": "거래 금액",
+    "visits_last_7": "최근 7일 방문 수",
+    "visits_prev_7": "직전 7일 방문 수",
+    "visit_change_rate": "방문 변화율",
+    "purchase_last_30": "최근 30일 구매 수",
+    "purchase_prev_30": "직전 30일 구매 수",
+    "purchase_change_rate": "구매 변화율",
+    "inactivity_days": "비활성 일수",
+    "coupon_exposure_count": "쿠폰 노출 횟수",
+    "coupon_redeem_count": "쿠폰 사용 횟수",
+    "coupon_fatigue_score": "쿠폰 피로도",
+    "coupon_affinity": "쿠폰 반응도",
+    "discount_dependency_score": "할인 의존도",
+    "discount_pressure_score": "할인 압박도",
+    "discount_effect_penalty": "할인 효과 페널티",
+    "price_sensitivity": "가격 민감도",
+    "support_contact_propensity": "고객지원 문의 가능성",
+    "avg_coupon_exposure": "평균 쿠폰 노출 횟수",
+    "avg_churn_probability": "평균 이탈 확률",
+    "avg_expected_roi": "평균 예상 ROI",
+    "count": "건수",
+    "value": "값",
+}
+COLUMN_LABELS.setdefault("ko", {}).update(_DATA_KO_COLUMN_PATCH)
+
+_DATA_KO_VALUE_PATCH: dict[str, str] = {
+    # E-commerce event/action/product labels shown in tables and chart legends.
+    "visit": "방문",
+    "page_view": "페이지 방문",
+    "screen_view": "화면 조회",
+    "product_view": "상품 조회",
+    "view_item": "상품 조회",
+    "search": "검색",
+    "add_to_cart": "장바구니 담기",
+    "cart": "장바구니",
+    "wishlist_add": "찜하기",
+    "favorite": "즐겨찾기",
+    "purchase": "구매",
+    "order": "주문",
+    "checkout": "결제",
+    "support_contact": "고객지원 문의",
+    "other": "기타",
+    "ignore": "제외",
+    "retention_coupon": "리텐션 쿠폰",
+    "personalized_coupon": "개인 맞춤 쿠폰",
+    "coupon": "쿠폰",
+    "coupon_used": "쿠폰 사용",
+    "coupon_redeemed": "쿠폰 사용",
+    "no_coupon": "쿠폰 없음",
+    "fashion": "패션",
+    "beauty": "뷰티",
+    "personal_care": "생활/개인관리",
+    "grocery": "식품/생활",
+    "sports": "스포츠",
+    "health": "헬스케어",
+    "electronics": "전자제품",
+    "home": "홈/리빙",
+    "books": "도서",
+    "kids": "키즈",
+    "pet": "반려동물",
+    "own_purchase_history": "본인 구매 이력",
+    "recent_browse_signal": "최근 탐색 신호",
+    "segment_popularity": "유사 고객군 인기",
+    "global_popularity": "전체 인기",
+    # Feature values in model artifact tables.
+    "recency_days": "마지막 활동 경과일",
+    "frequency": "활동 빈도",
+    "monetary": "거래 금액",
+    "visits_last_7": "최근 7일 방문 수",
+    "visits_prev_7": "직전 7일 방문 수",
+    "visit_change_rate": "방문 변화율",
+    "purchase_last_30": "최근 30일 구매 수",
+    "purchase_prev_30": "직전 30일 구매 수",
+    "purchase_change_rate": "구매 변화율",
+    "inactivity_days": "비활성 일수",
+    "coupon_exposure_count": "쿠폰 노출 횟수",
+    "coupon_redeem_count": "쿠폰 사용 횟수",
+    "coupon_fatigue_score": "쿠폰 피로도",
+    "coupon_affinity": "쿠폰 반응도",
+    "discount_dependency_score": "할인 의존도",
+    "discount_pressure_score": "할인 압박도",
+    "discount_effect_penalty": "할인 효과 페널티",
+    "price_sensitivity": "가격 민감도",
+    "support_contact_propensity": "고객지원 문의 가능성",
+    "financial_retention_offer": "금융 리텐션 혜택",
+}
+VALUE_LABELS.setdefault("ko", {}).update(_DATA_KO_VALUE_PATCH)
+
+_FINANCE_KO_COLUMN_PATCH: dict[str, str] = {
+    "timestamp": "금융 이벤트 시각",
+    "event_time": "금융 이벤트 시각",
+    "event_type": "금융 이벤트 유형",
+    "last_event_type": "최근 금융 이벤트 유형",
+    "item_category": "금융상품/서비스",
+    "category": "금융상품 분류",
+    "quantity": "거래 수량/건수",
+    "order_id": "거래 ID",
+    "order_time": "거래 시각",
+    "gross_amount": "거래 금액",
+    "discount_amount": "혜택 금액",
+    "net_amount": "순거래 금액",
+    "coupon_used": "혜택 사용 여부",
+    "campaign_id": "금융 캠페인 ID",
+    "campaign_type": "금융 캠페인 유형",
+    "exposure_time": "혜택 제안 시각",
+    "channel": "접촉 채널",
+    "redeemed": "혜택 수락 여부",
+    "redeem_time": "혜택 수락 시각",
+    "cost": "금융 개입 비용",
+    "discount_rate": "금리·수수료 우대율",
+    "treatment_group": "개입군",
+    "treatment_flag": "금융 개입 여부",
+    "actual_conversion": "실제 금융거래 전환 여부",
+    "coupon_redeemed": "혜택 수락 여부",
+    "outcome_label": "성과 판정",
+    "executed": "실행 여부",
+    "intervention_intensity_label": "개입 강도",
+    "visits_last_7": "최근 7일 금융채널 접속 수",
+    "visits_prev_7": "직전 7일 금융채널 접속 수",
+    "visit_change_rate": "금융채널 접속 변화율",
+    "inactivity_days": "금융 비활성 일수",
+    "support_contact_propensity": "상담/민원 가능성",
+    "avg_coupon_exposure": "평균 혜택 제안 횟수",
+}
+FINANCE_COLUMN_LABELS.setdefault("ko", {}).update(_FINANCE_KO_COLUMN_PATCH)
+
+_FINANCE_KO_VALUE_PATCH: dict[str, str] = {
+    "visit": "금융채널 접속",
+    "page_view": "계좌·상품 조회",
+    "screen_view": "금융 화면 조회",
+    "product_view": "금융상품 조회",
+    "view_item": "금융상품 조회",
+    "search": "금융상품 탐색",
+    "add_to_cart": "신청 시작/관심상품",
+    "cart": "신청/관심상품",
+    "wishlist_add": "관심상품 저장",
+    "favorite": "관심상품 저장",
+    "purchase": "금융거래",
+    "order": "거래",
+    "checkout": "거래 완료",
+    "support_contact": "상담/민원",
+    "other": "기타 금융활동",
+    "ignore": "제외",
+    "retention_coupon": "금융 리텐션 혜택",
+    "personalized_coupon": "맞춤 금융 혜택",
+    "coupon": "금융 혜택",
+    "coupon_used": "혜택 사용",
+    "coupon_redeemed": "혜택 수락",
+    "no_coupon": "혜택 없음",
+    "fashion": "카드/소비",
+    "beauty": "예·적금",
+    "personal_care": "생활금융",
+    "grocery": "입출금계좌",
+    "sports": "대출",
+    "health": "보험/연금",
+    "electronics": "디지털금융",
+    "home": "주거금융",
+    "books": "금융교육/콘텐츠",
+    "kids": "가족금융",
+    "pet": "펫보험/특화상품",
+    "패션": "카드/소비",
+    "뷰티": "예·적금",
+    "생활/개인관리": "생활금융",
+    "식품/생활": "입출금계좌",
+    "스포츠": "대출",
+    "헬스케어": "보험/연금",
+    "전자제품": "디지털금융",
+    "홈/리빙": "주거금융",
+    "페이지 방문": "계좌·상품 조회",
+    "상품 조회": "금융상품 조회",
+    "검색": "금융상품 탐색",
+    "고객지원 문의": "상담/민원",
+    "own_purchase_history": "고객 본인의 과거 금융거래 이력",
+    "recent_browse_signal": "최근 금융상품 조회 신호",
+    "segment_popularity": "유사 금융고객군 선호",
+    "global_popularity": "전체 금융고객 선호",
+    "recency_days": "마지막 금융거래 경과일",
+    "frequency": "금융거래 빈도",
+    "monetary": "금융 거래/잔고 금액",
+    "visits_last_7": "최근 7일 금융채널 접속 수",
+    "visits_prev_7": "직전 7일 금융채널 접속 수",
+    "visit_change_rate": "금융채널 접속 변화율",
+    "inactivity_days": "금융 비활성 일수",
+    "support_contact_propensity": "상담/민원 가능성",
+    "financial_retention_offer": "금융 리텐션 혜택",
+}
+FINANCE_VALUE_LABELS.setdefault("ko", {}).update(_FINANCE_KO_VALUE_PATCH)
+
+_FINANCE_RUNTIME_REPLACEMENTS_KO_PATCH: dict[str, str] = {
+    "추천 카테고리 믹스": "추천 금융상품 믹스",
+    "추천 카테고리 분포": "추천 금융상품 분포",
+    "추천 카테고리": "추천 금융상품",
+    "이벤트 타입 분포": "금융 이벤트 유형 분포",
+    "이벤트 유형 분포": "금융 이벤트 유형 분포",
+    "페르소나별 평균 쿠폰 노출": "금융 고객 유형별 평균 혜택 제안",
+    "쿠폰 운영 리스크 플래그": "금융 혜택 운영 리스크 플래그",
+    "페르소나별 쿠폰 노출/성과": "금융 고객 유형별 혜택 제안/성과",
+    "총 쿠폰 지급": "총 금융 혜택 지급",
+    "쿠폰 이력": "금융 혜택 이력",
+    "쿠폰 사용": "혜택 사용",
+    "쿠폰 비용": "금융 혜택 비용",
+    "주문 내역": "거래 내역",
+    "주문 기록 없음": "거래 기록 없음",
+    "총 구매": "총 금융거래",
+    "구매 변화율": "금융거래 변화율",
+    "최근 30일 구매 수": "최근 30일 금융거래 수",
+    "직전 30일 구매 수": "직전 30일 금융거래 수",
+    "장바구니": "신청/관심상품",
+    "할인": "금리·수수료 혜택",
+}
+FINANCE_RUNTIME_REPLACEMENTS.setdefault("ko", {}).update(_FINANCE_RUNTIME_REPLACEMENTS_KO_PATCH)
+
 LEGACY_VIEW_REDIRECTS: dict[str, str] = {
     "2. 예산 배분·타겟 고객": "4. 예산 최적화 및 리텐션 타겟",
     "3. 개인화 추천": "5. 개인화 추천",
@@ -2195,6 +2449,21 @@ INSIGHT_HEAVY_VIEWS: set[str] = {"4. 예산 최적화 및 리텐션 타겟", "6.
 
 def _language_code() -> str:
     return st.session_state.get("language_code", "ko") if hasattr(st, "session_state") else "ko"
+
+
+def _data_label_language_code() -> str:
+    """Language for data-facing labels: table headers, event values, product names, and chart axes.
+
+    The dashboard may translate surrounding UI text, but business data labels must
+    remain Korean in finance/e-commerce modes so demos and exported screenshots do
+    not mix English backend schema names with Korean business terminology.
+    """
+    try:
+        if _business_mode() in {"ecommerce", "finance"}:
+            return "ko"
+    except Exception:
+        pass
+    return _language_code()
 
 
 def _normalize_i18n_key(text: str) -> str:
@@ -2320,7 +2589,16 @@ def _translate_cell_value(value: Any) -> Any:
     stripped = value.strip()
     if not stripped:
         return ""
-    return _translate_cell_value_cached(_language_code(), stripped)
+
+    # In finance mode, convert raw product/event/feature values to finance terms
+    # before generic e-commerce labels can translate values such as ``purchase``
+    # or ``fashion`` into retail wording.
+    if _is_finance_display_mode():
+        finance_value = _domain_translate_value("__value__", stripped)
+        if isinstance(finance_value, str) and finance_value != stripped:
+            return _collapse_repeated_customer_words(finance_value)
+
+    return _translate_cell_value_cached(_data_label_language_code(), stripped)
 
 
 @lru_cache(maxsize=20000)
@@ -2336,7 +2614,7 @@ def _translate_cell_value_cached(language_code: str, stripped: str) -> str:
     """
     if stripped == "":
         return ""
-    code = language_code or _language_code()
+    code = language_code or _data_label_language_code()
     value_labels = VALUE_LABELS.get(code, VALUE_LABELS.get("ko", {}))
     phrase_labels = PHRASE_LABELS.get(code, PHRASE_LABELS.get("ko", {}))
     norm = _normalize_i18n_key(stripped)
@@ -2531,7 +2809,8 @@ def _format_table_value_by_column(column: str, value: Any) -> Any:
     if _is_probability_column(column):
         return _format_probability_display(value)
     if isinstance(value, str):
-        return _domain_translate_value(column, _translate_cell_value(value))
+        domain_first = _domain_translate_value(column, value)
+        return _translate_cell_value(domain_first)
     return value
 
 
@@ -2571,7 +2850,7 @@ def _friendly_chart_text(text: Any) -> str:
     raw = str(text or "").strip()
     if not raw:
         return raw
-    code = _language_code()
+    code = _data_label_language_code()
     translated_col = _translate_column_name(raw)
     if translated_col and translated_col != raw.replace("_", " "):
         return translated_col
@@ -2684,6 +2963,26 @@ def _install_i18n_runtime_patches() -> None:
         "text_input", "file_uploader", "metric", "image",
     ]:
         _wrap_callable(st, _name)
+
+    # st.dataframe does not return edited values, so it is safe to localize a copy
+    # of displayed data. Do not wrap st.data_editor because edited values are used
+    # by the mapping workflow.
+    _dataframe_original = getattr(st, "dataframe", None)
+    if _dataframe_original is not None and not getattr(_dataframe_original, "_retention_i18n_wrapped", False):
+        def _dataframe_wrapped(data: Any = None, *args: Any, **kwargs: Any):
+            display_data = data
+            try:
+                if isinstance(display_data, pd.DataFrame):
+                    display_data = _sanitize_display_dataframe(display_data)
+                elif "data" in kwargs and isinstance(kwargs["data"], pd.DataFrame):
+                    kwargs = dict(kwargs)
+                    kwargs["data"] = _sanitize_display_dataframe(kwargs["data"])
+                    display_data = data
+            except Exception:
+                display_data = data
+            return _dataframe_original(display_data, *args, **kwargs)
+        _dataframe_wrapped._retention_i18n_wrapped = True  # type: ignore[attr-defined]
+        st.dataframe = _dataframe_wrapped  # type: ignore[assignment]
 
     # st.progress has a numeric first arg; translate only its text kwarg.
     _wrap_callable(st, "progress", arg_indexes=(), kw_names=("text",))
@@ -3064,7 +3363,10 @@ def _is_finance_display_mode() -> bool:
 def _domain_column_label(column: Any, code: str | None = None) -> str | None:
     if not _is_finance_display_mode():
         return None
-    lang = code or _language_code()
+    # Finance-facing table/axis labels are intentionally Korean even when the UI
+    # language is English/Japanese. This prevents raw e-commerce terms from
+    # appearing in finance mode screenshots and tables.
+    lang = "ko" if (code is None or _data_label_language_code() == "ko") else code
     labels = FINANCE_COLUMN_LABELS.get(lang) or FINANCE_COLUMN_LABELS.get("ko", {})
     raw = str(column)
     if raw in labels:
@@ -3079,7 +3381,7 @@ def _domain_column_label(column: Any, code: str | None = None) -> str | None:
 def _domain_translate_value(column: Any, value: Any) -> Any:
     if not _is_finance_display_mode() or not isinstance(value, str):
         return value
-    code = _language_code()
+    code = _data_label_language_code()
     mapping = FINANCE_VALUE_LABELS.get(code) or FINANCE_VALUE_LABELS.get("ko", {})
     out = value
     norm = _normalize_i18n_key(out)
@@ -6032,7 +6334,7 @@ def _normalize_table_cell(value: Any) -> Any:
 
 
 def _translate_column_name(column: str) -> str:
-    code = _language_code()
+    code = _data_label_language_code()
     domain_label = _domain_column_label(column, code)
     if domain_label:
         return domain_label
