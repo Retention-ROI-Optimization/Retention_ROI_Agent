@@ -171,6 +171,139 @@ DOMAIN_DIRS: dict[str, dict[str, str]] = {
 }
 BUSINESS_UPLOAD_MODES: set[str] = {"ecommerce", "finance", "user"}
 
+FINANCE_COLUMN_LABELS: dict[str, dict[str, str]] = {
+    "ko": {
+        "customer_id": "금융 고객 ID", "financial_customer_id": "금융 고객 ID",
+        "persona": "금융 고객 유형", "recommended_category": "추천 금융상품/서비스",
+        "item_category": "금융상품/서비스", "financial_product": "금융상품/서비스",
+        "order_id": "거래 ID", "transaction_id": "거래 ID",
+        "order_time": "거래 시각", "transaction_time": "거래 시각",
+        "gross_amount": "거래 금액", "transaction_amount": "거래 금액",
+        "discount_amount": "혜택 금액", "benefit_amount": "혜택 금액",
+        "net_amount": "순거래 금액", "net_transaction_amount": "순거래 금액",
+        "coupon_used": "혜택 사용 여부", "retention_benefit_used": "혜택 사용 여부",
+        "coupon_cost": "금융 혜택/개입 비용", "queued_coupon_cost": "큐 금융 혜택 비용",
+        "coupon_exposure_count": "혜택 제안 횟수", "coupon_redeem_count": "혜택 수락 횟수",
+        "coupon_fatigue_score": "혜택 피로도", "coupon_affinity": "금융 혜택 반응도",
+        "discount_dependency_score": "금리·수수료 혜택 의존도",
+        "discount_pressure_score": "혜택 압박도", "discount_effect_penalty": "혜택 효과 페널티",
+        "price_sensitivity": "금리·수수료 민감도", "purchase_last_30": "최근 30일 금융거래",
+        "purchase_prev_30": "직전 30일 금융거래", "purchase_change_rate": "금융거래 변화율",
+        "monetary": "금융 거래/잔고 금액", "frequency": "거래 빈도", "recency_days": "마지막 금융거래 경과일",
+        "financial_event_type": "금융 이벤트 유형", "event_type": "금융 이벤트 유형",
+        "account_balance_current": "현재 계좌잔고", "avg_balance": "평균잔고",
+        "loan_balance": "대출잔액", "loan_amount": "대출금액", "credit_limit": "신용한도",
+        "card_spend_total": "카드 이용금액", "aum": "운용자산", "credit_score": "신용점수",
+        "credit_risk_score": "신용위험 점수", "delinquency_days": "연체일수",
+        "missed_payment_count": "미납/연체 횟수", "tenure_months": "거래기간(개월)",
+        "product_count": "보유 금융상품 수", "risk_grade": "리스크 등급",
+        "account_status": "계좌/거래 상태", "intervention_cost": "금융 개입 비용",
+        "benefit_offer_count": "혜택 제안 횟수", "benefit_accept_count": "혜택 수락 횟수",
+        "financial_benefit_affinity": "금융 혜택 반응도", "rate_fee_sensitivity": "금리·수수료 민감도",
+        "service_contact_propensity": "상담/민원 가능성",
+    },
+    "en": {
+        "customer_id": "Financial Customer ID", "financial_customer_id": "Financial Customer ID",
+        "persona": "Financial Customer Type", "recommended_category": "Recommended Financial Product/Service",
+        "item_category": "Financial Product/Service", "financial_product": "Financial Product/Service",
+        "order_id": "Transaction ID", "transaction_id": "Transaction ID",
+        "order_time": "Transaction Time", "transaction_time": "Transaction Time",
+        "gross_amount": "Transaction Amount", "transaction_amount": "Transaction Amount",
+        "discount_amount": "Benefit Amount", "benefit_amount": "Benefit Amount",
+        "net_amount": "Net Transaction Amount", "net_transaction_amount": "Net Transaction Amount",
+        "coupon_used": "Benefit Used", "retention_benefit_used": "Benefit Used",
+        "coupon_cost": "Financial Benefit/Intervention Cost", "queued_coupon_cost": "Queued Financial Benefit Cost",
+        "coupon_exposure_count": "Benefit Offers", "coupon_redeem_count": "Accepted Benefits",
+        "coupon_fatigue_score": "Benefit Fatigue", "coupon_affinity": "Financial Benefit Affinity",
+        "discount_dependency_score": "Rate/Fee Benefit Dependency",
+        "discount_pressure_score": "Benefit Pressure", "discount_effect_penalty": "Benefit Effect Penalty",
+        "price_sensitivity": "Rate/Fee Sensitivity", "purchase_last_30": "Financial Transactions Last 30d",
+        "purchase_prev_30": "Financial Transactions Previous 30d", "purchase_change_rate": "Financial Transaction Change Rate",
+        "monetary": "Financial Value/Balance", "frequency": "Transaction Frequency", "recency_days": "Days Since Last Financial Activity",
+        "financial_event_type": "Financial Event Type", "event_type": "Financial Event Type",
+        "account_balance_current": "Current Account Balance", "avg_balance": "Average Balance",
+        "loan_balance": "Loan Balance", "loan_amount": "Loan Amount", "credit_limit": "Credit Limit",
+        "card_spend_total": "Card Spend", "aum": "Assets Under Management", "credit_score": "Credit Score",
+        "credit_risk_score": "Credit Risk Score", "delinquency_days": "Days Past Due",
+        "missed_payment_count": "Missed Payment Count", "tenure_months": "Relationship Tenure (Months)",
+        "product_count": "Financial Products Held", "risk_grade": "Risk Grade",
+        "account_status": "Account/Relationship Status", "intervention_cost": "Financial Intervention Cost",
+        "benefit_offer_count": "Benefit Offers", "benefit_accept_count": "Accepted Benefits",
+        "financial_benefit_affinity": "Financial Benefit Affinity", "rate_fee_sensitivity": "Rate/Fee Sensitivity",
+        "service_contact_propensity": "Service Contact Propensity",
+    },
+    "ja": {},
+}
+
+FINANCE_VALUE_LABELS: dict[str, dict[str, str]] = {
+    "ko": {
+        "purchase": "금융거래", "구매": "금융거래", "총 구매": "총 금융거래",
+        "order": "거래", "주문": "거래", "주문 내역": "거래 내역", "주문 기록 없음": "거래 기록 없음",
+        "add_to_cart": "신청시작/관심상품", "cart": "신청/관심", "장바구니": "신청/관심", "장바구니 담기": "신청 시작",
+        "page_view": "계좌·상품조회", "상품조회": "금융상품조회", "search": "금융상품 탐색",
+        "coupon_offer": "금융 혜택 제안", "discount_offer": "금리·수수료 우대 제안",
+        "personalized_coupon": "맞춤 금융 혜택", "coupon": "금융 혜택", "쿠폰": "금융 혜택",
+        "coupon_used": "혜택 사용", "쿠폰 사용": "혜택 사용",
+        "own_purchase_history": "고객 본인의 과거 금융거래 이력",
+        "recent_browse_signal": "최근 금융상품 조회 신호",
+        "category_affinity": "금융상품 관심도", "price_affinity": "금리·수수료 반응 가능성",
+        "purchase_gap_increase": "금융거래 간격이 길어짐",
+        "recent_activity_drop": "최근 금융 활동이 줄어듦",
+        "coupon_cost": "금융 혜택/개입 비용", "queued_coupon_cost": "큐 금융 혜택 비용",
+        "coupon_affinity": "금융 혜택 반응도", "coupon_exposure_count": "혜택 제안 횟수",
+        "coupon_redeem_count": "혜택 수락 횟수", "coupon_fatigue_score": "혜택 피로도",
+        "discount_dependency_score": "금리·수수료 혜택 의존도",
+        "discount_pressure_score": "혜택 압박도", "discount_effect_penalty": "혜택 효과 페널티",
+        "price_sensitivity": "금리·수수료 민감도",
+        "purchase_last_30": "최근 30일 금융거래", "purchase_prev_30": "직전 30일 금융거래",
+        "purchase_change_rate": "금융거래 변화율", "avg_coupon_exposure": "평균 혜택 제안 횟수",
+        "recommended_category": "추천 금융상품/서비스", "item_category": "금융상품/서비스",
+        "fashion": "카드/소비", "beauty": "예·적금", "grocery": "입출금계좌", "sports": "대출", "health": "보험/연금",
+    },
+    "en": {
+        "purchase": "Financial transaction", "Purchase": "Financial transaction",
+        "order": "Transaction", "Order": "Transaction", "add_to_cart": "Application/interest start",
+        "cart": "Application/interest", "page_view": "Account/product view", "search": "Financial product search",
+        "coupon_offer": "Financial benefit offer", "discount_offer": "Rate/fee benefit offer",
+        "personalized_coupon": "Personalized financial benefit", "coupon": "Financial benefit",
+        "own_purchase_history": "Own financial transaction history",
+        "recent_browse_signal": "Recent financial product view signal",
+        "category_affinity": "Financial product affinity", "price_affinity": "Rate/fee sensitivity",
+        "purchase_gap_increase": "Longer financial transaction gap",
+        "recent_activity_drop": "Recent financial activity drop",
+        "coupon_cost": "Financial benefit/intervention cost", "queued_coupon_cost": "Queued financial benefit cost",
+        "coupon_affinity": "Financial benefit affinity", "coupon_exposure_count": "Benefit offers",
+        "coupon_redeem_count": "Accepted benefits", "coupon_fatigue_score": "Benefit fatigue",
+        "discount_dependency_score": "Rate/fee benefit dependency",
+        "discount_pressure_score": "Benefit pressure", "discount_effect_penalty": "Benefit effect penalty",
+        "price_sensitivity": "Rate/fee sensitivity",
+        "purchase_last_30": "Financial transactions last 30d", "purchase_prev_30": "Financial transactions previous 30d",
+        "purchase_change_rate": "Financial transaction change rate", "avg_coupon_exposure": "Average benefit offers",
+        "recommended_category": "Recommended financial product/service", "item_category": "Financial product/service",
+    },
+    "ja": {},
+}
+
+FINANCE_RUNTIME_REPLACEMENTS: dict[str, dict[str, str]] = {
+    "ko": {
+        "방문·검색·장바구니·구매·쿠폰·카테고리 선호 기반": "접속·상품탐색·신청시작·금융거래·혜택 반응·금융상품 선호 기반",
+        "고객 구매 이력": "고객 금융거래 이력",
+        "최근 관심": "최근 금융상품 관심",
+        "세그먼트 인기": "유사 금융고객군 선호",
+        "전역 인기를": "전체 금융고객 선호를",
+        "방문, 구매 등": "접속, 금융거래 등",
+        "마지막 활동(이벤트/주문)": "마지막 금융 활동(이벤트/거래)",
+        "업종별 방문·구매 주기": "금융 채널 접속·거래 주기",
+        "쿠폰 집행 총액": "금융 혜택 집행 총액",
+        "쿠폰비 반영 ROI": "금융 혜택 비용 반영 ROI",
+        "할인·쿠폰 운영 리스크": "금융 혜택 운영 리스크",
+        "쿠폰 노출/리딤/믹스 리스크": "혜택 제안/수락/믹스 리스크",
+        "쿠폰 노출 누적": "혜택 제안 누적",
+        "할인 남발": "금리·수수료 혜택 남발",
+    },
+    "en": {}, "ja": {},
+}
+
 UI_TEXT: dict[str, dict[str, str]] = {
     "en": {
         "고객 이탈 예측·개입 최적화·ROI 분석 플랫폼": "Customer Churn, Intervention Optimization & ROI Platform",
@@ -2096,9 +2229,9 @@ def T(text: str) -> str:
 
     friendly = friendly_translate_text(raw, code)
     if friendly != raw:
-        return friendly
+        return _domain_translate_text(friendly)
 
-    return raw
+    return _domain_translate_text(raw)
 
 
 def _replace_runtime_token(text: str, src: str, dst: str) -> str:
@@ -2133,6 +2266,7 @@ def _translate_runtime_text(text: Any) -> str:
     out = out.replace(api_key_msg, T(api_key_msg))
     out = friendly_translate_value(out, code)
     out = friendly_translate_text(out, code)
+    out = _domain_translate_text(out)
     return out
 
 
@@ -2397,7 +2531,7 @@ def _format_table_value_by_column(column: str, value: Any) -> Any:
     if _is_probability_column(column):
         return _format_probability_display(value)
     if isinstance(value, str):
-        return _translate_cell_value(value)
+        return _domain_translate_value(column, _translate_cell_value(value))
     return value
 
 
@@ -2918,6 +3052,62 @@ def _wrap_llm_question(question: str) -> str:
 def _business_mode() -> str:
     mode = st.session_state.get("data_mode", "ecommerce") if hasattr(st, "session_state") else "ecommerce"
     return mode if mode in DOMAIN_DIRS else "ecommerce"
+
+
+def _is_finance_display_mode() -> bool:
+    try:
+        return _business_mode() == "finance"
+    except Exception:
+        return False
+
+
+def _domain_column_label(column: Any, code: str | None = None) -> str | None:
+    if not _is_finance_display_mode():
+        return None
+    lang = code or _language_code()
+    labels = FINANCE_COLUMN_LABELS.get(lang) or FINANCE_COLUMN_LABELS.get("ko", {})
+    raw = str(column)
+    if raw in labels:
+        return labels[raw]
+    raw_norm = _normalize_i18n_key(raw)
+    for src, dst in labels.items():
+        if _normalize_i18n_key(src) == raw_norm:
+            return dst
+    return None
+
+
+def _domain_translate_value(column: Any, value: Any) -> Any:
+    if not _is_finance_display_mode() or not isinstance(value, str):
+        return value
+    code = _language_code()
+    mapping = FINANCE_VALUE_LABELS.get(code) or FINANCE_VALUE_LABELS.get("ko", {})
+    out = value
+    norm = _normalize_i18n_key(out)
+    for src, dst in mapping.items():
+        if norm == _normalize_i18n_key(src):
+            return str(dst)
+    # Apply conservative phrase replacements to strings that are already localized.
+    for src, dst in sorted(mapping.items(), key=lambda item: len(str(item[0])), reverse=True):
+        src_text = str(src)
+        if len(_normalize_i18n_key(src_text)) <= 2:
+            continue
+        if src_text in out and str(dst) not in out:
+            out = out.replace(src_text, str(dst))
+    return out
+
+
+def _domain_translate_text(text: Any) -> str:
+    raw = str(text or "")
+    if not raw or not _is_finance_display_mode():
+        return raw
+    code = _language_code()
+    replacements = FINANCE_RUNTIME_REPLACEMENTS.get(code) or FINANCE_RUNTIME_REPLACEMENTS.get("ko", {})
+    out = raw
+    for src, dst in sorted(replacements.items(), key=lambda item: len(str(item[0])), reverse=True):
+        out = out.replace(str(src), str(dst))
+    # Also normalize a few common table/title tokens that come through runtime text.
+    out = _domain_translate_value("__text__", out) if isinstance(out, str) else out
+    return str(out)
 
 
 def _domain_label(mode: str | None = None) -> str:
@@ -5843,6 +6033,9 @@ def _normalize_table_cell(value: Any) -> Any:
 
 def _translate_column_name(column: str) -> str:
     code = _language_code()
+    domain_label = _domain_column_label(column, code)
+    if domain_label:
+        return domain_label
     labels = COLUMN_LABELS.get(code, COLUMN_LABELS.get("ko", {}))
     raw = str(column)
 
@@ -5881,7 +6074,7 @@ def _translate_column_name(column: str) -> str:
 
     friendly = friendly_translate_column(raw, code)
     if friendly != raw:
-        return friendly
+        return _domain_translate_text(friendly)
     return T(raw.replace("_", " "))
 
 
@@ -6902,7 +7095,7 @@ def _render_wizard() -> bool:
 
             if "wizard_mapping_preview" not in st.session_state:
                 with st.spinner("CSV 구조를 분석하고 자동 매핑하는 중입니다..."):
-                    st.session_state["wizard_mapping_preview"] = _prep(upload_path)
+                    st.session_state["wizard_mapping_preview"] = _prep(upload_path, domain=mode)
             preview = st.session_state["wizard_mapping_preview"]
             st.success(f"업로드 완료: {uploaded_file.name} / {int(preview.total_rows):,}행")
             if preview.sample_rows is not None and not preview.sample_rows.empty:
@@ -7033,6 +7226,7 @@ def _render_wizard() -> bool:
                         event_value_mapping=st.session_state.get("wizard_event_mapping"),
                         allow_synthetic_fallback=bool(st.session_state.get("wizard_synthetic_fallback", False)),
                         churn_inactivity_days=int(churn_days),
+                        domain=mode,
                     )
                 except Exception as exc:
                     holder["error"] = exc
