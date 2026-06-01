@@ -2454,6 +2454,119 @@ _BUSINESS_CUSTOMER_TYPE_KO_PATCH: dict[str, str] = {
 VALUE_LABELS.setdefault("ko", {}).update(_BUSINESS_CUSTOMER_TYPE_KO_PATCH)
 PHRASE_LABELS.setdefault("ko", {}).update(_BUSINESS_CUSTOMER_TYPE_KO_PATCH)
 
+# Customer type codes still appear in some saved artifacts and live DB rows
+# (for example dormant_risk).  This patch keeps those internal codes intact but
+# guarantees that every persona/segment/customer_type value shown on screen is
+# a short, plain Korean phrase.
+_PLAIN_CUSTOMER_TYPE_CODE_KO_PATCH: dict[str, str] = {
+    "dormant_risk": "활동이 줄어 이탈 위험이 큰 고객",
+    "dormant-risk": "활동이 줄어 이탈 위험이 큰 고객",
+    "dormant risk": "활동이 줄어 이탈 위험이 큰 고객",
+    "dormantrisk": "활동이 줄어 이탈 위험이 큰 고객",
+    "at_risk_dormant": "활동이 줄어 이탈 위험이 큰 고객",
+    "finance_dormant_risk": "활동이 줄어 이탈 위험이 큰 금융 고객",
+    "financial_dormant_risk": "활동이 줄어 이탈 위험이 큰 금융 고객",
+    "banking_dormant_risk": "활동이 줄어 이탈 위험이 큰 금융 고객",
+    "churn_risk": "이탈 위험이 큰 고객",
+    "churn-risk": "이탈 위험이 큰 고객",
+    "churn risk": "이탈 위험이 큰 고객",
+    "high_churn_risk": "이탈 위험이 매우 큰 고객",
+    "medium_churn_risk": "이탈 위험이 보통인 고객",
+    "low_churn_risk": "이탈 위험이 낮은 고객",
+    "at_risk": "이탈 위험 고객",
+    "risk_customer": "이탈 위험 고객",
+    "risk_user": "이탈 위험 고객",
+    "high_risk": "이탈 위험이 큰 고객",
+    "medium_risk": "이탈 위험이 보통인 고객",
+    "low_risk": "이탈 위험이 낮은 고객",
+    "inactive_risk": "활동이 줄어 이탈 위험이 큰 고객",
+    "inactive_customer": "활동이 줄어든 고객",
+    "inactive_user": "활동이 줄어든 고객",
+    "dormant_customer": "휴면 고객",
+    "dormant_user": "휴면 고객",
+    "dormant": "휴면 고객",
+    "active_customer": "정상 활동 고객",
+    "active_user": "정상 활동 고객",
+    "active": "정상 활동 고객",
+    "loyal_customer": "충성 고객",
+    "loyal_user": "충성 고객",
+    "loyal": "충성 고객",
+    "vip_customer": "VIP 고객",
+    "vip_user": "VIP 고객",
+    "vip": "VIP 고객",
+    "new_user": "신규 고객",
+    "new_customer": "신규 고객",
+    "new_signup": "가입 초기 고객",
+    "onboarding": "가입 초기 고객",
+    "price_sensitive": "혜택과 조건에 민감한 고객",
+    "benefit_sensitive": "혜택에 민감한 고객",
+    "coupon_sensitive": "혜택에 민감한 고객",
+    "explorer": "상품을 둘러보는 고객",
+    "browsing_customer": "상품을 둘러보는 고객",
+    "unknown_persona": "고객 유형 미분류",
+    "unknown_customer_type": "고객 유형 미분류",
+    "unknown_segment": "고객 유형 미분류",
+}
+VALUE_LABELS.setdefault("ko", {}).update(_PLAIN_CUSTOMER_TYPE_CODE_KO_PATCH)
+FINANCE_VALUE_LABELS.setdefault("ko", {}).update(_PLAIN_CUSTOMER_TYPE_CODE_KO_PATCH)
+PHRASE_LABELS.setdefault("ko", {}).update(_PLAIN_CUSTOMER_TYPE_CODE_KO_PATCH)
+
+
+def _plain_korean_customer_type_fallback(value: Any) -> str | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+
+    exact = _lookup_plain_korean_label(raw, _PLAIN_CUSTOMER_TYPE_CODE_KO_PATCH)
+    if exact:
+        return exact
+
+    norm = re.sub(r"[^a-z0-9]+", "_", raw.lower()).strip("_")
+    if not norm:
+        return None
+    tokens = [token for token in norm.split("_") if token and token not in {"segment", "persona", "type", "customer", "user", "group", "finance", "financial", "banking"}]
+    token_set = set(tokens)
+
+    if {"dormant", "risk"}.issubset(token_set) or {"inactive", "risk"}.issubset(token_set):
+        return "활동이 줄어 이탈 위험이 큰 고객"
+    if {"churn", "risk"}.issubset(token_set) or {"at", "risk"}.issubset(token_set):
+        if "high" in token_set:
+            return "이탈 위험이 매우 큰 고객"
+        if "medium" in token_set or "mid" in token_set:
+            return "이탈 위험이 보통인 고객"
+        if "low" in token_set:
+            return "이탈 위험이 낮은 고객"
+        return "이탈 위험 고객"
+    if {"high", "value", "persuadables"}.issubset(token_set) or {"high", "value", "persuadable"}.issubset(token_set):
+        return "가치가 높고 연락하면 반응할 가능성이 큰 고객"
+    if {"high", "value", "sure", "things"}.issubset(token_set):
+        return "가치가 높고 이미 반응 가능성이 큰 고객"
+    if {"high", "value", "lost", "causes"}.issubset(token_set):
+        return "가치는 높지만 지금 개입 효과가 낮은 고객"
+    if "dormant" in token_set:
+        return "휴면 고객"
+    if "inactive" in token_set:
+        return "활동이 줄어든 고객"
+    if "loyal" in token_set:
+        return "충성 고객"
+    if "vip" in token_set:
+        return "VIP 고객"
+    if "new" in token_set or "signup" in token_set or "onboarding" in token_set:
+        return "가입 초기 고객"
+    if "explorer" in token_set or "browse" in token_set or "browsing" in token_set:
+        return "상품을 둘러보는 고객"
+    if "price" in token_set or "benefit" in token_set or "coupon" in token_set:
+        return "혜택과 조건에 민감한 고객"
+    if "persuadables" in token_set or "persuadable" in token_set:
+        return "연락하면 반응할 가능성이 큰 고객"
+    if "sleeping" in token_set and "dogs" in token_set:
+        return "불필요한 개입을 피해야 하는 고객"
+    if "lost" in token_set and "causes" in token_set:
+        return "지금 개입 효과가 낮은 고객"
+    if "sure" in token_set and "things" in token_set:
+        return "이미 반응 가능성이 큰 고객"
+    return None
+
 _FINANCE_PRODUCT_ACTION_KO_PATCH: dict[str, str] = {
     # Finance products/services that may come from uploaded CSVs or generated recommendations.
     "deposit": "예금",
@@ -2728,10 +2841,19 @@ def _humanize_business_display_value(column: Any, value: Any) -> Any:
         return ""
     column_norm = re.sub(r"[\s_\-:：/\.()\[\]{}]+", "", str(column or "")).lower()
 
-    if "persona" in column_norm or "segment" in column_norm or "customer_type" in column_norm or "고객유형" in column_norm:
-        label = _lookup_plain_korean_label(raw, _BUSINESS_CUSTOMER_TYPE_KO_PATCH)
-        if label:
-            return label
+    if "persona" in column_norm or "segment" in column_norm or "customer_type" in column_norm or "고객유형" in column_norm or "고객유형" in raw:
+        for mapping in (
+            _PLAIN_CUSTOMER_TYPE_CODE_KO_PATCH,
+            _BUSINESS_CUSTOMER_TYPE_KO_PATCH,
+            FINANCE_VALUE_LABELS.get("ko", {}),
+            VALUE_LABELS.get("ko", {}),
+        ):
+            label = _lookup_plain_korean_label(raw, mapping)
+            if label and label != raw:
+                return label
+        fallback_label = _plain_korean_customer_type_fallback(raw)
+        if fallback_label:
+            return fallback_label
 
     if "recommendedaction" in column_norm or "queuedrecommendedaction" in column_norm or "action" in column_norm or "추천액션" in column_norm:
         sentence = _humanize_business_action_text(raw)
@@ -2931,6 +3053,15 @@ def _translate_cell_value(value: Any) -> Any:
     stripped = value.strip()
     if not stripped:
         return ""
+
+    # Apply code-like customer-type fallback globally only for generated segment
+    # codes that carry separators or risk words. Plain values such as ``active``
+    # may be account/status values, so they are translated with column context
+    # instead of being forced to customer-type wording here.
+    if re.search(r"[_\-]", stripped) or re.search(r"\b(dormant|inactive|churn|risk)\b", stripped, flags=re.IGNORECASE):
+        code_customer_type = _plain_korean_customer_type_fallback(stripped)
+        if code_customer_type:
+            return _collapse_repeated_customer_words(code_customer_type)
 
     humanized = _humanize_business_display_value("__value__", stripped)
     if isinstance(humanized, str) and humanized != stripped:
@@ -3189,7 +3320,7 @@ def _dedupe_display_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 _CHART_LABEL_PATCH: dict[str, dict[str, str]] = {
     "ko": {
-        "retention rate": "리텐션율", "retention": "리텐션", "period": "경과 기간(개월)", "cohort_month": "가입 코호트", "cohort": "코호트", "count": "건수", "value": "값", "customer_count": "고객 수", "candidate_customer_count": "후보 고객 수", "recommend_count": "추천 건수", "uplift_segment": "고객 반응 유형", "intervention_intensity": "개입 강도", "allocated_budget": "배정 예산", "expected_profit": "예상 이익", "expected_roi": "예상 ROI", "churn_probability": "이탈 확률", "clv": "고객 생애가치(CLV)", "uplift_score": "개입 효과 점수", "value_score": "고객 가치 점수", "event_type": "이벤트 유형", "avg_coupon_exposure": "평균 쿠폰 노출 횟수", "recommended_category": "추천 카테고리", "importance": "중요도", "feature_display": "변수명", "persona": "고객 유형", "avg_churn_probability": "평균 이탈 확률", "avg_expected_roi": "평균 예상 ROI",
+        "retention rate": "리텐션율", "retention": "리텐션", "period": "경과 기간(개월)", "cohort_month": "가입 코호트", "cohort": "코호트", "count": "건수", "value": "값", "customer_count": "고객 수", "candidate_customer_count": "후보 고객 수", "recommend_count": "추천 건수", "uplift_segment": "고객 반응 유형", "intervention_intensity": "개입 강도", "allocated_budget": "배정 예산", "expected_profit": "예상 이익", "expected_roi": "예상 ROI", "churn_probability": "이탈 확률", "clv": "고객 생애가치(CLV)", "uplift_score": "개입 효과 점수", "value_score": "고객 가치 점수", "event_type": "이벤트 유형", "financial_event_type": "금융 이벤트 유형", "avg_coupon_exposure": "평균 혜택 제안 횟수", "coupon_exposure_count": "혜택 제안 횟수", "coupon_cost": "혜택/개입 비용", "recommended_category": "추천 상품/서비스", "recommended_financial_product": "추천 금융상품", "financial_product": "금융상품", "importance": "중요도", "feature_display": "변수명", "persona": "고객 유형", "customer_segment": "고객 유형", "customer_type": "고객 유형", "avg_churn_probability": "평균 이탈 확률", "avg_expected_roi": "평균 예상 ROI",
     },
     "en": {}, "ja": {},
 }
@@ -5624,15 +5755,20 @@ def inject_custom_css():
         }
 
         .hero-card {
-            position: relative;
-            overflow: hidden;
-            padding: 32px 32px 26px 32px;
-            margin-bottom: 18px;
-            border-radius: 28px;
-            background: linear-gradient(135deg, rgba(15,23,42,0.96), rgba(37,99,235,0.92) 60%, rgba(124,58,237,0.88));
-            box-shadow: 0 24px 60px rgba(15,23,42,0.22);
-            color: white;
-            border: 1px solid rgba(255,255,255,0.08);
+            position: relative !important;
+            overflow: hidden !important;
+            padding: 32px 32px 26px 32px !important;
+            margin-bottom: 18px !important;
+            border-radius: 28px !important;
+            background: linear-gradient(135deg, #0f172a 0%, #2563eb 62%, #7c3aed 100%) !important;
+            box-shadow: 0 24px 60px rgba(15,23,42,0.22) !important;
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+            border: 1px solid rgba(255,255,255,0.08) !important;
+        }
+        .hero-card *, .hero-title, .hero-kicker, .hero-subtitle {
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
         }
 
         .hero-card::after {
@@ -6182,6 +6318,47 @@ def inject_custom_css():
         section[data-testid="stMain"], .main .block-container {
             color: #0f172a;
         }
+
+        /* Streamlit 버전별 탭/라디오 DOM 차이를 흡수해 파란 선택색을 강제한다. */
+        div[data-testid="stTabs"] button[role="tab"],
+        div[data-testid="stTabs"] [data-baseweb="tab"],
+        section[data-testid="stMain"] button[role="tab"],
+        .main .block-container button[role="tab"] {
+            color: #475569 !important;
+            -webkit-text-fill-color: #475569 !important;
+            border-radius: 12px 12px 0 0 !important;
+        }
+        div[data-testid="stTabs"] button[role="tab"][aria-selected="true"],
+        div[data-testid="stTabs"] [data-baseweb="tab"][aria-selected="true"],
+        section[data-testid="stMain"] button[role="tab"][aria-selected="true"],
+        .main .block-container button[role="tab"][aria-selected="true"] {
+            color: #2563eb !important;
+            -webkit-text-fill-color: #2563eb !important;
+            font-weight: 800 !important;
+            border-bottom: 3px solid #2563eb !important;
+        }
+        div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] *,
+        div[data-testid="stTabs"] [data-baseweb="tab"][aria-selected="true"] *,
+        section[data-testid="stMain"] button[role="tab"][aria-selected="true"] * {
+            color: #2563eb !important;
+            -webkit-text-fill-color: #2563eb !important;
+        }
+        section[data-testid="stMain"] div[data-testid="stRadio"] label:has(input:checked),
+        section[data-testid="stMain"] div[data-testid="stRadio"] label:has([aria-checked="true"]),
+        .main .block-container div[data-testid="stRadio"] label:has(input:checked),
+        .main .block-container div[data-testid="stRadio"] label:has([aria-checked="true"]) {
+            background: #2563eb !important;
+            border-color: #2563eb !important;
+            box-shadow: 0 10px 24px rgba(37,99,235,0.22) !important;
+        }
+        section[data-testid="stMain"] div[data-testid="stRadio"] label:has(input:checked) *,
+        section[data-testid="stMain"] div[data-testid="stRadio"] label:has([aria-checked="true"]) *,
+        .main .block-container div[data-testid="stRadio"] label:has(input:checked) *,
+        .main .block-container div[data-testid="stRadio"] label:has([aria-checked="true"]) * {
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+            font-weight: 800 !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -6189,14 +6366,18 @@ def inject_custom_css():
 
 
 def render_hero(title: str, subtitle: str):
-    title = _translate_runtime_text(title)
-    subtitle = _translate_runtime_text(subtitle)
+    title = html.escape(_translate_runtime_text(title))
+    subtitle = html.escape(_translate_runtime_text(subtitle))
+    # Keep the same CSS classes, but also include critical styles inline.
+    # Some Streamlit/hosting versions load custom CSS after first paint or change
+    # tab/radio selectors; inline hero styles prevent the title block from
+    # falling back to plain dark text on a pale background.
     st.markdown(
         f"""
-        <div class="hero-card">
-            <div class="hero-kicker">Retention Intelligence Copilot</div>
-            <div class="hero-title">{title}</div>
-            <div class="hero-subtitle">{subtitle}</div>
+        <div class="hero-card" style="position:relative;overflow:hidden;padding:32px 32px 26px 32px;margin-bottom:18px;border-radius:28px;background:linear-gradient(135deg,#0f172a 0%,#2563eb 62%,#7c3aed 100%);box-shadow:0 24px 60px rgba(15,23,42,0.22);color:#ffffff;-webkit-text-fill-color:#ffffff;border:1px solid rgba(255,255,255,0.08);">
+            <div class="hero-kicker" style="color:#ffffff;-webkit-text-fill-color:#ffffff;font-size:0.9rem;letter-spacing:0.08em;text-transform:uppercase;font-weight:800;opacity:0.82;margin-bottom:10px;">RETENTION INTELLIGENCE COPILOT</div>
+            <div class="hero-title" style="color:#ffffff;-webkit-text-fill-color:#ffffff;font-size:2.5rem;line-height:1.08;font-weight:900;margin:0 0 12px 0;">{title}</div>
+            <div class="hero-subtitle" style="color:rgba(255,255,255,0.86);-webkit-text-fill-color:rgba(255,255,255,0.86);font-size:1rem;max-width:900px;">{subtitle}</div>
         </div>
         """,
         unsafe_allow_html=True,
