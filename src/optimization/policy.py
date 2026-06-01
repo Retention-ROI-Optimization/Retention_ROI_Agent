@@ -46,7 +46,7 @@ SEGMENT_INTENSITY_BIAS = {
 
 
 DEFAULT_LIVE_STRATEGY = {
-    "label": "Generic retention offer",
+    "label": "기본 고객 유지 혜택 안내",
     "base_effect_multiplier": 1.0,
 }
 
