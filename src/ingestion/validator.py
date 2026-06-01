@@ -21,41 +21,58 @@ CUSTOMER_ID_SYNONYMS: Set[str] = {
     "customer_id", "cust_id", "user_id", "userid", "member_id", "memberid",
     "account_id", "accountid", "client_id", "clientid", "id", "고객id",
     "고객번호", "회원번호", "customer_no", "cust_no", "subscriber_id",
+    # Finance/banking identifiers
+    "account_no", "account_number", "acct_no", "acct_id", "cif", "cif_no",
+    "client_no", "party_id", "household_id", "card_customer_id", "loan_customer_id",
+    "계좌번호", "계좌id", "고객계좌번호", "거래고객번호", "차주번호",
 }
 
 TIMESTAMP_SYNONYMS: Set[str] = {
     "timestamp", "date", "datetime", "event_date", "event_time", "created_at",
     "updated_at", "order_date", "order_time", "purchase_date", "transaction_date",
-    "signup_date", "registration_date", "일시", "날짜", "주문일", "가입일",
+    "txn_date", "txn_time", "trade_date", "posting_date", "value_date",
+    "signup_date", "registration_date", "account_open_date", "card_issue_date",
+    "loan_start_date", "maturity_date", "일시", "날짜", "주문일", "가입일",
+    "거래일", "거래일시", "이체일", "계좌개설일", "대출실행일",
     "exposure_time", "assigned_at", "snapshot_date", "time", "ts",
 }
 
 EVENT_TYPE_SYNONYMS: Set[str] = {
     "event_type", "event", "action", "activity", "action_type", "activity_type",
     "transaction_type", "txn_type", "trade_type", "channel_event", "service_event",
-    "이벤트유형", "행동유형", "거래유형", "거래종류", "behavior", "behaviour",
+    "transaction_code", "txn_code", "banking_event", "financial_event", "product_event",
+    "이벤트유형", "행동유형", "거래유형", "거래종류", "금융거래유형",
+    "금융이벤트", "업무구분", "거래구분", "behavior", "behaviour",
 }
 
 MONETARY_SYNONYMS: Set[str] = {
     "amount", "revenue", "price", "total", "net_amount", "gross_amount",
     "monetary", "spend", "payment", "금액", "매출", "결제금액", "주문금액",
-    "transaction_amount", "order_amount", "sales", "net_revenue",
-    "balance", "account_balance", "avg_balance", "deposit_amount", "withdrawal_amount",
-    "loan_amount", "credit_limit", "outstanding_balance", "aum", "asset", "assets",
-    "잔고", "예금", "출금", "입금", "대출금액", "한도", "자산",
+    "transaction_amount", "txn_amount", "order_amount", "sales", "net_revenue",
+    "balance", "account_balance", "avg_balance", "average_balance", "deposit_amount",
+    "withdrawal_amount", "transfer_amount", "card_spend", "card_amount",
+    "loan_amount", "loan_balance", "credit_limit", "available_credit",
+    "outstanding_balance", "principal_balance", "aum", "asset", "assets",
+    "잔고", "평균잔고", "예금", "출금", "입금", "이체금액", "카드이용금액",
+    "대출금액", "대출잔액", "한도", "자산", "운용자산",
 }
 
 CHURN_SYNONYMS: Set[str] = {
     "churn", "churned", "is_churn", "churn_flag", "churn_label", "이탈",
     "이탈여부", "attrition", "left", "cancelled", "canceled", "unsubscribed",
-    "status", "current_status", "customer_status",
+    "closed", "account_closed", "account_closure", "inactive", "dormant",
+    "defaulted", "delinquent", "loan_default", "card_cancelled",
+    "status", "current_status", "customer_status", "account_status", "relationship_status",
+    "해지", "해지여부", "계좌해지", "휴면", "휴면여부", "연체", "부도",
 }
 
 CATEGORY_SYNONYMS: Set[str] = {
     "category", "item_category", "product_category", "카테고리", "상품분류",
     "product_type", "item_type", "department", "section",
-    "financial_product", "account_type", "card_type", "loan_type", "fund_type",
-    "상품유형", "계좌유형", "카드유형", "대출유형",
+    "financial_product", "financial_product_type", "product_family", "product_name",
+    "account_type", "card_type", "loan_type", "fund_type", "insurance_type",
+    "deposit_type", "asset_class", "service_type",
+    "상품유형", "금융상품", "금융상품유형", "계좌유형", "카드유형", "대출유형", "펀드유형",
 }
 
 QUANTITY_SYNONYMS: Set[str] = {
@@ -65,6 +82,8 @@ QUANTITY_SYNONYMS: Set[str] = {
 PERSONA_SYNONYMS: Set[str] = {
     "persona", "segment", "customer_segment", "group", "tier", "등급",
     "고객유형", "membership_tier", "customer_type",
+    "risk_grade", "credit_grade", "asset_segment", "wealth_segment", "relationship_segment",
+    "리스크등급", "신용등급", "자산구간", "거래등급",
 }
 
 REGION_SYNONYMS: Set[str] = {
