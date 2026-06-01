@@ -46,6 +46,108 @@ TARGET_META_COLUMNS = [
 
 
 
+FINANCE_CATEGORY_LABELS: dict[str, str] = {
+    # Retail simulator defaults reused by the common recommendation engine.
+    'fashion': '카드/소비',
+    'beauty': '예·적금',
+    'personal_care': '생활금융',
+    'grocery': '입출금계좌',
+    'sports': '대출',
+    'health': '보험/연금',
+    'electronics': '디지털금융',
+    'home': '주거금융',
+    'books': '금융교육/콘텐츠',
+    'kids': '가족금융',
+    'pet': '펫보험/특화상품',
+    # Common finance product names in real customer datasets.
+    'deposit': '예금',
+    'deposits': '예금',
+    'savings': '적금',
+    'saving': '적금',
+    'savings_account': '적금',
+    'checking': '입출금계좌',
+    'checking_account': '입출금계좌',
+    'account': '입출금계좌',
+    'credit_card': '신용카드',
+    'debit_card': '체크카드',
+    'card': '카드',
+    'loan': '대출',
+    'loans': '대출',
+    'mortgage': '주택담보대출',
+    'personal_loan': '신용대출',
+    'insurance': '보험',
+    'pension': '연금',
+    'fund': '펀드',
+    'funds': '펀드',
+    'investment': '투자상품',
+    'wealth': '자산관리',
+    'wealth_management': '자산관리',
+    'asset_management': '자산관리',
+    'remittance': '송금',
+    'transfer': '이체',
+    'digital_banking': '디지털금융',
+    'mobile_banking': '모바일뱅킹',
+}
+
+FINANCE_REASON_LABELS: dict[str, str] = {
+    'own_purchase_history': '고객 본인의 과거 금융거래 이력',
+    'recent_browse_signal': '최근 금융상품 조회 신호',
+    'segment_popularity': '유사 금융고객군 선호',
+    'global_popularity': '전체 금융고객 선호',
+}
+
+
+def _normalise_key(value: object) -> str:
+    return str(value or '').strip().lower().replace(' ', '_').replace('-', '_')
+
+
+def _finance_category_label(value: object) -> str:
+    text = str(value or '').strip()
+    if not text:
+        return ''
+    key = _normalise_key(text)
+    return FINANCE_CATEGORY_LABELS.get(key, text)
+
+
+def _looks_like_finance_dataset(data_dir: Path, customer_summary: pd.DataFrame, orders: pd.DataFrame, events: pd.DataFrame) -> bool:
+    path_text = str(data_dir).lower()
+    if 'finance' in path_text or 'financial' in path_text:
+        return True
+    finance_columns = {
+        'financial_product', 'transaction_id', 'transaction_time', 'transaction_amount',
+        'account_balance_current', 'avg_balance', 'loan_balance', 'loan_amount',
+        'credit_score', 'credit_limit', 'delinquency_days', 'account_status',
+    }
+    for frame in (customer_summary, orders, events):
+        if finance_columns.intersection({str(col) for col in frame.columns}):
+            return True
+    finance_values = set(FINANCE_CATEGORY_LABELS.keys()) - {'fashion', 'beauty', 'grocery', 'sports', 'health', 'electronics', 'home', 'books', 'kids', 'pet'}
+    for frame in (orders, events):
+        for col in ['item_category', 'category', 'financial_product']:
+            if col in frame.columns:
+                values = {_normalise_key(v) for v in frame[col].dropna().astype(str).head(500)}
+                if values.intersection(finance_values):
+                    return True
+    return False
+
+
+def _localize_finance_recommendations(rec_df: pd.DataFrame, *, data_dir: Path, customer_summary: pd.DataFrame, orders: pd.DataFrame, events: pd.DataFrame) -> pd.DataFrame:
+    if rec_df.empty or not _looks_like_finance_dataset(data_dir, customer_summary, orders, events):
+        return rec_df
+    out = rec_df.copy()
+    if 'recommended_category' in out.columns:
+        out['recommended_category'] = out['recommended_category'].map(_finance_category_label)
+    if 'item_category' in out.columns:
+        out['item_category'] = out['item_category'].map(_finance_category_label)
+    if 'reason_tags' in out.columns:
+        def _translate_reasons(value: object) -> str:
+            parts = [part.strip() for part in str(value or '').split(',') if part.strip()]
+            return ', '.join(FINANCE_REASON_LABELS.get(part, part) for part in parts)
+        out['reason_tags'] = out['reason_tags'].map(_translate_reasons)
+    return out
+
+
+
 def _load_inputs(data_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     customer_summary = pd.read_csv(data_dir / 'customer_summary.csv')
     orders = pd.read_csv(data_dir / 'orders.csv', parse_dates=['order_time'])
@@ -382,6 +484,13 @@ def run_personalized_recommendation_pipeline(
                 )
 
     rec_df = pd.DataFrame(rows)
+    rec_df = _localize_finance_recommendations(
+        rec_df,
+        data_dir=data_dir,
+        customer_summary=customer_summary,
+        orders=orders,
+        events=events,
+    )
     customers_covered = int(rec_df['customer_id'].nunique()) if not rec_df.empty else 0
     summary = {
         'rows': int(len(rec_df)),
