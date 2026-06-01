@@ -188,12 +188,12 @@ def _recommend_action(
 
     if churn >= 0.85 or risk == "critical":
         if uplift >= 0.03 and roi >= 1.0:
-            return "high_value_retention_coupon", "coupon", "high"
+            return "high_value_retention_benefit", "benefit", "high"
         return "priority_human_followup", "crm", "high"
 
     if churn >= 0.70 or risk == "high":
         if uplift >= 0.02:
-            return "personalized_retention_offer", "coupon", "medium"
+            return "personalized_retention_offer", "benefit", "medium"
         return "retention_message", "message", "medium"
 
     if churn >= 0.50 or risk == "medium":
@@ -225,7 +225,8 @@ def _estimated_action_cost(
     intensity = (intervention_intensity or "").lower()
 
     base_by_category = {
-        "coupon": 7000.0,
+        "benefit": 7000.0,
+        "coupon": 7000.0,  # backward-compatible for old queued rows
         "crm": 12000.0,
         "message": 1500.0,
         "upsell": 4000.0,
