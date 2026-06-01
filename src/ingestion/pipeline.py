@@ -140,7 +140,7 @@ def _recommend_churn_days_from_activity(
     return None
 
 
-def prepare_mapping_preview(file_path: str | Path) -> MappingPreview:
+def prepare_mapping_preview(file_path: str | Path, *, domain: str = "ecommerce") -> MappingPreview:
     file_path = Path(file_path)
     validation = validate_csv(file_path)
 
@@ -230,6 +230,7 @@ def run_ingestion_pipeline(
     event_value_mapping: Optional[Dict[str, str]] = None,
     allow_synthetic_fallback: bool = True,
     churn_inactivity_days: int = 30,
+    domain: str = "ecommerce",
 ) -> IngestionPipelineResult:
     """
     Run the complete ingestion pipeline:
@@ -287,6 +288,7 @@ def run_ingestion_pipeline(
             event_value_mapping=event_value_mapping,
             allow_synthetic_fallback=allow_synthetic_fallback,
             churn_inactivity_days=churn_inactivity_days,
+            domain=domain,
         )
         pipeline_result.preprocessing = preprocessing_result
     except Exception as exc:
@@ -351,6 +353,7 @@ def run_ingestion_pipeline(
             "threshold": float(threshold),
             "max_customers": int(max_customers),
             "churn_inactivity_days": int(churn_inactivity_days),
+            "domain": str(domain or "ecommerce"),
         }
         result_dir.mkdir(parents=True, exist_ok=True)
         (result_dir / "dataset_metadata.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
