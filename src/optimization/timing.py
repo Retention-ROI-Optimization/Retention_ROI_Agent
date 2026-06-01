@@ -106,7 +106,7 @@ def _default_timing_frame(df: pd.DataFrame, *, horizon_days: int) -> pd.DataFram
     out['timing_urgency_score'] = 0.0
     out['churn_timing_weight'] = 1.0
     out['intervention_window_days'] = int(horizon_days)
-    out['recommended_intervention_window'] = f'Monitor (>{min(int(horizon_days), 60)}d)'
+    out['recommended_intervention_window'] = f'{min(int(horizon_days), 60)}일 이후 관찰'
     out['timing_priority_bucket'] = 'monitor'
     return out
 
@@ -193,11 +193,11 @@ def apply_survival_timing(
             (window_days > 30) & (window_days <= 60),
         ],
         [
-            'Immediate (<=14d)',
-            'Near-term (15-30d)',
-            'Planned (31-60d)',
+            '14일 이내 즉시 연락',
+            '15~30일 안에 연락',
+            '31~60일 안에 계획적으로 연락',
         ],
-        default=f'Monitor (>{min(reference_horizon, 60)}d)',
+        default=f'{min(reference_horizon, 60)}일 이후 관찰',
     )
     out['timing_priority_bucket'] = np.select(
         [
