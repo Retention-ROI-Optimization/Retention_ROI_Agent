@@ -6457,18 +6457,271 @@ def inject_custom_css():
     )
 
 
-def render_hero(title: str, subtitle: str):
-    title = _translate_runtime_text(title)
-    subtitle = _translate_runtime_text(subtitle)
+def inject_rendering_guard_css():
+    """Extra UI guard for Streamlit reruns and domain-specific rendering.
+
+    Keep this separate from the general theme CSS so it is injected after the
+    base rules.  The dashboard view selector is implemented with ``st.radio``
+    rather than real ``st.tabs()``, so the radio label DOM must be styled
+    directly.
+    """
     st.markdown(
-        f"""
-        <div class="hero-card" style="position:relative;overflow:hidden;padding:32px 32px 26px 32px;margin-bottom:18px;border-radius:28px;background:linear-gradient(135deg,#0f172a 0%,#2563eb 58%,#7c3aed 100%) !important;box-shadow:0 24px 60px rgba(15,23,42,0.22);color:#ffffff !important;border:1px solid rgba(255,255,255,0.16);">
-            <div class="hero-kicker" style="color:#dbeafe !important;font-size:0.9rem;letter-spacing:0.08em;text-transform:uppercase;font-weight:800;margin-bottom:10px;">Retention Intelligence Copilot</div>
-            <div class="hero-title" style="color:#ffffff !important;font-size:2.5rem;line-height:1.08;font-weight:900;margin:0 0 12px 0;">{title}</div>
-            <div class="hero-subtitle" style="color:#eff6ff !important;font-size:1rem;font-weight:600;max-width:980px;">{subtitle}</div>
-        </div>
+        """
+        <style>
+        /* Dashboard view selector: st.radio rendered as tab-like buttons. */
+        section[data-testid="stMain"] div[data-testid="stRadio"] [role="radiogroup"],
+        .main .block-container div[data-testid="stRadio"] [role="radiogroup"] {
+            display: flex !important;
+            flex-wrap: wrap !important;
+            align-items: center !important;
+            gap: 12px 16px !important;
+            margin-top: 10px !important;
+            margin-bottom: 22px !important;
+        }
+
+        section[data-testid="stMain"] div[data-testid="stRadio"] [role="radiogroup"] > label,
+        .main .block-container div[data-testid="stRadio"] [role="radiogroup"] > label,
+        section[data-testid="stMain"] div[data-testid="stRadio"] [role="radiogroup"] label,
+        .main .block-container div[data-testid="stRadio"] [role="radiogroup"] label {
+            min-height: 44px !important;
+            box-sizing: border-box !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 8px !important;
+            padding: 10px 18px !important;
+            margin: 0 !important;
+            border-radius: 14px !important;
+            background: #ffffff !important;
+            border: 1px solid rgba(148, 163, 184, 0.45) !important;
+            box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06) !important;
+            color: #1f2937 !important;
+            -webkit-text-fill-color: #1f2937 !important;
+            cursor: pointer !important;
+            transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease !important;
+        }
+
+        section[data-testid="stMain"] div[data-testid="stRadio"] [role="radiogroup"] label:hover,
+        .main .block-container div[data-testid="stRadio"] [role="radiogroup"] label:hover {
+            background: #dbeafe !important;
+            border-color: #2563eb !important;
+            box-shadow: 0 10px 24px rgba(37, 99, 235, 0.14) !important;
+            transform: translateY(-1px) !important;
+        }
+
+        section[data-testid="stMain"] div[data-testid="stRadio"] [role="radiogroup"] label *,
+        .main .block-container div[data-testid="stRadio"] [role="radiogroup"] label * {
+            color: #1f2937 !important;
+            -webkit-text-fill-color: #1f2937 !important;
+            font-weight: 800 !important;
+            opacity: 1 !important;
+        }
+
+        section[data-testid="stMain"] div[data-testid="stRadio"] [role="radiogroup"] label:has(input:checked),
+        .main .block-container div[data-testid="stRadio"] [role="radiogroup"] label:has(input:checked) {
+            background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%) !important;
+            border-color: #2563eb !important;
+            box-shadow: 0 12px 26px rgba(37, 99, 235, 0.28) !important;
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+        }
+
+        section[data-testid="stMain"] div[data-testid="stRadio"] [role="radiogroup"] label:has(input:checked) *,
+        .main .block-container div[data-testid="stRadio"] [role="radiogroup"] label:has(input:checked) * {
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+            font-weight: 900 !important;
+            opacity: 1 !important;
+        }
+
+        /* Real st.tabs used elsewhere: keep inactive/active tabs visible too. */
+        section[data-testid="stMain"] .stTabs [data-baseweb="tab-list"] {
+            gap: 10px !important;
+            flex-wrap: wrap !important;
+            border-bottom: 0 !important;
+        }
+        section[data-testid="stMain"] .stTabs [data-baseweb="tab"] {
+            min-height: 42px !important;
+            padding: 10px 18px !important;
+            border-radius: 14px !important;
+            background: #ffffff !important;
+            border: 1px solid rgba(148, 163, 184, 0.42) !important;
+            box-shadow: 0 8px 20px rgba(15, 23, 42, 0.05) !important;
+            color: #1f2937 !important;
+            -webkit-text-fill-color: #1f2937 !important;
+            font-weight: 800 !important;
+        }
+        section[data-testid="stMain"] .stTabs [data-baseweb="tab"][aria-selected="true"] {
+            background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%) !important;
+            border-color: #2563eb !important;
+            box-shadow: 0 12px 26px rgba(37, 99, 235, 0.28) !important;
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+        }
+        section[data-testid="stMain"] .stTabs [data-baseweb="tab"] *,
+        section[data-testid="stMain"] .stTabs [data-baseweb="tab"] p {
+            color: inherit !important;
+            -webkit-text-fill-color: inherit !important;
+            font-weight: 800 !important;
+        }
+        </style>
         """,
         unsafe_allow_html=True,
+    )
+
+
+def render_hero(title: str, subtitle: str):
+    """Render the top hero in an isolated component.
+
+    The finance mode turns on a runtime value-translation layer for product names
+    such as card/credit_card.  Keeping the hero HTML/CSS inside an iframe and
+    avoiding class names like ``*-card`` prevents finance-only text replacement or
+    Streamlit markdown wrapper CSS from breaking the gradient background.
+    """
+    title_html = html.escape(_translate_runtime_text(title))
+    subtitle_html = html.escape(_translate_runtime_text(subtitle))
+    components.html(
+        f"""
+        <!doctype html>
+        <html>
+        <head>
+          <meta charset="utf-8" />
+          <style>
+            html, body {{
+              margin: 0;
+              padding: 0;
+              background: transparent;
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            }}
+            .rt-hero {{
+              width: 100%;
+              min-height: 184px;
+              box-sizing: border-box;
+              position: relative;
+              overflow: hidden;
+              padding: 32px 34px 28px 34px;
+              border-radius: 28px;
+              background-color: #0f172a;
+              background-image:
+                radial-gradient(circle at 92% 8%, rgba(255,255,255,0.20), transparent 30%),
+                linear-gradient(135deg, #0f172a 0%, #2563eb 58%, #7c3aed 100%);
+              box-shadow: 0 24px 60px rgba(15,23,42,0.24);
+              border: 1px solid rgba(255,255,255,0.18);
+              color: #ffffff;
+            }}
+            .rt-hero::after {{
+              content: "";
+              position: absolute;
+              right: -72px;
+              bottom: -92px;
+              width: 230px;
+              height: 230px;
+              border-radius: 999px;
+              background: rgba(255,255,255,0.16);
+              pointer-events: none;
+            }}
+            .rt-kicker {{
+              position: relative;
+              z-index: 1;
+              color: #dbeafe;
+              font-size: 0.9rem;
+              letter-spacing: 0.08em;
+              text-transform: uppercase;
+              font-weight: 800;
+              margin-bottom: 10px;
+            }}
+            .rt-title {{
+              position: relative;
+              z-index: 1;
+              color: #ffffff;
+              font-size: clamp(2.0rem, 3.1vw, 3.0rem);
+              line-height: 1.08;
+              font-weight: 900;
+              margin: 0 0 12px 0;
+              letter-spacing: -0.04em;
+            }}
+            .rt-subtitle {{
+              position: relative;
+              z-index: 1;
+              color: #eff6ff;
+              font-size: 1rem;
+              font-weight: 600;
+              line-height: 1.65;
+              max-width: 980px;
+            }}
+          </style>
+        </head>
+        <body>
+          <div class="rt-hero">
+            <div class="rt-kicker">RETENTION INTELLIGENCE COPILOT</div>
+            <div class="rt-title">{title_html}</div>
+            <div class="rt-subtitle">{subtitle_html}</div>
+          </div>
+        </body>
+        </html>
+        """,
+        height=224,
+        scrolling=False,
+    )
+
+
+def render_step_title(title: str, caption: str | None = None):
+    """Render wizard step titles with isolated styling."""
+    title_html = html.escape(_translate_runtime_text(title))
+    caption_block = ""
+    if caption:
+        caption_block = f'<div class="rt-step-caption">{html.escape(_translate_runtime_text(caption))}</div>'
+    height = 104 if caption else 72
+    components.html(
+        f"""
+        <!doctype html>
+        <html>
+        <head>
+          <meta charset="utf-8" />
+          <style>
+            html, body {{
+              margin: 0;
+              padding: 0;
+              background: transparent;
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            }}
+            .rt-step {{
+              width: 100%;
+              box-sizing: border-box;
+              margin: 0;
+              padding: 18px 22px;
+              border-radius: 18px;
+              background-color: #eff6ff;
+              background-image: linear-gradient(135deg, #eff6ff 0%, #eef2ff 100%);
+              border: 1px solid rgba(37,99,235,0.18);
+              box-shadow: 0 10px 28px rgba(15,23,42,0.06);
+            }}
+            .rt-step-title {{
+              color: #2563eb;
+              font-size: 1.35rem;
+              font-weight: 900;
+              line-height: 1.25;
+              letter-spacing: -0.02em;
+            }}
+            .rt-step-caption {{
+              margin-top: 7px;
+              color: #475569;
+              font-size: 0.95rem;
+              font-weight: 600;
+              line-height: 1.55;
+            }}
+          </style>
+        </head>
+        <body>
+          <div class="rt-step">
+            <div class="rt-step-title">{title_html}</div>
+            {caption_block}
+          </div>
+        </body>
+        </html>
+        """,
+        height=height,
+        scrolling=False,
     )
 
 
@@ -7871,6 +8124,7 @@ def inject_draggable_chat_dialog():
 
 
 inject_custom_css()
+inject_rendering_guard_css()
 
 
 def _render_wizard_stepper(current: int, total: int = 6):
@@ -7924,8 +8178,7 @@ def _render_wizard() -> bool:
     step = int(st.session_state.get("wizard_step", 0))
 
     if step == 0:
-        st.markdown(f"### {T('분석 모드 선택')}")
-        st.caption(T("어떤 산업 데이터로 분석할지 선택하세요."))
+        render_step_title(T("분석 모드 선택"), T("어떤 산업 데이터로 분석할지 선택하세요."))
         col_fin, col_ec = st.columns(2)
 
         with col_fin:
@@ -7981,8 +8234,10 @@ def _render_wizard() -> bool:
     # Step 1: CSV 업로드 및 자동 미리보기
     if step == 1:
         import sys
-        st.markdown(f"### Step 2. CSV 업로드 — {_domain_label(mode)}")
-        st.caption("금융/이커머스 원천 CSV를 업로드하세요. 고객 스냅샷, 거래, 이벤트 로그 형태를 모두 허용합니다.")
+        render_step_title(
+            f"Step 2. CSV 업로드 — {_domain_label(mode)}",
+            "금융/이커머스 원천 CSV를 업로드하세요. 고객 스냅샷, 거래, 이벤트 로그 형태를 모두 허용합니다.",
+        )
         if mode == "finance":
             with st.expander("금융 데이터 권장 컬럼", expanded=False):
                 st.markdown("customer_id, timestamp/transaction_date, event_type/transaction_type, balance, transaction_amount, product_type, loan_amount, delinquency_days, credit_score, tenure_months, channel 등")
@@ -8028,7 +8283,7 @@ def _render_wizard() -> bool:
 
     # Step 2: 컬럼 매핑
     if step == 2:
-        st.markdown("### Step 3. 컬럼 매핑 검토")
+        render_step_title("Step 3. 컬럼 매핑 검토")
         preview = st.session_state.get("wizard_mapping_preview")
         if preview is None:
             st.error("업로드 파일을 찾지 못했습니다. 이전 단계로 돌아가세요.")
@@ -8089,7 +8344,7 @@ def _render_wizard() -> bool:
 
     # Step 3: 이벤트/거래 값 매핑
     if step == 3:
-        st.markdown("### Step 4. 이벤트·거래 타입 매핑")
+        render_step_title("Step 4. 이벤트·거래 타입 매핑")
         preview = st.session_state.get("wizard_mapping_preview")
         if preview is None:
             st.error("업로드 파일을 찾지 못했습니다.")
@@ -8145,7 +8400,7 @@ def _render_wizard() -> bool:
 
     # Step 4: 이탈 기준과 학습
     if step >= 4:
-        st.markdown(f"### {T('Step 5. 이탈 기준·학습')}")
+        render_step_title(T("Step 5. 이탈 기준·학습"))
         preview = st.session_state.get("wizard_mapping_preview")
         if preview is None:
             st.error("업로드 파일을 찾지 못했습니다.")
