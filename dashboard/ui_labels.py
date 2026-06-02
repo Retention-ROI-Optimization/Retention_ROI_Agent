@@ -24,6 +24,15 @@ COLUMN_LABELS: dict[str, dict[str, str]] = {
         "customer_id": "고객 ID",
         "persona": "고객 유형",
         "customer_segment": "고객 유형",
+        "client_no": "고객 번호",
+        "account_no": "계좌 번호",
+        "transaction_date": "거래일",
+        "transaction_time": "거래 시각",
+        "transaction_amount": "거래금액",
+        "txn_amount": "거래금액",
+        "product_type": "금융상품 유형",
+        "banking_event": "금융 이벤트 유형",
+        "account_status": "계좌/거래 상태",
         "churn_probability": "이탈 위험도",
         "churn_score": "이탈 점수",
         "realtime_churn_score": "실시간 이탈 점수",
@@ -533,44 +542,24 @@ _PLAIN_KO_VALUE_SUPPLEMENTS: dict[str, str] = {
     "wealth_management": "자산관리",
     "digital_banking": "디지털금융",
     "mobile_banking": "모바일뱅킹",
-}
-VALUE_LABELS.setdefault("ko", {}).update(_PLAIN_KO_VALUE_SUPPLEMENTS)
-
-_PLAIN_KO_CUSTOMER_TYPE_CODES: dict[str, str] = {
+    "credit_revolver": "카드 리볼빙 이용 고객",
+    "card_revolver": "카드 리볼빙 이용 고객",
+    "revolver": "리볼빙 이용 고객",
+    "loan_watch": "대출 관찰 대상 고객",
+    "대출_watch": "대출 관찰 대상 고객",
+    "loan_watchlist": "대출 관찰 대상 고객",
+    "credit_watch": "신용위험 관찰 대상 고객",
+    "credit_risk_watch": "신용위험 관찰 대상 고객",
     "dormant_risk": "활동이 줄어 이탈 위험이 큰 고객",
-    "dormant-risk": "활동이 줄어 이탈 위험이 큰 고객",
-    "dormant risk": "활동이 줄어 이탈 위험이 큰 고객",
-    "dormantrisk": "활동이 줄어 이탈 위험이 큰 고객",
-    "at_risk_dormant": "활동이 줄어 이탈 위험이 큰 고객",
-    "finance_dormant_risk": "활동이 줄어 이탈 위험이 큰 금융 고객",
-    "financial_dormant_risk": "활동이 줄어 이탈 위험이 큰 금융 고객",
-    "banking_dormant_risk": "활동이 줄어 이탈 위험이 큰 금융 고객",
     "inactive_risk": "활동이 줄어 이탈 위험이 큰 고객",
     "churn_risk": "이탈 위험이 큰 고객",
     "high_churn_risk": "이탈 위험이 매우 큰 고객",
     "medium_churn_risk": "이탈 위험이 보통인 고객",
     "low_churn_risk": "이탈 위험이 낮은 고객",
     "at_risk": "이탈 위험 고객",
-    "risk_customer": "이탈 위험 고객",
-    "high_risk": "이탈 위험이 큰 고객",
-    "medium_risk": "이탈 위험이 보통인 고객",
-    "low_risk": "이탈 위험이 낮은 고객",
-    "inactive_customer": "활동이 줄어든 고객",
-    "inactive_user": "활동이 줄어든 고객",
-    "dormant_customer": "휴면 고객",
-    "dormant_user": "휴면 고객",
-    "active_customer": "정상 활동 고객",
-    "active_user": "정상 활동 고객",
-    "loyal_customer": "충성 고객",
-    "loyal_user": "충성 고객",
-    "vip_customer": "VIP 고객",
-    "vip_user": "VIP 고객",
-    "benefit_sensitive": "혜택에 민감한 고객",
-    "price_sensitive": "혜택과 조건에 민감한 고객",
-    "unknown_persona": "고객 유형 미분류",
-    "unknown_customer_type": "고객 유형 미분류",
+    "watch": "관찰 대상",
 }
-VALUE_LABELS.setdefault("ko", {}).update(_PLAIN_KO_CUSTOMER_TYPE_CODES)
+VALUE_LABELS.setdefault("ko", {}).update(_PLAIN_KO_VALUE_SUPPLEMENTS)
 
 PHRASE_LABELS: dict[str, dict[str, str]] = {
     "en": {
@@ -637,6 +626,71 @@ def _replace_known_tokens(text: str, mapping: dict[str, str]) -> str:
     return out
 
 
+_COMPOUND_VALUE_EXACT_KO = {
+    "credit_revolver": "카드 리볼빙 이용 고객",
+    "card_revolver": "카드 리볼빙 이용 고객",
+    "loan_watch": "대출 관찰 대상 고객",
+    "대출_watch": "대출 관찰 대상 고객",
+    "loan_watchlist": "대출 관찰 대상 고객",
+    "credit_watch": "신용위험 관찰 대상 고객",
+    "credit_risk_watch": "신용위험 관찰 대상 고객",
+    "dormant_risk": "활동이 줄어 이탈 위험이 큰 고객",
+    "inactive_risk": "활동이 줄어 이탈 위험이 큰 고객",
+    "churn_risk": "이탈 위험이 큰 고객",
+    "high_churn_risk": "이탈 위험이 매우 큰 고객",
+    "medium_churn_risk": "이탈 위험이 보통인 고객",
+    "low_churn_risk": "이탈 위험이 낮은 고객",
+}
+
+_COMPOUND_VALUE_TOKEN_KO = {
+    "credit": "신용",
+    "card": "카드",
+    "revolver": "리볼빙 이용",
+    "revolving": "리볼빙 이용",
+    "loan": "대출",
+    "loans": "대출",
+    "mortgage": "주택담보대출",
+    "watch": "관찰 대상",
+    "watchlist": "관찰 대상",
+    "risk": "위험",
+    "dormant": "활동 감소",
+    "inactive": "활동 감소",
+    "churn": "이탈",
+    "high": "높은",
+    "medium": "보통",
+    "low": "낮은",
+}
+
+
+def _translate_compound_code_value(raw: str, lang: str) -> str | None:
+    if lang != "ko":
+        return None
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    norm = _norm(text)
+    for src, dst in _COMPOUND_VALUE_EXACT_KO.items():
+        if norm == _norm(src):
+            return dst
+    if not ("_" in text or "-" in text or re.search(r"[A-Za-z]", text)):
+        return None
+    parts = [part for part in re.split(r"[\s_\-/]+", text) if part]
+    labels: list[str] = []
+    for part in parts:
+        part_norm = part.lower()
+        label = _COMPOUND_VALUE_TOKEN_KO.get(part_norm)
+        if not label and re.search(r"[가-힣]", part):
+            label = part
+        if not label:
+            return None
+        if not labels or labels[-1] != label:
+            labels.append(label)
+    phrase = " ".join(labels).strip()
+    if any(token in norm for token in ["risk", "watch", "revolver", "dormant", "inactive", "churn"]) and not phrase.endswith(("고객", "대상")):
+        phrase = f"{phrase} 고객"
+    return phrase if phrase and phrase != text else None
+
+
 def translate_value(value: Any, lang: str = "ko") -> Any:
     if value is None:
         return ""
@@ -656,6 +710,10 @@ def translate_value(value: Any, lang: str = "ko") -> Any:
     for src, dst in mapping.items():
         if raw == src or norm == _norm(src):
             return dst
+
+    compound = _translate_compound_code_value(raw, lang)
+    if compound:
+        return compound
 
     out = raw
     out = _replace_known_tokens(out, mapping)
