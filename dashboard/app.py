@@ -2442,6 +2442,16 @@ _BUSINESS_CUSTOMER_TYPE_KO_PATCH: dict[str, str] = {
     "coupon_sensitive": "혜택에 민감한 고객",
     "explorer": "상품을 둘러보는 탐색 고객",
     "dormant": "휴면 고객",
+    "dormant_risk": "활동이 줄어 이탈 위험이 큰 고객",
+    "inactive_risk": "활동이 줄어 이탈 위험이 큰 고객",
+    "churn_risk": "이탈 위험이 큰 고객",
+    "high_churn_risk": "이탈 위험이 매우 큰 고객",
+    "medium_churn_risk": "이탈 위험이 보통인 고객",
+    "low_churn_risk": "이탈 위험이 낮은 고객",
+    "at_risk": "이탈 위험 고객",
+    "credit_revolver": "카드 리볼빙 이용 고객",
+    "loan_watch": "대출 관찰 대상 고객",
+    "대출_watch": "대출 관찰 대상 고객",
     "unknown_segment": "고객 유형 미분류",
     "live": "실시간 고객",
     "live_user": "실시간 고객",
@@ -2453,119 +2463,6 @@ _BUSINESS_CUSTOMER_TYPE_KO_PATCH: dict[str, str] = {
 }
 VALUE_LABELS.setdefault("ko", {}).update(_BUSINESS_CUSTOMER_TYPE_KO_PATCH)
 PHRASE_LABELS.setdefault("ko", {}).update(_BUSINESS_CUSTOMER_TYPE_KO_PATCH)
-
-# Customer type codes still appear in some saved artifacts and live DB rows
-# (for example dormant_risk).  This patch keeps those internal codes intact but
-# guarantees that every persona/segment/customer_type value shown on screen is
-# a short, plain Korean phrase.
-_PLAIN_CUSTOMER_TYPE_CODE_KO_PATCH: dict[str, str] = {
-    "dormant_risk": "활동이 줄어 이탈 위험이 큰 고객",
-    "dormant-risk": "활동이 줄어 이탈 위험이 큰 고객",
-    "dormant risk": "활동이 줄어 이탈 위험이 큰 고객",
-    "dormantrisk": "활동이 줄어 이탈 위험이 큰 고객",
-    "at_risk_dormant": "활동이 줄어 이탈 위험이 큰 고객",
-    "finance_dormant_risk": "활동이 줄어 이탈 위험이 큰 금융 고객",
-    "financial_dormant_risk": "활동이 줄어 이탈 위험이 큰 금융 고객",
-    "banking_dormant_risk": "활동이 줄어 이탈 위험이 큰 금융 고객",
-    "churn_risk": "이탈 위험이 큰 고객",
-    "churn-risk": "이탈 위험이 큰 고객",
-    "churn risk": "이탈 위험이 큰 고객",
-    "high_churn_risk": "이탈 위험이 매우 큰 고객",
-    "medium_churn_risk": "이탈 위험이 보통인 고객",
-    "low_churn_risk": "이탈 위험이 낮은 고객",
-    "at_risk": "이탈 위험 고객",
-    "risk_customer": "이탈 위험 고객",
-    "risk_user": "이탈 위험 고객",
-    "high_risk": "이탈 위험이 큰 고객",
-    "medium_risk": "이탈 위험이 보통인 고객",
-    "low_risk": "이탈 위험이 낮은 고객",
-    "inactive_risk": "활동이 줄어 이탈 위험이 큰 고객",
-    "inactive_customer": "활동이 줄어든 고객",
-    "inactive_user": "활동이 줄어든 고객",
-    "dormant_customer": "휴면 고객",
-    "dormant_user": "휴면 고객",
-    "dormant": "휴면 고객",
-    "active_customer": "정상 활동 고객",
-    "active_user": "정상 활동 고객",
-    "active": "정상 활동 고객",
-    "loyal_customer": "충성 고객",
-    "loyal_user": "충성 고객",
-    "loyal": "충성 고객",
-    "vip_customer": "VIP 고객",
-    "vip_user": "VIP 고객",
-    "vip": "VIP 고객",
-    "new_user": "신규 고객",
-    "new_customer": "신규 고객",
-    "new_signup": "가입 초기 고객",
-    "onboarding": "가입 초기 고객",
-    "price_sensitive": "혜택과 조건에 민감한 고객",
-    "benefit_sensitive": "혜택에 민감한 고객",
-    "coupon_sensitive": "혜택에 민감한 고객",
-    "explorer": "상품을 둘러보는 고객",
-    "browsing_customer": "상품을 둘러보는 고객",
-    "unknown_persona": "고객 유형 미분류",
-    "unknown_customer_type": "고객 유형 미분류",
-    "unknown_segment": "고객 유형 미분류",
-}
-VALUE_LABELS.setdefault("ko", {}).update(_PLAIN_CUSTOMER_TYPE_CODE_KO_PATCH)
-FINANCE_VALUE_LABELS.setdefault("ko", {}).update(_PLAIN_CUSTOMER_TYPE_CODE_KO_PATCH)
-PHRASE_LABELS.setdefault("ko", {}).update(_PLAIN_CUSTOMER_TYPE_CODE_KO_PATCH)
-
-
-def _plain_korean_customer_type_fallback(value: Any) -> str | None:
-    raw = str(value or "").strip()
-    if not raw:
-        return None
-
-    exact = _lookup_plain_korean_label(raw, _PLAIN_CUSTOMER_TYPE_CODE_KO_PATCH)
-    if exact:
-        return exact
-
-    norm = re.sub(r"[^a-z0-9]+", "_", raw.lower()).strip("_")
-    if not norm:
-        return None
-    tokens = [token for token in norm.split("_") if token and token not in {"segment", "persona", "type", "customer", "user", "group", "finance", "financial", "banking"}]
-    token_set = set(tokens)
-
-    if {"dormant", "risk"}.issubset(token_set) or {"inactive", "risk"}.issubset(token_set):
-        return "활동이 줄어 이탈 위험이 큰 고객"
-    if {"churn", "risk"}.issubset(token_set) or {"at", "risk"}.issubset(token_set):
-        if "high" in token_set:
-            return "이탈 위험이 매우 큰 고객"
-        if "medium" in token_set or "mid" in token_set:
-            return "이탈 위험이 보통인 고객"
-        if "low" in token_set:
-            return "이탈 위험이 낮은 고객"
-        return "이탈 위험 고객"
-    if {"high", "value", "persuadables"}.issubset(token_set) or {"high", "value", "persuadable"}.issubset(token_set):
-        return "가치가 높고 연락하면 반응할 가능성이 큰 고객"
-    if {"high", "value", "sure", "things"}.issubset(token_set):
-        return "가치가 높고 이미 반응 가능성이 큰 고객"
-    if {"high", "value", "lost", "causes"}.issubset(token_set):
-        return "가치는 높지만 지금 개입 효과가 낮은 고객"
-    if "dormant" in token_set:
-        return "휴면 고객"
-    if "inactive" in token_set:
-        return "활동이 줄어든 고객"
-    if "loyal" in token_set:
-        return "충성 고객"
-    if "vip" in token_set:
-        return "VIP 고객"
-    if "new" in token_set or "signup" in token_set or "onboarding" in token_set:
-        return "가입 초기 고객"
-    if "explorer" in token_set or "browse" in token_set or "browsing" in token_set:
-        return "상품을 둘러보는 고객"
-    if "price" in token_set or "benefit" in token_set or "coupon" in token_set:
-        return "혜택과 조건에 민감한 고객"
-    if "persuadables" in token_set or "persuadable" in token_set:
-        return "연락하면 반응할 가능성이 큰 고객"
-    if "sleeping" in token_set and "dogs" in token_set:
-        return "불필요한 개입을 피해야 하는 고객"
-    if "lost" in token_set and "causes" in token_set:
-        return "지금 개입 효과가 낮은 고객"
-    if "sure" in token_set and "things" in token_set:
-        return "이미 반응 가능성이 큰 고객"
-    return None
 
 _FINANCE_PRODUCT_ACTION_KO_PATCH: dict[str, str] = {
     # Finance products/services that may come from uploaded CSVs or generated recommendations.
@@ -2635,6 +2532,23 @@ _FINANCE_PRODUCT_ACTION_KO_PATCH: dict[str, str] = {
     "books": "금융교육/콘텐츠",
     "kids": "가족금융",
     "pet": "펫보험/특화상품",
+    # Common finance/customer-segment codes from real banking datasets.
+    "credit_revolver": "카드 리볼빙 이용 고객",
+    "card_revolver": "카드 리볼빙 이용 고객",
+    "revolver": "리볼빙 이용 고객",
+    "loan_watch": "대출 관찰 대상 고객",
+    "대출_watch": "대출 관찰 대상 고객",
+    "loan_watchlist": "대출 관찰 대상 고객",
+    "credit_watch": "신용위험 관찰 대상 고객",
+    "credit_risk_watch": "신용위험 관찰 대상 고객",
+    "dormant_risk": "활동이 줄어 이탈 위험이 큰 고객",
+    "inactive_risk": "활동이 줄어 이탈 위험이 큰 고객",
+    "churn_risk": "이탈 위험이 큰 고객",
+    "high_churn_risk": "이탈 위험이 매우 큰 고객",
+    "medium_churn_risk": "이탈 위험이 보통인 고객",
+    "low_churn_risk": "이탈 위험이 낮은 고객",
+    "at_risk": "이탈 위험 고객",
+    "watch": "관찰 대상",
 }
 FINANCE_VALUE_LABELS.setdefault("ko", {}).update(_FINANCE_PRODUCT_ACTION_KO_PATCH)
 
@@ -2766,6 +2680,233 @@ def _lookup_plain_korean_label(raw: Any, mapping: dict[str, str]) -> str | None:
     return None
 
 
+_FINANCE_COMPOUND_EXACT_KO: dict[str, str] = {
+    "credit_revolver": "카드 리볼빙 이용 고객",
+    "card_revolver": "카드 리볼빙 이용 고객",
+    "revolver": "리볼빙 이용 고객",
+    "loan_watch": "대출 관찰 대상 고객",
+    "대출_watch": "대출 관찰 대상 고객",
+    "loan_watchlist": "대출 관찰 대상 고객",
+    "credit_watch": "신용위험 관찰 대상 고객",
+    "credit_risk_watch": "신용위험 관찰 대상 고객",
+    "dormant_risk": "활동이 줄어 이탈 위험이 큰 고객",
+    "inactive_risk": "활동이 줄어 이탈 위험이 큰 고객",
+    "churn_risk": "이탈 위험이 큰 고객",
+    "high_churn_risk": "이탈 위험이 매우 큰 고객",
+    "medium_churn_risk": "이탈 위험이 보통인 고객",
+    "low_churn_risk": "이탈 위험이 낮은 고객",
+    "at_risk": "이탈 위험 고객",
+}
+
+_FINANCE_COMPOUND_TOKEN_KO: dict[str, str] = {
+    "credit": "신용",
+    "card": "카드",
+    "revolver": "리볼빙 이용",
+    "revolving": "리볼빙 이용",
+    "loan": "대출",
+    "loans": "대출",
+    "mortgage": "주택담보대출",
+    "debt": "대출",
+    "watch": "관찰 대상",
+    "watchlist": "관찰 대상",
+    "risk": "위험",
+    "risky": "위험",
+    "dormant": "활동 감소",
+    "inactive": "활동 감소",
+    "churn": "이탈",
+    "high": "높은",
+    "medium": "보통",
+    "mid": "보통",
+    "low": "낮은",
+    "vip": "VIP",
+    "new": "신규",
+    "signup": "가입 초기",
+    "segment": "고객군",
+    "customer": "고객",
+    "customers": "고객",
+}
+
+
+def _norm_lookup_key(value: Any) -> str:
+    return re.sub(r"[\s_\-:：/\.()\[\]{}]+", "", str(value or "")).lower()
+
+
+def _humanize_finance_compound_label(value: Any, column: Any = "") -> str | None:
+    """Render mixed finance codes such as credit_revolver or 대출_watch in plain Korean."""
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+
+    exact_label = _lookup_plain_korean_label(raw, _FINANCE_COMPOUND_EXACT_KO)
+    if exact_label:
+        return exact_label
+
+    # Try exact finance/product/customer dictionaries before composing tokens.
+    for mapping in (_BUSINESS_CUSTOMER_TYPE_KO_PATCH, _FINANCE_PRODUCT_ACTION_KO_PATCH):
+        exact_label = _lookup_plain_korean_label(raw, mapping)
+        if exact_label:
+            return exact_label
+
+    # Only compose values that look like backend codes or mixed Korean/English codes.
+    if not ("_" in raw or "-" in raw or re.search(r"[A-Za-z]", raw)):
+        return None
+
+    parts = [part for part in re.split(r"[\s_\-/]+", raw) if part]
+    if not parts:
+        return None
+
+    translated: list[str] = []
+    for part in parts:
+        label = _lookup_plain_korean_label(part, _FINANCE_PRODUCT_ACTION_KO_PATCH)
+        if not label:
+            label = _lookup_plain_korean_label(part, _BUSINESS_CUSTOMER_TYPE_KO_PATCH)
+        if not label:
+            label = _FINANCE_COMPOUND_TOKEN_KO.get(part.lower())
+        if not label and re.search(r"[가-힣]", part):
+            label = part
+        if not label:
+            return None
+        if not translated or translated[-1] != label:
+            translated.append(label)
+
+    phrase = " ".join(translated).strip()
+    if not phrase or phrase == raw:
+        return None
+
+    col_norm = _norm_lookup_key(column)
+    code_norm = _norm_lookup_key(raw)
+    customer_like = (
+        any(token in col_norm for token in ["persona", "segment", "customertype", "고객유형", "customersegment"])
+        or any(token in code_norm for token in ["risk", "watch", "revolver", "dormant", "inactive", "churn"])
+    )
+    if customer_like and not phrase.endswith(("고객", "고객군", "대상")):
+        phrase = f"{phrase} 고객"
+    return phrase
+
+
+def _column_display_label_for_wizard(column_name: Any, mode: str | None = None) -> str:
+    """Korean label for upload-wizard column names without mutating the mapping key."""
+    raw = str(column_name or "").strip()
+    if not raw:
+        return "미지정"
+    finance = (mode or _business_mode()) == "finance"
+    base_map = {
+        "customer_id": "고객 ID", "client_no": "고객 번호", "client_id": "고객 ID", "user_id": "고객 ID", "member_id": "고객 ID",
+        "account_no": "계좌 번호", "account_id": "계좌 ID",
+        "timestamp": "발생 시각", "event_time": "이벤트 시각", "transaction_date": "거래일", "transaction_time": "거래 시각", "txn_time": "거래 시각",
+        "event_type": "이벤트 유형", "banking_event": "금융 이벤트 유형", "transaction_type": "거래 유형", "txn_type": "거래 유형",
+        "amount": "금액", "transaction_amount": "거래금액", "txn_amount": "거래금액", "gross_amount": "거래금액", "net_amount": "순거래금액",
+        "category": "상품 유형", "product_type": "상품 유형", "item_category": "상품/서비스 유형", "financial_product": "금융상품",
+        "churn_flag": "이탈 여부", "is_churned": "이탈 여부", "churn_label": "이탈 라벨", "account_status": "계좌/거래 상태",
+        "persona": "고객 유형", "customer_segment": "고객 유형", "segment": "고객군", "risk_segment": "위험 등급",
+        "quantity": "수량", "product_count": "상품 수", "region": "지역", "branch": "지점", "channel": "채널",
+        "credit_score": "신용점수", "delinquency_days": "연체일수", "loan_balance": "대출잔액", "account_balance": "계좌잔고",
+    }
+    finance_map = {
+        "category": "금융상품 유형", "product_type": "금융상품 유형", "item_category": "금융상품/서비스", "financial_product": "금융상품/서비스",
+        "event_type": "금융 이벤트 유형", "amount": "금융거래 금액", "quantity": "보유/거래 상품 수", "product_count": "보유 금융상품 수",
+        "timestamp": "거래/이벤트 시각", "churn_flag": "금융 이탈 여부", "persona": "금융 고객 유형", "customer_segment": "금융 고객 유형",
+    }
+    mapping = {**base_map, **(finance_map if finance else {})}
+    label = _lookup_plain_korean_label(raw, mapping)
+    if label:
+        return label
+    domain = _domain_column_label(raw, "ko") if finance else None
+    if domain:
+        return domain
+    generic = COLUMN_LABELS.get("ko", {}).get(raw)
+    if generic:
+        return generic
+    compound = _humanize_finance_compound_label(raw, "column") if finance else None
+    if compound:
+        return compound
+    # Last resort: make backend-looking names readable in Korean-ish spacing without
+    # exposing underscores. This is still better than raw snake_case in the UI.
+    return raw.replace("_", " ").replace("-", " ").strip()
+
+
+def _schema_role_label_for_wizard(role: Any, mode: str | None = None) -> str:
+    raw = str(role or "").strip()
+    finance = (mode or _business_mode()) == "finance"
+    finance_roles = {
+        "customer_id": "금융 고객 식별값",
+        "timestamp": "거래/이벤트 시각",
+        "event_type": "금융 이벤트 유형",
+        "amount": "거래금액·잔고 금액",
+        "category": "금융상품 유형",
+        "churn_flag": "금융 이탈 여부",
+        "persona": "금융 고객 유형",
+        "quantity": "보유/거래 상품 수",
+        "region": "지역",
+    }
+    ecommerce_roles = {
+        "customer_id": "고객 식별값",
+        "timestamp": "이벤트 시각",
+        "event_type": "이커머스 이벤트 유형",
+        "amount": "주문·결제 금액",
+        "category": "상품 카테고리",
+        "churn_flag": "이탈 여부",
+        "persona": "고객 유형",
+        "quantity": "상품 수량",
+        "region": "지역",
+    }
+    return (finance_roles if finance else ecommerce_roles).get(raw, _column_display_label_for_wizard(raw, mode))
+
+
+def _unique_display_lookup(values: list[Any], formatter) -> tuple[dict[str, str], dict[str, str]]:
+    raw_to_display: dict[str, str] = {}
+    display_to_raw: dict[str, str] = {}
+    counts: dict[str, int] = {}
+    for value in values:
+        raw = str(value)
+        base = str(formatter(raw)).strip() or raw
+        count = counts.get(base, 0) + 1
+        counts[base] = count
+        label = base if count == 1 else f"{base} {count}"
+        raw_to_display[raw] = label
+        display_to_raw[label] = raw
+    return raw_to_display, display_to_raw
+
+
+_INTERNAL_EVENT_LABELS_KO_FINANCE: dict[str, str] = {
+    "visit": "접속/방문",
+    "page_view": "계좌·상품 조회",
+    "search": "금융상품 탐색",
+    "add_to_cart": "신청 시작/관심상품",
+    "purchase": "금융거래",
+    "support_contact": "상담/민원",
+    "other": "기타",
+    "ignore": "분석 제외",
+}
+
+_INTERNAL_EVENT_LABELS_KO_ECOMMERCE: dict[str, str] = {
+    "visit": "방문",
+    "page_view": "상품 조회",
+    "search": "검색",
+    "add_to_cart": "장바구니 담기",
+    "purchase": "구매",
+    "support_contact": "고객지원 문의",
+    "other": "기타",
+    "ignore": "분석 제외",
+}
+
+
+def _event_display_label_for_wizard(value: Any, mode: str | None = None, *, internal: bool = False) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return "미지정"
+    finance = (mode or _business_mode()) == "finance"
+    if internal:
+        return (_INTERNAL_EVENT_LABELS_KO_FINANCE if finance else _INTERNAL_EVENT_LABELS_KO_ECOMMERCE).get(raw, raw.replace("_", " "))
+    if finance:
+        label = _humanize_finance_compound_label(raw, "event_type")
+        if label:
+            return label
+    translated = _domain_translate_value("event_type", raw) if finance else raw
+    translated = _translate_cell_value(translated)
+    return str(translated).replace("_", " ").strip()
+
+
 def _humanize_business_action_text(value: Any) -> str:
     """Turn generated action codes into a sentence that a business user can execute."""
     raw = str(value or "").strip()
@@ -2841,19 +2982,14 @@ def _humanize_business_display_value(column: Any, value: Any) -> Any:
         return ""
     column_norm = re.sub(r"[\s_\-:：/\.()\[\]{}]+", "", str(column or "")).lower()
 
-    if "persona" in column_norm or "segment" in column_norm or "customer_type" in column_norm or "고객유형" in column_norm or "고객유형" in raw:
-        for mapping in (
-            _PLAIN_CUSTOMER_TYPE_CODE_KO_PATCH,
-            _BUSINESS_CUSTOMER_TYPE_KO_PATCH,
-            FINANCE_VALUE_LABELS.get("ko", {}),
-            VALUE_LABELS.get("ko", {}),
-        ):
-            label = _lookup_plain_korean_label(raw, mapping)
-            if label and label != raw:
-                return label
-        fallback_label = _plain_korean_customer_type_fallback(raw)
-        if fallback_label:
-            return fallback_label
+    if "persona" in column_norm or "segment" in column_norm or "customer_type" in column_norm or "고객유형" in column_norm:
+        label = _lookup_plain_korean_label(raw, _BUSINESS_CUSTOMER_TYPE_KO_PATCH)
+        if label:
+            return label
+        if _is_finance_display_mode():
+            compound_label = _humanize_finance_compound_label(raw, column)
+            if compound_label:
+                return compound_label
 
     if "recommendedaction" in column_norm or "queuedrecommendedaction" in column_norm or "action" in column_norm or "추천액션" in column_norm:
         sentence = _humanize_business_action_text(raw)
@@ -2864,6 +3000,14 @@ def _humanize_business_display_value(column: Any, value: Any) -> Any:
         label = _lookup_plain_korean_label(raw, _FINANCE_PRODUCT_ACTION_KO_PATCH)
         if label:
             return label
+        compound_label = _humanize_finance_compound_label(raw, column)
+        if compound_label:
+            return compound_label
+
+    if _is_finance_display_mode():
+        compound_label = _humanize_finance_compound_label(raw, column)
+        if compound_label:
+            return compound_label
 
     # Values that look like generated actions should be sentence-like even when
     # they arrive through generic log/detail columns.
@@ -3053,15 +3197,6 @@ def _translate_cell_value(value: Any) -> Any:
     stripped = value.strip()
     if not stripped:
         return ""
-
-    # Apply code-like customer-type fallback globally only for generated segment
-    # codes that carry separators or risk words. Plain values such as ``active``
-    # may be account/status values, so they are translated with column context
-    # instead of being forced to customer-type wording here.
-    if re.search(r"[_\-]", stripped) or re.search(r"\b(dormant|inactive|churn|risk)\b", stripped, flags=re.IGNORECASE):
-        code_customer_type = _plain_korean_customer_type_fallback(stripped)
-        if code_customer_type:
-            return _collapse_repeated_customer_words(code_customer_type)
 
     humanized = _humanize_business_display_value("__value__", stripped)
     if isinstance(humanized, str) and humanized != stripped:
@@ -3320,7 +3455,7 @@ def _dedupe_display_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 _CHART_LABEL_PATCH: dict[str, dict[str, str]] = {
     "ko": {
-        "retention rate": "리텐션율", "retention": "리텐션", "period": "경과 기간(개월)", "cohort_month": "가입 코호트", "cohort": "코호트", "count": "건수", "value": "값", "customer_count": "고객 수", "candidate_customer_count": "후보 고객 수", "recommend_count": "추천 건수", "uplift_segment": "고객 반응 유형", "intervention_intensity": "개입 강도", "allocated_budget": "배정 예산", "expected_profit": "예상 이익", "expected_roi": "예상 ROI", "churn_probability": "이탈 확률", "clv": "고객 생애가치(CLV)", "uplift_score": "개입 효과 점수", "value_score": "고객 가치 점수", "event_type": "이벤트 유형", "financial_event_type": "금융 이벤트 유형", "avg_coupon_exposure": "평균 혜택 제안 횟수", "coupon_exposure_count": "혜택 제안 횟수", "coupon_cost": "혜택/개입 비용", "recommended_category": "추천 상품/서비스", "recommended_financial_product": "추천 금융상품", "financial_product": "금융상품", "importance": "중요도", "feature_display": "변수명", "persona": "고객 유형", "customer_segment": "고객 유형", "customer_type": "고객 유형", "avg_churn_probability": "평균 이탈 확률", "avg_expected_roi": "평균 예상 ROI",
+        "retention rate": "리텐션율", "retention": "리텐션", "period": "경과 기간(개월)", "cohort_month": "가입 코호트", "cohort": "코호트", "count": "건수", "value": "값", "customer_count": "고객 수", "candidate_customer_count": "후보 고객 수", "recommend_count": "추천 건수", "uplift_segment": "고객 반응 유형", "intervention_intensity": "개입 강도", "allocated_budget": "배정 예산", "expected_profit": "예상 이익", "expected_roi": "예상 ROI", "churn_probability": "이탈 확률", "clv": "고객 생애가치(CLV)", "uplift_score": "개입 효과 점수", "value_score": "고객 가치 점수", "event_type": "이벤트 유형", "avg_coupon_exposure": "평균 쿠폰 노출 횟수", "recommended_category": "추천 카테고리", "importance": "중요도", "feature_display": "변수명", "persona": "고객 유형", "avg_churn_probability": "평균 이탈 확률", "avg_expected_roi": "평균 예상 ROI",
     },
     "en": {}, "ja": {},
 }
@@ -3868,6 +4003,9 @@ def _domain_translate_value(column: Any, value: Any) -> Any:
     for src, dst in mapping.items():
         if norm == _normalize_i18n_key(src):
             return str(dst)
+    compound_label = _humanize_finance_compound_label(out, column)
+    if compound_label:
+        return compound_label
     # Apply conservative phrase replacements to strings that are already localized.
     for src, dst in sorted(mapping.items(), key=lambda item: len(str(item[0])), reverse=True):
         src_text = str(src)
@@ -5755,20 +5893,15 @@ def inject_custom_css():
         }
 
         .hero-card {
-            position: relative !important;
-            overflow: hidden !important;
-            padding: 32px 32px 26px 32px !important;
-            margin-bottom: 18px !important;
-            border-radius: 28px !important;
-            background: linear-gradient(135deg, #0f172a 0%, #2563eb 62%, #7c3aed 100%) !important;
-            box-shadow: 0 24px 60px rgba(15,23,42,0.22) !important;
-            color: #ffffff !important;
-            -webkit-text-fill-color: #ffffff !important;
-            border: 1px solid rgba(255,255,255,0.08) !important;
-        }
-        .hero-card *, .hero-title, .hero-kicker, .hero-subtitle {
-            color: #ffffff !important;
-            -webkit-text-fill-color: #ffffff !important;
+            position: relative;
+            overflow: hidden;
+            padding: 32px 32px 26px 32px;
+            margin-bottom: 18px;
+            border-radius: 28px;
+            background: linear-gradient(135deg, rgba(15,23,42,0.96), rgba(37,99,235,0.92) 60%, rgba(124,58,237,0.88));
+            box-shadow: 0 24px 60px rgba(15,23,42,0.22);
+            color: white;
+            border: 1px solid rgba(255,255,255,0.08);
         }
 
         .hero-card::after {
@@ -6318,47 +6451,6 @@ def inject_custom_css():
         section[data-testid="stMain"], .main .block-container {
             color: #0f172a;
         }
-
-        /* Streamlit 버전별 탭/라디오 DOM 차이를 흡수해 파란 선택색을 강제한다. */
-        div[data-testid="stTabs"] button[role="tab"],
-        div[data-testid="stTabs"] [data-baseweb="tab"],
-        section[data-testid="stMain"] button[role="tab"],
-        .main .block-container button[role="tab"] {
-            color: #475569 !important;
-            -webkit-text-fill-color: #475569 !important;
-            border-radius: 12px 12px 0 0 !important;
-        }
-        div[data-testid="stTabs"] button[role="tab"][aria-selected="true"],
-        div[data-testid="stTabs"] [data-baseweb="tab"][aria-selected="true"],
-        section[data-testid="stMain"] button[role="tab"][aria-selected="true"],
-        .main .block-container button[role="tab"][aria-selected="true"] {
-            color: #2563eb !important;
-            -webkit-text-fill-color: #2563eb !important;
-            font-weight: 800 !important;
-            border-bottom: 3px solid #2563eb !important;
-        }
-        div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] *,
-        div[data-testid="stTabs"] [data-baseweb="tab"][aria-selected="true"] *,
-        section[data-testid="stMain"] button[role="tab"][aria-selected="true"] * {
-            color: #2563eb !important;
-            -webkit-text-fill-color: #2563eb !important;
-        }
-        section[data-testid="stMain"] div[data-testid="stRadio"] label:has(input:checked),
-        section[data-testid="stMain"] div[data-testid="stRadio"] label:has([aria-checked="true"]),
-        .main .block-container div[data-testid="stRadio"] label:has(input:checked),
-        .main .block-container div[data-testid="stRadio"] label:has([aria-checked="true"]) {
-            background: #2563eb !important;
-            border-color: #2563eb !important;
-            box-shadow: 0 10px 24px rgba(37,99,235,0.22) !important;
-        }
-        section[data-testid="stMain"] div[data-testid="stRadio"] label:has(input:checked) *,
-        section[data-testid="stMain"] div[data-testid="stRadio"] label:has([aria-checked="true"]) *,
-        .main .block-container div[data-testid="stRadio"] label:has(input:checked) *,
-        .main .block-container div[data-testid="stRadio"] label:has([aria-checked="true"]) * {
-            color: #ffffff !important;
-            -webkit-text-fill-color: #ffffff !important;
-            font-weight: 800 !important;
-        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -6366,18 +6458,14 @@ def inject_custom_css():
 
 
 def render_hero(title: str, subtitle: str):
-    title = html.escape(_translate_runtime_text(title))
-    subtitle = html.escape(_translate_runtime_text(subtitle))
-    # Keep the same CSS classes, but also include critical styles inline.
-    # Some Streamlit/hosting versions load custom CSS after first paint or change
-    # tab/radio selectors; inline hero styles prevent the title block from
-    # falling back to plain dark text on a pale background.
+    title = _translate_runtime_text(title)
+    subtitle = _translate_runtime_text(subtitle)
     st.markdown(
         f"""
-        <div class="hero-card" style="position:relative;overflow:hidden;padding:32px 32px 26px 32px;margin-bottom:18px;border-radius:28px;background:linear-gradient(135deg,#0f172a 0%,#2563eb 62%,#7c3aed 100%);box-shadow:0 24px 60px rgba(15,23,42,0.22);color:#ffffff;-webkit-text-fill-color:#ffffff;border:1px solid rgba(255,255,255,0.08);">
-            <div class="hero-kicker" style="color:#ffffff;-webkit-text-fill-color:#ffffff;font-size:0.9rem;letter-spacing:0.08em;text-transform:uppercase;font-weight:800;opacity:0.82;margin-bottom:10px;">RETENTION INTELLIGENCE COPILOT</div>
-            <div class="hero-title" style="color:#ffffff;-webkit-text-fill-color:#ffffff;font-size:2.5rem;line-height:1.08;font-weight:900;margin:0 0 12px 0;">{title}</div>
-            <div class="hero-subtitle" style="color:rgba(255,255,255,0.86);-webkit-text-fill-color:rgba(255,255,255,0.86);font-size:1rem;max-width:900px;">{subtitle}</div>
+        <div class="hero-card" style="position:relative;overflow:hidden;padding:32px 32px 26px 32px;margin-bottom:18px;border-radius:28px;background:linear-gradient(135deg,#0f172a 0%,#2563eb 58%,#7c3aed 100%) !important;box-shadow:0 24px 60px rgba(15,23,42,0.22);color:#ffffff !important;border:1px solid rgba(255,255,255,0.16);">
+            <div class="hero-kicker" style="color:#dbeafe !important;font-size:0.9rem;letter-spacing:0.08em;text-transform:uppercase;font-weight:800;margin-bottom:10px;">Retention Intelligence Copilot</div>
+            <div class="hero-title" style="color:#ffffff !important;font-size:2.5rem;line-height:1.08;font-weight:900;margin:0 0 12px 0;">{title}</div>
+            <div class="hero-subtitle" style="color:#eff6ff !important;font-size:1rem;font-weight:600;max-width:980px;">{subtitle}</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -7947,23 +8035,39 @@ def _render_wizard() -> bool:
             _wizard_nav("mapping_missing", can_next=False)
             return True
         all_cols = list(preview.validation.column_report and [c["original_name"] for c in preview.validation.column_report] or list(preview.column_mapping.values()))
-        options = ["(매핑 안 함)"] + all_cols
+        raw_to_display_col, display_to_raw_col = _unique_display_lookup(
+            all_cols,
+            lambda col: _column_display_label_for_wizard(col, mode),
+        )
+        options = ["(매핑 안 함)"] + [raw_to_display_col[str(col)] for col in all_cols]
         role_help = {
-            "customer_id": "고객을 식별하는 ID",
-            "timestamp": "이벤트·거래 발생 시각",
-            "event_type": "방문/구매/거래/상담 등 행동 유형",
-            "amount": "주문금액·거래금액·잔고 등 금액성 컬럼",
+            "customer_id": "고객을 식별하는 값입니다.",
+            "timestamp": "고객 행동이나 거래가 발생한 시각입니다.",
+            "event_type": "고객이 한 행동의 종류입니다." if mode != "finance" else "계좌·상품 조회, 금융거래, 상담처럼 고객이 한 금융 행동의 종류입니다.",
+            "amount": "주문·결제 금액입니다." if mode != "finance" else "거래금액, 잔액, 대출잔액처럼 분석에 사용할 금액성 값입니다.",
+            "category": "상품 카테고리입니다." if mode != "finance" else "예금, 대출, 카드, 보험 같은 금융상품 유형입니다.",
+            "churn_flag": "고객이 이탈했는지를 나타내는 라벨입니다." if mode != "finance" else "해지, 휴면, 연체 등 금융 이탈 상태를 나타내는 라벨입니다.",
+            "persona": "고객 유형입니다." if mode != "finance" else "금융 고객 유형입니다.",
+            "quantity": "상품 수량입니다." if mode != "finance" else "보유하거나 거래한 금융상품 수입니다.",
+            "region": "고객 지역입니다.",
         }
+        role_keys = sorted(set(list(preview.column_mapping.keys()) + ["customer_id", "timestamp", "event_type", "amount"]))
         rows = []
-        for role in sorted(set(list(preview.column_mapping.keys()) + ["customer_id", "timestamp", "event_type", "amount"])):
+        for role in role_keys:
             detected = preview.column_mapping.get(role)
-            rows.append({"시스템 역할": role, "업로드 컬럼": detected if detected in all_cols else "(매핑 안 함)", "설명": role_help.get(role, "분석 피처로 사용할 수 있는 컬럼")})
+            detected_display = raw_to_display_col.get(str(detected), "(매핑 안 함)") if detected in all_cols else "(매핑 안 함)"
+            rows.append({
+                "시스템 역할": _schema_role_label_for_wizard(role, mode),
+                "업로드 컬럼": detected_display,
+                "설명": role_help.get(role, "분석 피처로 사용할 수 있는 컬럼입니다."),
+            })
         editor_df = pd.DataFrame(rows)
         edited = st.data_editor(
             editor_df,
             use_container_width=True,
             hide_index=True,
             disabled=["시스템 역할", "설명"],
+            column_order=["시스템 역할", "업로드 컬럼", "설명"],
             column_config={
                 "시스템 역할": st.column_config.TextColumn("시스템 역할"),
                 "업로드 컬럼": st.column_config.SelectboxColumn("업로드 컬럼", options=options, required=True),
@@ -7972,9 +8076,13 @@ def _render_wizard() -> bool:
             key=f"wizard_col_map_editor_{mode}",
         )
         mapping = {}
-        for _, r in edited.iterrows():
-            if str(r["업로드 컬럼"]) != "(매핑 안 함)":
-                mapping[str(r["시스템 역할"])] = str(r["업로드 컬럼"])
+        for row_pos, (_, r) in enumerate(edited.iterrows()):
+            selected_display = str(r["업로드 컬럼"])
+            if selected_display != "(매핑 안 함)":
+                role_key = role_keys[row_pos] if row_pos < len(role_keys) else None
+                raw_col = display_to_raw_col.get(selected_display, selected_display)
+                if role_key:
+                    mapping[str(role_key)] = str(raw_col)
         st.session_state["wizard_column_mapping"] = mapping
         _wizard_nav("domain_mapping", can_next=bool(mapping.get("customer_id")))
         return True
@@ -7989,10 +8097,25 @@ def _render_wizard() -> bool:
             return True
         if preview.has_event_data and preview.event_value_mapping:
             from src.ingestion.preprocessor import INTERNAL_EVENT_TYPES as _STD
-            std_options = list(_STD) + ["other", "ignore"]
+            std_values = list(_STD) + ["other", "ignore"]
+            std_raw_to_display, std_display_to_raw = _unique_display_lookup(
+                std_values,
+                lambda value: _event_display_label_for_wizard(value, mode, internal=True),
+            )
+            raw_values = [raw for raw, _std in sorted(preview.event_value_mapping.items(), key=lambda x: -preview.event_value_counts.get(x[0], 0))]
+            raw_to_display_event, display_to_raw_event = _unique_display_lookup(
+                raw_values,
+                lambda value: _event_display_label_for_wizard(value, mode, internal=False),
+            )
+            std_options = [std_raw_to_display[str(value)] for value in std_values]
             e_rows = []
-            for raw, std in sorted(preview.event_value_mapping.items(), key=lambda x: -preview.event_value_counts.get(x[0], 0)):
-                e_rows.append({"원본 값": raw, "빈도": preview.event_value_counts.get(raw, 0), "내부 표준 값": std})
+            for raw in raw_values:
+                std = preview.event_value_mapping.get(raw)
+                e_rows.append({
+                    "원본 값": raw_to_display_event.get(str(raw), str(raw)),
+                    "빈도": preview.event_value_counts.get(raw, 0),
+                    "내부 표준 값": std_raw_to_display.get(str(std), std_raw_to_display.get("other", "기타")),
+                })
             edited_ev = st.data_editor(
                 pd.DataFrame(e_rows),
                 use_container_width=True,
@@ -8005,7 +8128,12 @@ def _render_wizard() -> bool:
                 },
                 key=f"wizard_ev_map_editor_{mode}",
             )
-            st.session_state["wizard_event_mapping"] = dict(zip(edited_ev["원본 값"].astype(str), edited_ev["내부 표준 값"].astype(str)))
+            mapped_events = {}
+            for _, r in edited_ev.iterrows():
+                raw_event = display_to_raw_event.get(str(r["원본 값"]), str(r["원본 값"]))
+                std_event = std_display_to_raw.get(str(r["내부 표준 값"]), str(r["내부 표준 값"]))
+                mapped_events[str(raw_event)] = str(std_event)
+            st.session_state["wizard_event_mapping"] = mapped_events
             st.session_state["wizard_synthetic_fallback"] = False
             st.info(f"자동 매핑 커버리지: {float(preview.coverage_rate):.0%}")
         else:
