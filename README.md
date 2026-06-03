@@ -1,6 +1,10 @@
 # Retention ROI Agent
 
-[![Demo Video](assets/thumbnail.png)](https://raw.githubusercontent.com/yeongwonshin/Retention_ROI_Agent/main/assets/video.mp4)
+## 🎬 Demo Video
+
+[![Demo Video](assets/thumbnail.png)](https://raw.githubusercontent.com/Retention-ROI-Optimization/Retention_ROI_Agent/assets/video.mp4)
+
+👉 [시연 영상 바로 보기](https://raw.githubusercontent.com/Retention-ROI-Optimization/Retention_ROI_Agent/assets/video.mp4)
 
 ## Project Overview
 
