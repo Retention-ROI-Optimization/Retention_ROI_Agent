@@ -1,6 +1,6 @@
 # Retention ROI Agent
 
-[![Demo Video](assets/thumbnail.png)](assets/video.mp4)
+[![Demo Video](assets/thumbnail.png)](assets/video.mp4?raw=true)
 
 ## Project Overview
 
