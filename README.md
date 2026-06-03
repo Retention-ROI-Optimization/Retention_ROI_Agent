@@ -1,7 +1,9 @@
 # Retention ROI Agent
 
 ## 🎬 Demo Video
-/Users/yeongwonshin/Desktop/tmp2/Retention_ROI_Agent/assets/video.mp4
+
+https://github.com/Retention-ROI-Optimization/Retention_ROI_Agent/assets/video.mp4
+
 
 ## Project Overview
 
