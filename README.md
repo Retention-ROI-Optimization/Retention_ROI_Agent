@@ -1,6 +1,6 @@
 # Retention ROI Agent
 
-## 🎬 Demo Video
+## Demo Video
 
 [https://github.com/user-attachments/assets/video.mp4
 ](https://github.com/user-attachments/assets/a8b620c8-00bd-4ce2-9d33-da98e79b3fe2)
