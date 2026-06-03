@@ -2,7 +2,7 @@
 
 ## 🎬 Demo Video
 
-https://github.com/Retention-ROI-Optimization/Retention_ROI_Agent/assets/video.mp4
+https://github.com/user-attachments/assets/video.mp4
 
 
 ## Project Overview
