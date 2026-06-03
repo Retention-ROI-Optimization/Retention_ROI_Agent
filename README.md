@@ -1,6 +1,7 @@
 # Retention ROI Agent
 
-<video src="assets/video.mp4" controls width="720"></video>
+[![Demo Video](assets/thumbnail.png)](assets/video.mp4)
+
 ## Project Overview
 
 Retention ROI Project is a data-driven decision system that covers the full retention workflow: **customer churn prediction, intervention strategy optimization, personalized recommendations, and real-time operations**.  
