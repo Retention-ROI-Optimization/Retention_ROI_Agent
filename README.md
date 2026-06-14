@@ -112,5 +112,5 @@ open http://localhost:8501
 | [분석 프로세스와 한계](docs/analysis_process_and_limitations.md) | 분석 흐름 상세 설명 및 알려진 한계점      |
 | [피처 사전](docs/feature_dictionary.md)                          | 생성되는 피처 목록과 의미                 |
 | [리텐션 전략](docs/retention_strategy.md)                        | 리텐션 전략 프레임워크                    |
-| [Counterfactual Lab](docs/counterfactual_retention_lab.md)       | 반사실적 시뮬레이션 실험                  |
+| [Counterfactual Lab](docs/counterfactual_retention_lab.md)       | 개입 전략 시뮬레이션 실험                  |
 | [발표 자료](docs/presentation.pdf)                               | 프로젝트 최종 발표 슬라이드               |
