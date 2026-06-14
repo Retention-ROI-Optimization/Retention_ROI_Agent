@@ -1,230 +1,116 @@
+<div align="center">
+
 # Retention ROI Agent
 
-## Demo Video
+**고객 이탈 예측 - 개입 최적화 - ROI 분석 플랫폼**
 
-[https://github.com/user-attachments/assets/video.mp4
-](https://github.com/user-attachments/assets/a8b620c8-00bd-4ce2-9d33-da98e79b3fe2)
+CSV 파일 하나로, 누가 떠나는지 / 언제 떠나는지 / 어떻게 잡아야 하는지를 알려줍니다.
 
-## Project Overview
+[데모 영상](https://github.com/user-attachments/assets/a8b620c8-00bd-4ce2-9d33-da98e79b3fe2) · [발표 자료(PDF)](docs/presentation.pdf) · [기술 문서](docs/technical_guide.md)
 
-Retention ROI Project is a data-driven decision system that covers the full retention workflow: **customer churn prediction, intervention strategy optimization, personalized recommendations, and real-time operations**.  
-Rather than only predicting _who_ will churn, this system estimates **_when_ churn is likely to happen**, **_which_ offer should be given to _which_ customer for maximum ROI**, and **identifies the optimal execution priority under budget constraints**.
+</div>
 
-This project supports:
+## 개발 배경
 
-- Customer behavior analysis using simulated data
-- Churn modeling and survival analysis for churn timing estimation
-- Uplift, CLV, and segmentation-based targeting with budget optimization
-- Customer-level action recommendations with operational explainability
-- Strategy validation through A/B testing and simulation fidelity checks
-- Pre-deployment validation through real-time replay pipelines
+마케팅팀은 매달 수천 명의 고객 중 **누구에게, 얼마의 예산으로, 어떤 액션을** 해야 할지 고민합니다.
+기존 솔루션은 "이탈 확률 Top 100"을 뽑아줄 뿐, **예산 대비 효과가 가장 큰 고객**을 골라주지 않습니다.
 
-In short, this project is an end-to-end **Retention Decision Intelligence Pipeline** that helps marketing and CRM teams execute retention strategies based on data rather than intuition.
+> "이탈할 것 같은 고객"과 "잡았을 때 수익이 남는 고객"은 다릅니다.
 
+이 플랫폼은 이탈 예측에서 끝나지 않고, **개입 효과(Uplift) x 고객 가치(CLV) x 예산 제약**을 함께 고려해 실제 마케팅 의사결정까지 연결합니다.
 
-## Installment
+---
 
-```bash
-pip install -r requirements.txt
+## 핵심 기능
+
+|     | 기능            | 설명                                                                                    |
+| --- | --------------- | --------------------------------------------------------------------------------------- |
+| 1   | **이탈 예측**   | 머신러닝 기반 이탈 확률 산출 + 생존 분석으로 _언제_ 이탈하는지 추정                     |
+| 2   | **타겟 최적화** | Uplift 모델링과 CLV를 결합해 예산 내 ROI를 극대화하는 고객 선별                         |
+| 3   | **개인화 추천** | 고객별 최적 액션(쿠폰, 상담, 상품 안내 등)과 그 이유를 제시                             |
+| 4   | **실시간 운영** | PostgreSQL 기반 라이브 모드 — 새 이벤트 유입 시 점수와 액션 큐 자동 갱신                |
+| 5   | **AI 챗봇**     | 대시보드 화면을 보며 "왜 이 지표가 높은지", "예산을 바꾸면 어떻게 되는지" 자연어로 질문 |
+
+---
+
+## 작동 흐름
+
+```
+CSV 업로드 → 컬럼 자동 매핑 → 학습 파이프라인 → 분석 대시보드 → 실시간 운영
 ```
 
-## Docker Run
+### **1. CSV 업로드 & 자동 매핑**
+
+자사 데이터를 올리면 컬럼 역할과 이벤트 타입을 자동으로 인식합니다.
+
+<img src="assets/dash1.png" width="720" />
+
+### **2. 원클릭 학습**
+
+매핑 확정 후 버튼 하나로 전처리 → 피처 생성 → 모델 학습이 완료됩니다.
+
+<img src="assets/dash2.png" width="720" />
+
+### **3. 분석 대시보드**
+
+이탈 현황, 코호트, Uplift+CLV 타겟, 예산 최적화 ROI, 리텐션 대상 목록을 한 화면에서 탐색합니다.
+
+<img src="assets/dash3.png" width="720" />
+
+### **4. AI 챗봇**
+
+현재 위험 고객 규모, 예산 집행, 추천 생성, 실시간 액션 큐를 모아보고
+AI 챗봇에게 화면 기반 질문을 할 수 있습니다.
+
+<img src="assets/dash4.png" width="240" />
+
+---
+
+## 지원 도메인
+
+| 모드              | 대상 산업                  | 데이터 예시                                        |
+| ----------------- | -------------------------- | -------------------------------------------------- |
+| **금융 모드**     | 은행, 카드사, 핀테크       | 입출금, 대출 상환, 카드 결제, 잔액 변동, 연체 이력 |
+| **이커머스 모드** | 온라인 쇼핑몰, 구독 서비스 | 방문, 검색, 장바구니, 구매, 쿠폰 사용              |
+
+어떤 형태의 CSV든 업로드하면 컬럼 역할을 자동 감지하고, 이벤트 값을 내부 표준 타입으로 매핑합니다.
+
+---
+
+## 기술 스택
+
+| 영역        | 기술                                        |
+| ----------- | ------------------------------------------- |
+| Frontend    | Streamlit                                   |
+| Backend API | FastAPI, PostgreSQL                         |
+| ML Pipeline | scikit-learn, XGBoost, lifelines(생존 분석) |
+| Infra       | Docker Compose                              |
+| AI 챗봇     | OpenAI API (GPT-4.1-mini)                   |
+| 다국어      | 한국어 / English / 日本語                   |
+
+---
+
+## 빠른 시작
 
 ```bash
-docker compose up --build
-```
-
-Detached mode:
-
-```bash
+# 1. 서비스 실행
 docker compose up -d --build
+
+# 2. 대시보드 접속
+open http://localhost:8501
 ```
 
-Use detached mode when you want services to keep running in the background.
+> 상세 설정, API 사용법, 디렉토리 구조는 [기술 문서](docs/technical_guide.md)를 참고하세요.
 
-## Finance Mode
+---
 
-Finance Mode is designed for banks, card companies, fintech services, and other financial-service businesses. It can use customer-level snapshots, transaction logs, card usage, loan status, balance changes, delinquency indicators, and support history.
+## 문서
 
-Recommended columns include:
-
-- `customer_id`
-- `timestamp` or transaction date
-- `event_type` or transaction type
-- deposit or account balance
-- loan balance or repayment status
-- card usage amount
-- delinquency days
-- support/contact count
-- customer segment or membership tier
-
-Typical use cases:
-
-- Detect likely cancellation or account inactivity.
-- Prioritize high-value customers at risk.
-- Decide whether to offer retention benefits, service recovery, or financial-product guidance.
-- Monitor live customer events in PostgreSQL-backed live mode.
-
-## E-commerce Mode
-
-E-commerce Mode is designed for online stores, subscription commerce, marketplace services, and retail CRM teams. It can use visit logs, search events, cart behavior, orders, coupon usage, category preferences, and purchase history.
-
-Recommended columns include:
-
-- `customer_id`
-- event timestamp
-- event type such as page view, search, cart, purchase, login
-- order amount
-- item category
-- coupon or discount usage
-- customer segment or membership tier
-- browsing or purchase recency
-
-Typical use cases:
-
-- Detect likely churn or purchase inactivity.
-- Prioritize retention targets under a marketing budget.
-- Recommend categories, coupons, or CRM actions.
-- Monitor real-time behavior changes and action queues.
-
-## Dashboard Workflow
-
-### 1. Start services
-
-```bash
-docker compose up -d --build
-```
-
-### 2. Open the dashboard
-
-Open the Streamlit dashboard in your browser:
-
-```text
-http://localhost:8501
-```
-
-### 3. Choose a mode
-
-Select either:
-
-- **Finance Mode**
-- **E-commerce Mode**
-
-### 4. Upload CSV/TSV data
-
-Upload the company dataset from the first screen. The dashboard analyzes the columns and proposes mappings for customer ID, timestamp, event type, amount, and feature columns.
-
-### 5. Confirm mapping and train
-
-After confirming the mapping, run the training pipeline from the dashboard. The pipeline creates feature stores, churn scores, target candidates, recommendations, explanations, and live-serving artifacts.
-
-### 6. Open existing results
-
-If previous training results exist, you can open the dashboard directly without uploading a new file.
-
-## Budget, Profit, and ROI Logic
-
-The budget optimization view uses the following business logic:
-
-```text
-Expected incremental profit = Customer value × Response potential × Churn risk - Intervention cost
-Expected ROI = Expected incremental profit ÷ Intervention cost
-```
-
-Customers with higher expected incremental profit and ROI are selected first, while respecting the total marketing budget and maximum target-customer constraints.
-
-## Live DB Mode
-
-The platform can serve uploaded business data through PostgreSQL-backed live tables. After training, artifacts can be seeded into live tables and updated when new events arrive.
-
-Core flow:
-
-1. Start Docker services.
-2. Upload a finance or e-commerce CSV/TSV file.
-3. Confirm column mapping and run training.
-4. Seed generated artifacts into PostgreSQL live tables.
-5. Send customer events to the live API.
-6. Confirm score, recommendation, and action-queue changes in the dashboard.
-
-Health check:
-
-```bash
-curl -s "http://localhost:8000/api/v1/user-live/health" | python3 -m json.tool
-```
-
-Seed status:
-
-```bash
-curl -s "http://localhost:8000/api/v1/user-live/seed-status" | python3 -m json.tool
-```
-
-Example event insertion:
-
-```bash
-curl -X POST "http://localhost:8000/api/v1/user-live/events" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "customer_id": 1001,
-    "event_type": "purchase",
-    "event_time": "2026-05-10T03:30:00+09:00",
-    "amount": 35000,
-    "source_event_id": "event-1001-001",
-    "channel": "web",
-    "raw_payload": {"source": "demo"}
-  }' | python3 -m json.tool
-```
-
-Check a customer score:
-
-```bash
-curl -s "http://localhost:8000/api/v1/user-live/scores?customer_id=1001" | python3 -m json.tool
-```
-
-Check action queue:
-
-```bash
-curl -s "http://localhost:8000/api/v1/user-live/actions?customer_id=1001" | python3 -m json.tool
-```
-
-## Validation Checklist
-
-Before a demo or submission, verify:
-
-- Docker services start successfully.
-- Finance and E-commerce mode selection works.
-- Existing trained results can be opened from the first screen.
-- Analysis-control values do not reset when switching language.
-- Table headers and table-cell values are understandable in Korean, English, and Japanese.
-- Chart axes and titles are localized.
-- Duplicate metric columns such as `expected roi 2` are not shown.
-- LLM summaries are generated in the selected language when an API key is provided.
-- Real-time operations view shows live scores and action queues without unnecessary charts.
-
-## Repository Structure
-
-```text
-dashboard/
-  app.py                    # Streamlit app entry point
-  ui_labels.py              # Friendly labels, table-cell translation, chart localization
-  ui_llm_language.py        # LLM output-language instructions
-  ui_budget_formula.py      # Budget/profit/ROI formula UI block
-  services/                 # API, data loading, insight, optimization, LLM clients
-  utils/                    # Formatting helpers
-src/                        # Training and preprocessing pipeline
-data/                       # Raw and feature-store data folders
-results_*/                  # Mode-specific output artifacts
-models_*/                   # Mode-specific model artifacts
-scripts/                    # Validation and live-demo helper scripts
-```
-
-## Notes for Hackathon Demos
-
-For a concise demo, focus on:
-
-1. Uploading or opening existing finance/e-commerce results.
-2. Showing churn-risk customers.
-3. Adjusting budget and churn threshold.
-4. Showing final targets and recommended actions.
-5. Demonstrating live event updates in the real-time operations view.
-
-This keeps the presentation focused on business value instead of exposing unnecessary internal pipeline details.
+| 문서                                                             | 설명                                      |
+| ---------------------------------------------------------------- | ----------------------------------------- |
+| [기술 문서](docs/technical_guide.md)                             | 설치, API, 디렉토리 구조, 검증 체크리스트 |
+| [분석 프로세스와 한계](docs/analysis_process_and_limitations.md) | 분석 흐름 상세 설명 및 알려진 한계점      |
+| [피처 사전](docs/feature_dictionary.md)                          | 생성되는 피처 목록과 의미                 |
+| [리텐션 전략](docs/retention_strategy.md)                        | 리텐션 전략 프레임워크                    |
+| [Counterfactual Lab](docs/counterfactual_retention_lab.md)       | 반사실적 시뮬레이션 실험                  |
+| [발표 자료](docs/presentation.pdf)                               | 프로젝트 최종 발표 슬라이드               |
