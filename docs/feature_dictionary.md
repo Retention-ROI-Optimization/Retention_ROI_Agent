@@ -1,82 +1,134 @@
+
 # Feature Dictionary
 
-아래는 이탈 예측용 피처 엔지니어링에서 사용하는 주요 피처 정의다.
+This document defines the key features used in feature engineering for customer churn prediction in Retention ROI Agent.
+
+The features capture customer recency, purchase behavior, monetary value, engagement patterns, session quality, marketing interactions, behavioral changes, and customer journey characteristics.
+
+## 1. Feature Definitions
 
 | Feature | Category | Definition |
 |---|---|---|
-| customer_age_days | base | 기준일까지의 고객 생존 일수 |
-| days_since_last_event | recency | 마지막 이벤트 이후 경과 일수 |
-| recency_days | RFM | 마지막 구매 이후 경과 일수 |
-| frequency_30d | RFM | 최근 30일 구매 횟수 |
-| frequency_90d | RFM | 최근 90일 구매 횟수 |
-| monetary_30d | RFM | 최근 30일 순매출 합계 |
-| monetary_90d | RFM | 최근 90일 순매출 합계 |
-| avg_order_value_90d | RFM | 최근 90일 평균 주문 금액 |
-| monetary_per_visit_90d | value | 최근 90일 방문 1회당 평균 매출 |
-| visits_14d | behavior | 최근 14일 방문 수 |
-| visits_prev_14d | behavior | 직전 14일 방문 수 |
-| visit_change_rate_14d | behavior_change | 최근 14일 방문 변화율 |
-| purchases_14d | behavior | 최근 14일 구매 수 |
-| purchases_prev_14d | behavior | 직전 14일 구매 수 |
-| purchase_change_rate_14d | behavior_change | 최근 14일 구매 변화율 |
-| searches_30d | behavior | 최근 30일 검색 수 |
-| searches_prev_30d | behavior | 직전 30일 검색 수 |
-| add_to_cart_30d | behavior | 최근 30일 장바구니 추가 수 |
-| add_to_cart_prev_30d | behavior | 직전 30일 장바구니 추가 수 |
-| coupon_open_30d | coupon | 최근 30일 쿠폰 오픈 수 |
-| coupon_open_prev_30d | coupon | 직전 30일 쿠폰 오픈 수 |
-| coupon_open_rate_30d | coupon | 최근 30일 쿠폰 오픈율 |
-| coupon_response_change_rate | behavior_change | 쿠폰 반응률 변화 |
-| avg_purchase_gap_days | cycle | 평균 구매 주기 |
-| median_purchase_gap_days | cycle | 중앙 구매 주기 |
-| current_non_purchase_days | cycle | 현재 미구매 일수 |
-| purchase_cycle_anomaly | cycle | 현재 미구매 일수 / 평균 구매 주기 |
-| avg_session_duration_sec_30d | session_quality | 최근 30일 평균 세션 시간 |
-| avg_session_duration_sec_prev_30d | session_quality | 직전 30일 평균 세션 시간 |
-| session_duration_change_rate | behavior_change | 세션 시간 변화율 |
-| pageviews_per_session_30d | session_quality | 최근 30일 세션당 페이지뷰 |
-| pageviews_per_session_prev_30d | session_quality | 직전 30일 세션당 페이지뷰 |
-| pageviews_change_rate | behavior_change | 세션당 페이지뷰 변화율 |
-| search_to_purchase_conversion_30d | session_quality | 최근 30일 검색 후 구매 전환율 |
-| search_to_purchase_conversion_prev_30d | session_quality | 직전 30일 검색 후 구매 전환율 |
-| search_purchase_conv_change_rate | behavior_change | 검색 후 구매 전환율 변화 |
-| cart_to_purchase_rate_30d | session_quality | 최근 30일 장바구니→구매 전환율 |
-| cart_to_purchase_rate_prev_30d | session_quality | 직전 30일 장바구니→구매 전환율 |
-| cart_conversion_change_rate | behavior_change | 장바구니 전환율 변화 |
-| support_contact_30d | service | 최근 30일 문의 이벤트 수 |
-| support_contact_rate_30d | service | 최근 30일 세션당 문의 비율 |
-| sessions_30d | session | 최근 30일 세션 수 |
-| sessions_prev_30d | session | 직전 30일 세션 수 |
-| active_days_30d | engagement | 최근 30일 활동한 고유 일수 |
-| orders_with_coupon_ratio_90d | coupon | 최근 90일 쿠폰 사용 주문 비율 |
-| coupon_redeem_rate_90d | coupon | 최근 90일 쿠폰 사용 주문 비율 |
-| exposure_count_30d | marketing | 최근 30일 캠페인 노출 수 |
-| coupon_cost_30d | marketing | 최근 30일 쿠폰 비용 |
-| weekend_purchase_ratio | temporal | 주말 구매 비율 |
-| weekday_purchase_ratio | temporal | 평일 구매 비율 |
-| evening_activity_ratio | temporal | 저녁 시간 활동 비율 |
-| night_activity_ratio | temporal | 심야 활동 비율 |
-| workhour_activity_ratio | temporal | 근무시간 활동 비율 |
-| weekend_activity_ratio | temporal | 주말 전체 활동 비율 |
-| event_diversity_90d | temporal | 최근 90일 이벤트 다양성 |
-| recent_event_sequence | sequence | 최근 N개 이벤트 시퀀스 |
-| behavior_cluster_id | sequence | 최근 90일 행동 군집 ID |
-| dominant_event_type_90d | sequence | 최근 90일 최빈 이벤트 |
-| current_journey_stage | journey | 현재 고객 여정 단계 |
-| journey_stage_days | journey | 현재 단계 체류 일수 |
-| inactivity_days | journey | 비활성 일수 |
-| recent_visit_score | snapshot | 최근 방문 점수 |
-| recent_purchase_score | snapshot | 최근 구매 점수 |
-| recent_exposure_score | snapshot | 최근 노출 점수 |
+| customer_age_days | base | Number of days since customer registration up to the reference date |
+| days_since_last_event | recency | Number of days elapsed since the customer's most recent event |
+| recency_days | RFM | Number of days since the customer's most recent purchase |
+| frequency_30d | RFM | Number of purchases in the last 30 days |
+| frequency_90d | RFM | Number of purchases in the last 90 days |
+| monetary_30d | RFM | Total net revenue generated in the last 30 days |
+| monetary_90d | RFM | Total net revenue generated in the last 90 days |
+| avg_order_value_90d | RFM | Average order value over the last 90 days |
+| monetary_per_visit_90d | value | Average revenue per visit over the last 90 days |
+| visits_14d | behavior | Number of visits in the last 14 days |
+| visits_prev_14d | behavior | Number of visits during the preceding 14-day period |
+| visit_change_rate_14d | behavior_change | Rate of change in visits between the current and previous 14-day periods |
+| purchases_14d | behavior | Number of purchases in the last 14 days |
+| purchases_prev_14d | behavior | Number of purchases during the preceding 14-day period |
+| purchase_change_rate_14d | behavior_change | Rate of change in purchases between the current and previous 14-day periods |
+| searches_30d | behavior | Number of search events in the last 30 days |
+| searches_prev_30d | behavior | Number of search events during the preceding 30-day period |
+| add_to_cart_30d | behavior | Number of add-to-cart events in the last 30 days |
+| add_to_cart_prev_30d | behavior | Number of add-to-cart events during the preceding 30-day period |
+| coupon_open_30d | coupon | Number of coupon-open events in the last 30 days |
+| coupon_open_prev_30d | coupon | Number of coupon-open events during the preceding 30-day period |
+| coupon_open_rate_30d | coupon | Coupon open rate over the last 30 days |
+| coupon_response_change_rate | behavior_change | Change in coupon response rate |
+| avg_purchase_gap_days | cycle | Average number of days between consecutive purchases |
+| median_purchase_gap_days | cycle | Median number of days between consecutive purchases |
+| current_non_purchase_days | cycle | Number of days elapsed since the most recent purchase |
+| purchase_cycle_anomaly | cycle | Ratio of current days without a purchase to the average purchase interval |
+| avg_session_duration_sec_30d | session_quality | Average session duration in seconds over the last 30 days |
+| avg_session_duration_sec_prev_30d | session_quality | Average session duration in seconds during the preceding 30-day period |
+| session_duration_change_rate | behavior_change | Rate of change in average session duration |
+| pageviews_per_session_30d | session_quality | Average number of page views per session over the last 30 days |
+| pageviews_per_session_prev_30d | session_quality | Average number of page views per session during the preceding 30-day period |
+| pageviews_change_rate | behavior_change | Rate of change in page views per session |
+| search_to_purchase_conversion_30d | session_quality | Search-to-purchase conversion rate over the last 30 days |
+| search_to_purchase_conversion_prev_30d | session_quality | Search-to-purchase conversion rate during the preceding 30-day period |
+| search_purchase_conv_change_rate | behavior_change | Change in search-to-purchase conversion rate |
+| cart_to_purchase_rate_30d | session_quality | Cart-to-purchase conversion rate over the last 30 days |
+| cart_to_purchase_rate_prev_30d | session_quality | Cart-to-purchase conversion rate during the preceding 30-day period |
+| cart_conversion_change_rate | behavior_change | Change in cart-to-purchase conversion rate |
+| support_contact_30d | service | Number of customer support inquiry events in the last 30 days |
+| support_contact_rate_30d | service | Number of customer support inquiries per session over the last 30 days |
+| sessions_30d | session | Number of sessions in the last 30 days |
+| sessions_prev_30d | session | Number of sessions during the preceding 30-day period |
+| active_days_30d | engagement | Number of unique days with customer activity in the last 30 days |
+| orders_with_coupon_ratio_90d | coupon | Proportion of orders using coupons over the last 90 days |
+| coupon_redeem_rate_90d | coupon | Proportion of orders using coupons over the last 90 days |
+| exposure_count_30d | marketing | Number of marketing campaign exposures in the last 30 days |
+| coupon_cost_30d | marketing | Total coupon cost incurred over the last 30 days |
+| weekend_purchase_ratio | temporal | Proportion of purchases made on weekends |
+| weekday_purchase_ratio | temporal | Proportion of purchases made on weekdays |
+| evening_activity_ratio | temporal | Proportion of customer activities occurring during evening hours |
+| night_activity_ratio | temporal | Proportion of customer activities occurring during late-night hours |
+| workhour_activity_ratio | temporal | Proportion of customer activities occurring during working hours |
+| weekend_activity_ratio | temporal | Proportion of all customer activities occurring on weekends |
+| event_diversity_90d | temporal | Diversity of event types observed over the last 90 days |
+| recent_event_sequence | sequence | Sequence of the customer's most recent N events |
+| behavior_cluster_id | sequence | Identifier of the behavioral cluster assigned based on activity over the last 90 days |
+| dominant_event_type_90d | sequence | Most frequently occurring event type over the last 90 days |
+| current_journey_stage | journey | Customer's current stage in the customer journey |
+| journey_stage_days | journey | Number of days spent in the current customer journey stage |
+| inactivity_days | journey | Number of days without customer activity |
+| recent_visit_score | snapshot | Score representing recent visit activity |
+| recent_purchase_score | snapshot | Score representing recent purchase activity |
+| recent_exposure_score | snapshot | Score representing recent marketing exposure |
 
-## 결측치 및 이상치 처리
+---
 
-- numeric: 중앙값 대체
-- categorical: `unknown` 대체
-- outlier: 1st/99th percentile winsorization
-- infinite 값: `NaN` 처리 후 동일 로직 적용
+## 2. Missing Value and Outlier Handling
 
-## 라벨 정의
+The feature engineering pipeline applies the following preprocessing rules to improve data consistency and model robustness.
 
-- 기준일 이전 가입 고객만 학습 대상으로 사용
-- 기준일 이후 45일 동안 방문 0회 + 구매 0회 + 마지막 미래 상태가 `churn_risk`이면 이탈(1)로 정의
+| Data Type / Condition | Preprocessing Strategy |
+|---|---|
+| Numeric features | Replace missing values with the median |
+| Categorical features | Replace missing values with `unknown` |
+| Outliers | Apply winsorization at the 1st and 99th percentiles |
+| Infinite values | Convert infinite values to `NaN`, then apply the corresponding missing-value handling strategy |
+
+### Preprocessing Details
+
+- **Numeric features:** Missing values are imputed using the median to reduce sensitivity to extreme observations.
+- **Categorical features:** Missing or undefined categories are assigned the placeholder value `unknown`.
+- **Outliers:** Extreme numerical values are capped at the 1st and 99th percentile boundaries through winsorization.
+- **Infinite values:** Positive and negative infinity values are converted to `NaN` before applying the standard imputation procedure.
+
+---
+
+## 3. Churn Label Definition
+
+The churn prediction model uses a forward-looking labeling strategy based on customer activity and future customer status.
+
+### Training Population
+
+Only customers who registered before the reference date are included in the training population.
+
+### Churn Labeling Criteria
+
+A customer is labeled as churned (`churn = 1`) if **all** of the following conditions are satisfied:
+
+1. The customer has zero visits during the 45-day observation window following the reference date.
+2. The customer has zero purchases during the same 45-day observation window.
+3. The customer's final recorded future status is `churn_risk`.
+
+### Labeling Rule
+
+```text id="4r5n2m"
+IF
+    customer_registration_date < reference_date
+AND
+    visits_during_next_45_days == 0
+AND
+    purchases_during_next_45_days == 0
+AND
+    final_future_status == "churn_risk"
+THEN
+    churn_label = 1
+ELSE
+    churn_label = 0
+```
+
+This definition identifies customers who exhibit prolonged inactivity during the observation window and whose final future status indicates churn risk.
+
+The resulting labels are used as the target variable for supervised churn prediction.
