@@ -1,121 +1,207 @@
-# 현재 분석 과정
 
-## 1. 시스템 아키텍처
+# Current Analysis Process
 
-### 전체 구조
+## 1. System Architecture
 
+### Overall Architecture
+
+```text
+CSV Upload → Pipeline Training → Save Results → Dashboard Display
+                                     │
+                                     ▼ (seed)
+                               PostgreSQL → Real-Time Operations Monitor
+                                     ▲
+                                     │ (events)
+                               FastAPI Server ← External Systems
 ```
-CSV 업로드 → 파이프라인 학습 → 결과 저장 → 대시보드 표시
-                                    │
-                                    ▼ (seed)
-                              PostgreSQL → 실시간 운영 모니터
-                                    ▲
-                                    │ (이벤트)
-                              FastAPI 서버 ← 외부 시스템
-```
 
-### 구성 요소
+### Components
 
-| 구성 요소      | 역할                                             |
-| -------------- | ------------------------------------------------ |
-| **Streamlit**  | 사람이 보는 대시보드 화면                        |
-| **FastAPI**    | 외부 시스템과 데이터를 주고받는 API 서버         |
-| **PostgreSQL** | 고객 데이터, 점수, 액션 큐 영구 저장             |
-| **Redis**      | 쿼리 결과 캐시 (TTL 20초)                        |
-| **ML 모델**    | 이탈 예측(LightGBM), 생존 분석(Cox), CLV, Uplift |
+| Component | Role |
+|-----------|------|
+| **Streamlit** | User-facing dashboard interface |
+| **FastAPI** | API server for exchanging data with external systems |
+| **PostgreSQL** | Persistent storage for customer data, prediction scores, and action queues |
+| **Redis** | Query result caching (20-second TTL) |
+| **ML Models** | Churn prediction (LightGBM), survival analysis (Cox), CLV, and uplift modeling |
 
-### PostgreSQL 연동 방식
+### PostgreSQL Integration
 
-- Docker Compose로 PostgreSQL 컨테이너 자동 생성 (개발/데모용 로컬 환경)
-- `src/api/services/user_live_*.py` 파일들이 PostgreSQL의 `retention_db`를 읽고 쓰는 코드
-- 테이블은 코드에서 자동 생성 (`CREATE TABLE IF NOT EXISTS`), Alembic 등 마이그레이션 도구 미사용
-- 실제 배포 시에는 자사 시스템이 FastAPI 엔드포인트에 이벤트를 전송하면 자동으로 DB 저장 → ML 재채점 → 액션 큐 갱신이 이루어짐
+- A PostgreSQL container is automatically created using Docker Compose (for local development and demonstration).
+- The `src/api/services/user_live_*.py` files contain the code responsible for reading from and writing to the PostgreSQL database `retention_db`.
+- Database tables are automatically created in the application code using `CREATE TABLE IF NOT EXISTS`. Database migration tools such as Alembic are not used.
+- In production, external systems send events to FastAPI endpoints, automatically triggering database updates, ML rescoring, and action queue updates.
 
 ---
 
-## 2. 이탈 확률 예측
+## 2. Churn Probability Prediction
 
-1. **이탈 라벨 정의**: 마지막 활동일로부터 30일 이상 비활동 시 이탈(churn=1)로 판정
-   - 사용자가 대시보드에서 이탈 기준 일수를 조절 가능
-   - 기업이 `churn_flag` 컬럼을 직접 제공하지 않아도 시스템이 자동으로 추론
+### 2.1 Churn Label Definition
 
-2. **모델 학습**: LightGBM 분류 모델, 88개 피처 사용
-   - 행동 카운터: `visit_7d`, `purchase_30d`, `sessions_30d` 등
-   - 시간 기반: `recency_days`, `days_since_last_event`, `inactivity_days`, `current_non_purchase_days`
-   - 구매 패턴: `avg_purchase_gap_days`, `cart_to_purchase_rate_30d` 등
-   - 세션/시간대: `evening_activity_ratio`, `weekend_purchase_ratio` 등
+- A customer is classified as churned (`churn=1`) after **30 or more days of inactivity** since their last activity.
+- Users can adjust the inactivity threshold directly from the dashboard.
+- Even if a company does not provide a `churn_flag` column, the system can automatically infer churn labels.
 
-3. **실시간 재채점**: 이벤트 수신 시 `score_changed_customers()` 함수가 모델로 재예측
+### 2.2 Model Training
 
----
+A LightGBM classification model is trained using **88 features**.
 
-## 3. 이탈 시점 예측 (Survival Analysis)
+Feature categories include:
 
-1. **데이터 준비**
-   - `landmark_date` = 데이터 마지막 활동일 - 90일 (horizon)
-   - landmark 이전 = 피처 (고객 행동 패턴)
-   - landmark 이후 = 정답 (실제로 며칠 뒤 이탈했는가)
+- **Behavioral counters:** `visit_7d`, `purchase_30d`, `sessions_30d`, etc.
+- **Time-based features:** `recency_days`, `days_since_last_event`, `inactivity_days`, `current_non_purchase_days`
+- **Purchase patterns:** `avg_purchase_gap_days`, `cart_to_purchase_rate_30d`, etc.
+- **Session and time-of-day patterns:** `evening_activity_ratio`, `weekend_purchase_ratio`, etc.
 
-2. **Cox 비례위험 모델 학습** (lifelines 라이브러리)
-   - 입력: 고객별 피처 (방문빈도, 구매주기, 비활동일수 등)
-   - 학습: "이 피처 조합을 가진 고객은 며칠 뒤 이탈하는 경향이 있다"
-   - 출력: 각 피처의 위험 계수(hazard ratio)
+### 2.3 Real-Time Rescoring
 
-3. **개인별 생존 곡선 → 중앙값 추출**
-   - 모델이 고객별로 1~90일 생존 곡선을 생성
-   - 생존확률이 50% 아래로 떨어지는 시점 = `predicted_median_time_to_churn_days`
-   - 예: 고객 1894의 생존곡선이 8일째에 50% 미만 → "8일 내 이탈 예상"
-
-4. **대시보드 표시**
-   - `예상 이탈 날짜 = landmark_date + predicted_days`
-
-### horizon_days (90일 관찰 기간) 설정
-
-- 기본값 90일, 파라미터로 변경 가능 (`run_survival_pipeline(..., horizon_days=60)`)
-- 이탈 기준(30일)과는 별개로, 모델이 정답을 확인할 수 있는 미래 관찰 기간
-- 90일 관찰에 필요한 데이터 기간:
-
-| 업종                 | 방문 주기 | 권장 데이터 기간 |
-| -------------------- | --------- | ---------------- |
-| 이커머스 (패션/식품) | 주 1~2회  | 6개월 ~ 1년      |
-| 구독 서비스 (SaaS)   | 매일      | 3 ~ 6개월        |
-| 금융/보험            | 월 1~2회  | 1 ~ 2년          |
-| 자동차/가전          | 분기 1회  | 2 ~ 3년          |
-
-- 핵심 기준: 모델 피처 중 가장 긴 윈도우(90일 집계)를 계산할 수 있을 만큼의 사전 데이터 + 90일 관찰 기간 = **최소 6개월**
-
-| 업로드 데이터 기간 | horizon 자동 조정           | 예측 범위                                 |
-| ------------------ | --------------------------- | ----------------------------------------- |
-| 1년 이상           | 90일 (기본값)               | 최대 90일 후까지 예측 가능                |
-| 6개월 ~ 1년        | 90일                        | 양호                                      |
-| 90일 ~ 6개월       | 데이터 기간의 절반으로 축소 | 단기~중기 예측                            |
-| 60일 ~ 90일        | 30일로 축소                 | 단기 예측만 가능                          |
-| 60일 미만          | **생존분석 불가**           | 이탈 확률만 제공, 이탈 시점 예측 비활성화 |
+- When a new event is received, the `score_changed_customers()` function performs a new prediction using the trained ML model.
+- Updated churn probability scores are reflected in the operational data.
 
 ---
 
-## 4. 실제 배포를 위한 데이터 흐름
+## 3. Churn Timing Prediction (Survival Analysis)
 
-### 현재 (개발/데모)
+### 3.1 Data Preparation
 
+- `landmark_date` = Last activity date in the dataset − 90 days (prediction horizon).
+- **Before the landmark date:** Customer behavioral data is used to generate features.
+- **After the landmark date:** Observed outcomes are used to determine how many days elapsed before churn occurred.
+
+### 3.2 Cox Proportional Hazards Model Training
+
+The system uses the Cox proportional hazards model implemented in the `lifelines` library.
+
+- **Input:** Customer-level features, including visit frequency, purchase intervals, inactivity duration, and other behavioral indicators.
+- **Training objective:** Learn how different feature combinations are associated with the timing and risk of customer churn.
+- **Output:** Estimated hazard coefficients and corresponding hazard ratios for each feature.
+
+### 3.3 Individual Survival Curves and Median Survival Time
+
+- The model generates an individual survival curve for each customer over a 1–90-day prediction horizon.
+- The point at which the survival probability falls to or below 50% is used as the predicted median time to churn.
+- This value is stored as `predicted_median_time_to_churn_days`.
+
+**Example:**
+
+If customer 1894's estimated survival probability falls below 50% on day 8, the system reports:
+
+> "Customer 1894 is predicted to reach the median churn time in 8 days."
+
+### 3.4 Dashboard Display
+
+The expected churn date is calculated as:
+
+```text
+Expected Churn Date = landmark_date + predicted_days
 ```
-CSV 업로드 → 파이프라인 → 결과 파일 → seed → PostgreSQL → 대시보드
-(수동)       (1회성)                                      (파일 기반 + DB 일부)
+
+### 3.5 Configuring `horizon_days` (90-Day Observation Period)
+
+- The default value is **90 days**.
+- The parameter can be customized:
+
+```python
+run_survival_pipeline(..., horizon_days=60)
 ```
 
-### 배포 시 필요한 구조
+- The prediction horizon is separate from the churn inactivity threshold (30 days).
+- It defines the future observation period within which the model can evaluate the actual churn outcome.
 
-```
-자사 시스템 → POST /api/v1/user-live/events → FastAPI
-             {"customer_id": 123,              → DB 저장
-              "event_type": "purchase",         → 피처 업데이트
-              "amount": 89000}                  → ML 재채점
-                                                → 액션 큐 갱신
-                                                → 대시보드 반영
+### 3.6 Recommended Historical Data Requirements
+
+| Industry | Typical Customer Activity Frequency | Recommended Data History |
+|----------|-------------------------------------|--------------------------|
+| E-commerce (Fashion/Food) | 1–2 visits per week | 6 months – 1 year |
+| Subscription Services (SaaS) | Daily | 3–6 months |
+| Finance/Insurance | 1–2 interactions per month | 1–2 years |
+| Automotive/Home Appliances | Once per quarter | 2–3 years |
+
+**Key requirement:**
+
+The historical dataset must contain enough information to calculate the longest feature aggregation window (90 days), plus an additional 90-day observation period.
+
+Therefore, the recommended minimum historical data duration is **approximately 6 months**.
+
+### 3.7 Automatic Prediction Horizon Adjustment
+
+| Uploaded Data Duration | Automatic Horizon Adjustment | Prediction Capability |
+|------------------------|------------------------------|-----------------------|
+| 1 year or more | 90 days (default) | Predictions up to 90 days ahead |
+| 6 months – 1 year | 90 days | Good prediction coverage |
+| 90 days – 6 months | Reduced to half of the available data duration | Short- to medium-term predictions |
+| 60–90 days | Reduced to 30 days | Short-term predictions only |
+| Less than 60 days | **Survival analysis unavailable** | Churn probability only; churn timing prediction disabled |
+
+---
+
+## 4. Data Flow for Production Deployment
+
+### 4.1 Current Architecture (Development/Demo)
+
+```text
+CSV Upload → Pipeline → Result Files → Seed → PostgreSQL → Dashboard
+  (Manual)   (One-Time)                                  (File-Based + Partial DB Integration)
 ```
 
-| 방식               | 실시간성  | 적합한 경우        |
-| ------------------ | --------- | ------------------ |
-| CSV 업로드         | 수동      | PoC / 데모         |
-| 이벤트 API 연동    | 즉시 반영 | 운영 서비스 (권장) |
-| DB 직접 연결 (ETL) | 주기적    | 레거시 시스템      |
+**Current characteristics:**
+
+- Customer data is manually uploaded through CSV files.
+- The ML pipeline is executed as a one-time batch process.
+- Prediction results are saved to output files.
+- The results are seeded into PostgreSQL.
+- The dashboard displays information using a combination of file-based results and database records.
+
+### 4.2 Required Architecture for Production Deployment
+
+```text
+Company System
+      │
+      ▼
+POST /api/v1/user-live/events
+      │
+      ▼
+FastAPI Server
+      │
+      ├── Store Event in PostgreSQL
+      │
+      ├── Update Customer Features
+      │
+      ├── Perform ML Rescoring
+      │
+      ├── Update Action Queue
+      │
+      └── Refresh Dashboard Data
+```
+
+**Example API request:**
+
+```http
+POST /api/v1/user-live/events
+Content-Type: application/json
+```
+
+```json
+{
+  "customer_id": 123,
+  "event_type": "purchase",
+  "amount": 89000
+}
+```
+
+**Processing workflow:**
+
+1. An external system sends a customer event to the FastAPI endpoint.
+2. The event is stored in PostgreSQL.
+3. Relevant customer behavioral features are updated.
+4. The trained ML model recalculates the customer's churn probability.
+5. The action queue is updated based on the new prediction.
+6. The dashboard reflects the updated operational data.
+
+### 4.3 Data Integration Methods
+
+| Integration Method | Real-Time Capability | Suitable Use Cases |
+|--------------------|----------------------|--------------------|
+| CSV Upload | Manual | Proof of Concept (PoC) / Demo |
+| Event API Integration | Immediate updates | Production systems (recommended) |
+| Direct Database Connection (ETL) | Periodic updates | Legacy systems |
