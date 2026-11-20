@@ -1,42 +1,68 @@
+
 # Counterfactual Retention Lab
 
-## 목적
+## Overview
 
-기존 리텐션 화면은 고객의 이탈 위험도, 추천 액션, 예산 타겟을 보여준다. `Counterfactual Retention Lab`은 여기서 한 단계 더 나아가 같은 고객에 대해 다음 시나리오의 기대 순이익을 비교한다.
+The existing retention dashboard provides insights into customer churn risk, recommended retention actions, and budget allocation targets.
 
-- 아무것도 하지 않음
-- 5,000원 쿠폰 제공
-- 상담 전화
-- 푸시/이메일
-- 7일 대기
+The **Counterfactual Retention Lab** extends these capabilities by comparing the expected net profit of different intervention scenarios for the same customer.
 
-이 뷰의 목표는 “무엇을 추천할지”뿐 아니라 “왜 그 액션이 무개입이나 다른 액션보다 경제적으로 나은지”를 설명하는 것이다.
+The scenarios include:
 
-## 계산 로직
+- No intervention
+- Offer a KRW 5,000 coupon
+- Customer support call
+- Push notification or email
+- Wait for 7 days
 
-핵심 계산은 `src/optimization/counterfactual.py`에 있다.
+The goal of this view is not only to recommend the most appropriate action but also to explain **why a particular action is economically preferable to taking no action or choosing an alternative intervention**.
 
-기본 아이디어는 다음과 같다.
+## Calculation Logic
+
+The core calculation engine is implemented in `src/optimization/counterfactual.py`.
+
+The fundamental calculations are as follows:
 
 ```text
-무개입 예상 순이익 = CLV × (1 - 현재 이탈 확률)
-액션 예상 순이익 = CLV × (1 - 액션 후 이탈 확률) - 액션 비용
-무개입 대비 개선액 = 액션 예상 순이익 - 무개입 예상 순이익
+Expected Net Profit (No Intervention)
+    = CLV × (1 - Current Churn Probability)
+
+Expected Net Profit (With Intervention)
+    = CLV × (1 - Post-Intervention Churn Probability)
+      - Intervention Cost
+
+Incremental Net Profit
+    = Expected Net Profit (With Intervention)
+      - Expected Net Profit (No Intervention)
 ```
 
-액션 후 이탈 확률은 기존 `churn_probability`, `uplift_score`, `CLV`, `survival/timing`, `coupon_affinity`, `price_sensitivity`, `discount_pressure_score` 등을 활용해 추정한다. Survival 산출물이 있으면 예상 이탈 시점과 긴급도 가중치가 반영된다. 없으면 안전한 기본값으로 계산한다.
+The post-intervention churn probability is estimated using existing customer features and model outputs, including:
 
-## 주의사항
+- `churn_probability`
+- `uplift_score`
+- `CLV`
+- `survival/timing`
+- `coupon_affinity`
+- `price_sensitivity`
+- `discount_pressure_score`
 
-이 값은 실제 집행 결과가 아니라 예측 기반 반사실 추정치다. 따라서 운영 의사결정에서는 다음 절차가 필요하다.
+When survival analysis artifacts are available, the estimation incorporates the predicted time to churn and urgency-based weighting.
 
-1. 신뢰도 낮음/중간 고객은 A/B 테스트 또는 holdout에 포함한다.
-2. 실제 발송/상담/쿠폰 사용 로그를 남긴다.
-3. treatment와 control의 실제 매출·유지율 차이를 비교해 증분 ROI를 계산한다.
-4. 검증 결과를 uplift 및 action policy에 다시 반영한다.
+If survival artifacts are unavailable, the system falls back to conservative default values to ensure that calculations remain operational.
 
-## 추가된 파일
+## Important Considerations
 
-- `src/optimization/counterfactual.py`: 반사실 손익 계산 엔진
-- `dashboard/services/counterfactual_service.py`: 대시보드용 서비스 wrapper
-- `dashboard/app.py`: 신규 뷰 `고객별 대응 전략 비교` 추가
+These values are **model-based counterfactual estimates**, not actual outcomes observed after executing retention actions.
+
+Therefore, reliable operational decision-making requires an additional validation process:
+
+1. Include customers with low or medium prediction confidence in A/B tests or holdout groups.
+2. Record actual intervention logs, including notifications sent, support calls, and coupon redemptions.
+3. Compare realized revenue and retention rates between treatment and control groups to calculate incremental ROI.
+4. Incorporate validation results into the uplift models and action selection policies to continuously improve recommendation accuracy.
+
+## Added Files
+
+- `src/optimization/counterfactual.py`: Counterfactual profit estimation engine
+- `dashboard/services/counterfactual_service.py`: Service wrapper for dashboard integration
+- `dashboard/app.py`: New dashboard view, **"Customer-Level Retention Strategy Comparison"**
