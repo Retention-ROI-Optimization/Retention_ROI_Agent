@@ -1,281 +1,405 @@
+
 # Dashboard Decision Loop
 
-이 문서는 Retention ROI Agent의 대시보드가 어떤 화면 흐름으로 사용자의 의사결정을 돕는지 설명한다. 대시보드는 단순히 차트를 나열하지 않고, **업로드 → 분석 → 예산 배분 → 액션 비교 → 추천 → 실시간 큐**로 이어지는 운영 루프를 만든다.
+This document explains how the Retention ROI Agent dashboard supports user decision-making through a structured workflow. Rather than simply displaying charts, the dashboard establishes an operational loop:
+
+**Data Upload → Analysis → Budget Allocation → Action Comparison → Recommendations → Real-Time Action Queue**
 
 ---
 
-## 1. 온보딩 Wizard
+## 1. Onboarding Wizard
 
-### 1-1. 산업 모드 선택
+### 1.1. Industry Mode Selection
 
-대시보드는 처음에 금융 모드와 이커머스 모드를 선택하게 한다.
+The dashboard initially prompts users to select either Financial Mode or E-commerce Mode.
 
-| 모드 | 해석하는 데이터 | 예시 의사결정 |
+| Mode | Data Interpretation | Example Decisions |
 | --- | --- | --- |
-| 금융 모드 | 예금, 대출, 카드, 거래, 잔고, 연체, 상담 이력 | 해지/휴면 위험 고객에게 상담·혜택·상품 안내를 어떤 우선순위로 할지 결정 |
-| 이커머스 모드 | 방문, 검색, 장바구니, 구매, 쿠폰, 카테고리 선호 | 재방문/재구매 가능성이 있는 고객에게 쿠폰·추천·푸시를 어떻게 집행할지 결정 |
+| Financial Mode | Deposits, loans, credit cards, transactions, account balances, delinquencies, and customer support history | Determine the priority of consultations, incentives, and product recommendations for customers at risk of account closure or inactivity |
+| E-commerce Mode | Visits, searches, shopping carts, purchases, coupons, and category preferences | Determine how to deploy coupons, personalized recommendations, and push notifications to encourage repeat visits and purchases |
 
-도메인 모드에 따라 컬럼 라벨, 이벤트 의미, 추천 카테고리, 화면 설명 문구가 다르게 표현된다.
+Column labels, event semantics, recommendation categories, and dashboard descriptions are adapted to the selected industry mode.
 
-### 1-2. CSV/TSV 업로드
+### 1.2. CSV/TSV Upload
 
-업로드 데이터는 고객 스냅샷, 거래 테이블, 이벤트 로그에 가까운 형태를 모두 허용한다. 이벤트 시각과 event_type이 충분하면 행동 시계열 분석과 survival 분석, live replay가 더 풍부해진다.
+The dashboard accepts datasets structured as customer snapshots, transaction tables, or event logs.
 
-### 1-3. 컬럼 역할 자동 감지
+When sufficient event timestamps and `event_type` information are available, the system can perform more comprehensive behavioral time-series analysis, survival analysis, and live event replay.
 
-업로드 컬럼을 내부 분석 스키마의 역할로 매핑한다.
+### 1.3. Automatic Column Role Detection
 
-- customer_id
-- timestamp
-- event_type
-- amount
-- category
-- churn_flag
-- persona
-- quantity
-- region
+Uploaded columns are automatically mapped to roles within the internal analytics schema.
 
-자동 감지 결과는 사용자가 table editor에서 수정할 수 있다. 즉, 완전 자동만 고집하지 않고 **자동 제안 + 사람이 검토 가능한 구조**다.
+Supported roles include:
 
-### 1-4. 이벤트 값 표준화
+- `customer_id`
+- `timestamp`
+- `event_type`
+- `amount`
+- `category`
+- `churn_flag`
+- `persona`
+- `quantity`
+- `region`
 
-원본 이벤트 값이 `view`, `visit`, `product_click`, `transaction`, `purchase`, `loan_repay`처럼 제각각이어도 내부 표준 이벤트 타입으로 매핑한다. 이후 모델링, 추천, 실시간 이벤트 API가 같은 의미 체계를 사용한다.
+Users can review and modify the automatically detected mappings through an interactive table editor.
 
-### 1-5. 이탈 기준 설정과 학습
+Rather than relying exclusively on full automation, the system follows a **human-in-the-loop approach that combines automatic suggestions with manual verification**.
 
-사용자가 “N일 이상 비활성” 기준을 조절해 이탈 라벨을 정의한다. 이 기준은 churn model, survival analysis, churn timing prediction의 기준으로 사용된다.
+### 1.4. Event Value Standardization
+
+Raw event values may vary across datasets, including:
+
+- `view`
+- `visit`
+- `product_click`
+- `transaction`
+- `purchase`
+- `loan_repay`
+
+These values are mapped to standardized internal event types.
+
+This standardization ensures that downstream modeling, recommendation generation, and real-time event APIs operate using a consistent event taxonomy.
+
+### 1.5. Churn Definition and Model Training
+
+Users can define churn by adjusting the inactivity threshold, expressed as the number of consecutive days without customer activity.
+
+This definition is used to establish churn labels and serves as the basis for:
+
+- Churn prediction models
+- Survival analysis
+- Churn timing prediction
 
 ---
 
-## 2. 핵심 분석 화면 7개
+## 2. Seven Core Dashboard Views
 
-대시보드의 핵심 화면은 다음 7개다.
+The dashboard consists of seven primary analytical and operational views.
 
 ```text
-① 이탈 현황
-② 이탈 시점 예측
-③ 예산 배분·타겟 고객
-④ 고객별 대응 전략 비교
-⑤ 개인화 추천
-⑥ 실시간 운영 모니터
-⑦ 주간 액션 성과 리뷰
+1. Churn Overview
+2. Churn Timing Prediction
+3. Budget Allocation & Target Customers
+4. Customer-Level Retention Strategy Comparison
+5. Personalized Recommendations
+6. Real-Time Operations Monitor
+7. Weekly Action Performance Review
 ```
 
----
-
-## 3. ① 이탈 현황
-
-### 목적
-
-운영자가 가장 먼저 “전체 고객군에서 문제가 얼마나 큰지”를 파악하는 화면이다.
-
-### 보여주는 정보
-
-- 전체 고객 수
-- 이탈 위험 고객 수
-- 위험 고객 비율
-- 평균 이탈 확률
-- 위험 고객 테이블
-- 코호트 리텐션 분석
-- Uplift/CLV 세그먼트 개요
-
-### 의사결정 연결
-
-이 화면은 최종 의사결정보다 진단에 가깝다. 이후 예산 화면과 추천 화면에서 어떤 threshold를 적용할지, 어떤 세그먼트를 중점적으로 볼지의 출발점이 된다.
+Together, these views support a continuous decision-making workflow, from identifying at-risk customers to evaluating intervention outcomes.
 
 ---
 
-## 4. ② 이탈 시점 예측
+## 3. View 1: Churn Overview
 
-### 목적
+### Objective
 
-고객이 위험하다는 사실뿐 아니라 **언제 개입해야 하는지**를 알려준다.
+This view helps operators assess the overall scale of customer churn risk across the customer base.
 
-### 주요 출력
+### Key Information
 
-- 예상 이탈 시점
-- 예상 이탈 날짜
-- 30일 내 이탈 가능성
-- 30일 내 예상 손실액
-- 위험군별 survival probability
-- 운영 우선순위가 높은 고객 목록
+- Total number of customers
+- Number of at-risk customers
+- Proportion of at-risk customers
+- Average churn probability
+- At-risk customer table
+- Cohort retention analysis
+- Overview of uplift and CLV segments
 
-### 의사결정 연결
+### Decision-Making Role
 
-예산이 충분하지 않을 때는 CLV와 ROI만큼이나 타이밍이 중요하다. 예를 들어 CLV가 높은 고객이라도 예상 이탈 시점이 60일 이후라면, 7일 내 이탈 가능 고객보다 우선순위가 낮을 수 있다.
+This view primarily serves a diagnostic purpose rather than directly determining retention actions.
 
----
-
-## 5. ③ 예산 배분·타겟 고객
-
-### 목적
-
-이 플랫폼의 핵심 화면이다. 운영자가 입력한 예산, 이탈 임계값, 최대 타겟 고객 수에 맞춰 리텐션 대상자를 재선정한다.
-
-### 주요 출력
-
-- 총 예산
-- 집행 예산
-- 잔여 예산
-- 최종 타겟 고객 수
-- 기대 순이익
-- 전체 ROI
-- 세그먼트별 예산 배분
-- 개입 강도별 고객 수
-- 예산 민감도 표
-- 포화 예산 구간
-- 저효율 예산 구간
-
-### 의사결정 연결
-
-운영자는 이 화면에서 다음 질문에 답할 수 있다.
-
-- 예산을 늘리면 기대 순이익이 실제로 늘어나는가?
-- 현재 예산은 너무 작거나 너무 큰가?
-- marginal ROI가 급격히 떨어지는 지점은 어디인가?
-- 어떤 세그먼트와 개입 강도에 예산이 집중되는가?
-- target cap을 줄였을 때 더 고효율 고객만 남는가?
+It provides the foundation for selecting appropriate churn thresholds and identifying priority customer segments in subsequent budget allocation and recommendation views.
 
 ---
 
-## 6. ④ 고객별 대응 전략 비교
+## 4. View 2: Churn Timing Prediction
 
-### 목적
+### Objective
 
-추천 액션을 단일 결과로만 보여주지 않고, 여러 시나리오를 같은 고객 기준으로 비교한다.
+This view identifies not only **which customers are at risk of churning, but also when interventions should be initiated**.
 
-### 비교하는 시나리오
+### Key Outputs
 
-- 무개입
-- 5,000원 혜택
-- 상담 전화
-- 푸시/이메일
-- 7일 대기
+- Predicted time to churn
+- Estimated churn date
+- Probability of churn within 30 days
+- Expected financial loss within 30 days
+- Survival probabilities by risk group
+- List of customers with high operational priority
 
-### 주요 출력
+### Decision-Making Role
 
-- 액션별 예상 순이익
-- 무개입 대비 개선액
-- 액션 비용
-- 액션 후 추정 이탈 확률
-- 추천 사유
-- 신뢰도 라벨
+When the retention budget is limited, intervention timing can be as important as CLV and expected ROI.
 
-### 의사결정 연결
+For example, a customer with high CLV but an estimated churn date more than 60 days away may receive lower immediate priority than a customer expected to churn within the next seven days.
 
-“왜 이 고객에게 쿠폰이 아니라 상담인가?” 또는 “왜 지금은 기다리는 것이 나은가?”를 설명할 수 있다. 이 기능은 모델 결과를 사람이 납득 가능한 비즈니스 설명으로 바꾼다.
+This enables operators to prioritize interventions based on both **economic value and temporal urgency**.
 
 ---
 
-## 7. ⑤ 개인화 추천
+## 5. View 3: Budget Allocation & Target Customers
 
-### 목적
+### Objective
 
-최종 리텐션 타겟 고객에게 구체적인 추천 카테고리 또는 다음 액션을 제공한다.
+This is one of the platform's core decision-making views.
 
-### 중요한 설계 포인트
+The system dynamically selects retention targets based on the operator-defined budget, churn threshold, and maximum number of target customers.
 
-이 화면은 저장된 과거 추천 후보를 그대로 보여주지 않는다. 현재 예산, 이탈 임계값, 최대 타겟 조건으로 선별된 고객에게만 추천을 새로 생성한다.
+### Key Outputs
 
-### 추천 신호
+- Total marketing budget
+- Allocated budget
+- Remaining budget
+- Final number of targeted customers
+- Expected net profit
+- Overall ROI
+- Budget allocation by customer segment
+- Customer counts by intervention intensity
+- Budget sensitivity analysis table
+- Budget saturation range
+- Low-efficiency budget range
 
-- 고객 본인의 과거 구매/거래 이력
-- 최근 관심 또는 탐색 신호
-- 같은 persona/uplift segment의 선호
-- 전체 고객의 인기 신호
-- 현재 타겟 priority와 expected ROI
+### Decision-Making Role
 
-### 의사결정 연결
+This view enables operators to answer critical resource allocation questions:
 
-운영자는 “누구에게 연락할지”뿐 아니라 “어떤 카테고리/상품/혜택을 제안할지”까지 이어서 볼 수 있다.
+- Does increasing the budget actually improve expected net profit?
+- Is the current retention budget too small or excessively large?
+- At what point does marginal ROI decline significantly?
+- Which customer segments and intervention intensity levels receive the largest budget allocations?
+- Does reducing the target customer cap retain only the most economically efficient customers?
+
+By exposing these relationships, the dashboard supports **ROI-driven budget allocation rather than indiscriminate retention spending**.
 
 ---
 
-## 8. ⑥ 실시간 운영 모니터
+## 6. View 4: Customer-Level Retention Strategy Comparison
 
-### 목적
+### Objective
 
-배치 분석 결과가 운영 DB와 연결될 수 있음을 보여주는 화면이다.
+Instead of presenting a single recommended action, this view compares multiple intervention scenarios for the same customer.
 
-### 주요 기능
+### Intervention Scenarios
 
-- PostgreSQL Live DB 상태 표시
-- 이벤트 수 표시
-- 전체 고객 수 표시
-- queued action 수 표시
-- 최신 점수 갱신 시각 표시
-- Live Action Queue 테이블 표시
-- 자동 데모 스트림 시작/중지/초기화
-- 신규 고객 이벤트와 기존 고객 이벤트 비율 설정
+- No intervention
+- KRW 5,000 incentive
+- Customer support call
+- Push notification or email
+- Wait for 7 days
 
-### 이벤트 처리 흐름
+### Key Outputs
+
+- Expected net profit for each action
+- Incremental net profit compared with no intervention
+- Intervention cost
+- Estimated post-intervention churn probability
+- Explanation of the recommended action
+- Prediction confidence label
+
+### Decision-Making Role
+
+This view helps answer questions such as:
+
+- Why should this customer receive a support call instead of a coupon?
+- Why is waiting preferable to intervening immediately?
+- How much incremental value is each intervention expected to generate?
+- Is the expected benefit sufficient to justify the intervention cost?
+
+By comparing alternative outcomes, this feature transforms model predictions into **interpretable, economically grounded business decisions**.
+
+---
+
+## 7. View 5: Personalized Recommendations
+
+### Objective
+
+This view provides specific recommendation categories or next-best actions for customers selected as final retention targets.
+
+### Key Design Principle
+
+The view does not simply display previously stored recommendation candidates.
+
+Instead, recommendations are regenerated for customers selected under the current budget, churn threshold, and maximum target constraints.
+
+This ensures that the recommendations remain consistent with the latest operational settings.
+
+### Recommendation Signals
+
+- Individual purchase and transaction history
+- Recent interests and browsing behavior
+- Preferences of customers within the same persona or uplift segment
+- Global popularity signals across the customer base
+- Current targeting priority and expected ROI
+
+### Decision-Making Role
+
+Operators can determine not only **which customers should be contacted**, but also **which product categories, products, or incentives should be offered**.
+
+This connects customer targeting with actionable, personalized retention strategies.
+
+---
+
+## 8. View 6: Real-Time Operations Monitor
+
+### Objective
+
+This view demonstrates how batch analytics results can be integrated with an operational database and continuously updated as new customer events arrive.
+
+### Key Features
+
+- PostgreSQL Live DB connection status
+- Total event count
+- Total customer count
+- Number of queued actions
+- Timestamp of the latest score update
+- Live Action Queue table
+- Controls to start, stop, and reset the automated demo event stream
+- Configurable ratio of new-customer events to existing-customer events
+
+### Event Processing Workflow
 
 ```text
-신규 이벤트 수신
-  → feature_state 업데이트
-  → churn/CLV/uplift 재채점
-  → expected ROI 재계산
-  → 조건 충족 시 action_queue 적재
-  → 대시보드 갱신
+New Customer Event Received
+    ↓
+Update Customer Feature State
+    ↓
+Recalculate Churn / CLV / Uplift Scores
+    ↓
+Recalculate Expected ROI
+    ↓
+Enqueue Action if Eligibility Conditions Are Met
+    ↓
+Refresh Dashboard
 ```
 
-### 의사결정 연결
+### Decision-Making Role
 
-운영자는 정적인 CSV 분석이 아니라, 새 고객 행동이 들어왔을 때 어떤 고객의 위험도가 바뀌고 어떤 액션이 큐에 올라가는지 확인할 수 있다.
+Rather than relying solely on static CSV analysis, operators can observe how incoming customer behavior affects:
 
----
+- Customer churn risk
+- Predicted customer value
+- Retention intervention priorities
+- Expected ROI
+- Action queue composition
 
-## 9. ⑦ 주간 액션 성과 리뷰
-
-### 목적
-
-리텐션 액션이 실행된 뒤 성과 리뷰로 이어질 수 있도록 설계된 화면이다.
-
-### 의미
-
-이 프로젝트의 expected ROI와 counterfactual 결과는 예측 기반이다. 실제 운영에서는 주간 단위로 다음을 점검해야 한다.
-
-- 액션 큐에 올라간 고객 중 실제 실행된 비율
-- 개입 후 재방문/재구매/상담 완료/혜택 수락 변화
-- 세그먼트별 성과 차이
-- 고강도 개입의 과투입 여부
-- 다음 주 예산 조정 필요성
-
-이 화면은 “예측 → 실행 → 리뷰 → 개선”의 폐루프 구조를 위한 자리다.
+This creates a bridge between offline model predictions and real-time retention operations.
 
 ---
 
-## 10. 사이드바 분석 컨트롤
+## 9. View 7: Weekly Action Performance Review
 
-사이드바의 공통 조건은 여러 화면에 동시에 영향을 준다.
+### Objective
 
-| 컨트롤 | 의미 | 영향을 받는 화면 |
+This view is designed to support performance evaluation after retention actions have been executed.
+
+### Purpose
+
+The platform's expected ROI and counterfactual estimates are prediction-based rather than directly observed outcomes.
+
+In real-world operations, weekly performance reviews should assess:
+
+- Proportion of queued actions that were actually executed
+- Changes in repeat visits, repeat purchases, completed consultations, and incentive acceptance after interventions
+- Performance differences across customer segments
+- Potential over-allocation of high-intensity interventions
+- Need for budget adjustments in the following week
+
+### Decision-Making Role
+
+This view provides the foundation for a **closed-loop retention optimization process**:
+
+```text
+Prediction
+    ↓
+Execution
+    ↓
+Performance Review
+    ↓
+Policy Improvement
+    ↓
+Updated Prediction
+```
+
+By incorporating observed intervention outcomes into future modeling and policy decisions, the platform is designed to support continuous improvement in retention efficiency.
+
+---
+
+## 10. Sidebar Analytics Controls
+
+The sidebar provides shared analytical controls that influence multiple dashboard views simultaneously.
+
+| Control | Description | Affected Views |
 | --- | --- | --- |
-| 이탈 임계값 | 위험 고객 판정 기준 | 이탈 현황, 예산 배분, 추천, 실시간 큐 |
-| 총 마케팅 예산 | 리텐션 집행 가능 예산 | 예산 배분, 민감도, 추천 대상 |
-| 최대 타겟 고객 수 | 운영 가능한 고객 수 cap | 예산 배분, 추천 대상 |
-| 표시 고객 수 | 테이블 preview 크기 | 위험 고객/실시간/설명 테이블 |
-| 고객당 추천 개수 | 개인화 추천 개수 | 개인화 추천 화면 |
-| 언어 | UI/표/차트/LLM 언어 | 한국어, English, 日本語 |
+| Churn Threshold | Defines the probability threshold for identifying at-risk customers | Churn Overview, Budget Allocation, Recommendations, Real-Time Queue |
+| Total Marketing Budget | Specifies the budget available for retention interventions | Budget Allocation, Sensitivity Analysis, Target Selection |
+| Maximum Target Customers | Limits the number of customers that can be targeted operationally | Budget Allocation, Target Selection, Recommendations |
+| Display Customer Count | Controls the number of customer records displayed in preview tables | At-Risk Customers, Real-Time Monitoring, Explanation Tables |
+| Recommendations per Customer | Sets the number of personalized recommendations generated for each customer | Personalized Recommendations |
+| Language | Controls the language used in the UI, tables, charts, and LLM responses | Korean, English, Japanese |
 
-언어를 바꾸어도 threshold, budget, cap 같은 분석 조건이 초기화되지 않도록 상태를 보존한다.
+### State Persistence
 
----
+Changing the dashboard language does not reset analytical settings such as:
 
-## 11. 화면 기반 LLM 챗봇
+- Churn threshold
+- Marketing budget
+- Maximum target customer count
 
-LLM 챗봇은 현재 화면의 payload를 바탕으로 답한다.
-
-- 현재 보고 있는 화면의 지표 요약
-- 위험 고객과 세그먼트 설명
-- 예산/threshold 변경 방향 제안
-- action queue 또는 추천 결과 해석
-- 한국어/영어/일본어 답변
-
-중요한 설계 포인트는 챗봇이 화면 이동과 독립적으로 유지된다는 점이다. 처음 열었던 화면의 컨텍스트가 고정되고, 필요할 때 현재 화면으로 컨텍스트를 갱신할 수 있다.
+These values are preserved to maintain continuity across multilingual dashboard interactions.
 
 ---
 
-## 12. 한 줄 요약
+## 11. Context-Aware LLM Chatbot
 
-이 대시보드는 “리텐션 현황을 보여주는 화면”이 아니라, **예산을 넣으면 타겟과 액션이 나오고, 이벤트가 들어오면 큐가 갱신되는 리텐션 의사결정 콘솔**이다.
+The dashboard includes an LLM-powered chatbot that generates responses based on the payload associated with the currently selected dashboard view.
+
+### Supported Capabilities
+
+- Summarizing metrics from the current dashboard view
+- Explaining at-risk customers and customer segments
+- Suggesting adjustments to budget and churn thresholds
+- Interpreting action queue entries and recommendation results
+- Providing responses in Korean, English, or Japanese
+
+### Key Design Principle
+
+The chatbot maintains its own conversational context independently of dashboard navigation.
+
+The context associated with the initially opened view remains available even when the user navigates to another dashboard view.
+
+When necessary, users can explicitly refresh the chatbot context to reflect the currently selected view.
+
+This design helps maintain conversational continuity while allowing users to incorporate updated dashboard information when needed.
+
+---
+
+## 12. Summary
+
+The Retention ROI Agent dashboard is more than a collection of customer retention charts.
+
+It functions as a **retention decision-making console that transforms budget constraints into optimized customer targets and intervention strategies, while continuously updating operational action queues as new customer events arrive**.
+
+Its overarching workflow is:
+
+```text
+Data Upload
+    ↓
+Churn & Value Analysis
+    ↓
+Budget Optimization
+    ↓
+Counterfactual Action Comparison
+    ↓
+Personalized Recommendations
+    ↓
+Real-Time Action Execution Queue
+    ↓
+Weekly Performance Review
+    ↓
+Continuous Policy Improvement
+```
+
+The ultimate goal is to connect predictive analytics with economically justified actions and operational feedback, enabling a structured, data-driven approach to customer retention management.
