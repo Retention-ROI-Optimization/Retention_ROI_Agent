@@ -1,150 +1,352 @@
+
 # Product Differentiation
 
-Retention ROI Agent의 핵심은 “이탈 예측 모델을 만들었다”가 아니라, **이탈 예측을 실제 리텐션 예산 의사결정으로 바꾸는 플랫폼을 만들었다**는 점이다.
+The core value of **Retention ROI Agent** is not simply that it predicts customer churn, but that it **transforms churn predictions into actionable, budget-aware retention decisions**.
 
-대부분의 churn 프로젝트는 고객별 이탈 확률, feature importance, 위험 고객 Top N에서 끝난다. 하지만 실제 마케팅/CRM 담당자는 다음 질문을 해야 한다.
+Many churn prediction projects stop at producing customer-level churn probabilities, feature importance scores, and lists of the top N at-risk customers.
 
-- 이 고객은 정말 돈을 써서 잡을 만한가?
-- 같은 예산이면 누구에게 먼저 써야 하는가?
-- 쿠폰, 상담 전화, 푸시 메시지, 대기 중 무엇이 경제적으로 나은가?
-- 이 고객은 지금 당장 연락해야 하는가, 아니면 다음 주까지 봐도 되는가?
-- 이벤트가 새로 들어오면 액션 큐가 바뀌는가?
+However, real-world marketing and CRM operators must answer more complex questions:
 
-Retention ROI Agent는 이 질문들을 하나의 대시보드 흐름 안에서 해결하도록 설계되어 있다.
+- Is this customer actually worth spending money to retain?
+- Given the same budget, which customers should receive interventions first?
+- Which strategy is more economically beneficial: offering a coupon, making a support call, sending a push notification, or waiting?
+- Should this customer be contacted immediately, or can the intervention wait until next week?
+- Will the action queue automatically change when new customer events arrive?
+
+Retention ROI Agent is designed to address these questions within a unified dashboard workflow.
 
 ---
 
-## 1. 일반 churn dashboard와의 차이
+## 1. Comparison with Traditional Churn Dashboards
 
-| 항목 | 일반 churn dashboard | Retention ROI Agent |
+| Dimension | Traditional Churn Dashboard | Retention ROI Agent |
 | --- | --- | --- |
-| 주요 출력 | 이탈 확률, 위험 고객 목록 | 위험도 + 예상 이탈 시점 + 예상 손실 + 개입 효과 + 예상 ROI + 추천 액션 |
-| 대상 선정 기준 | churn probability Top N | churn threshold, uplift, CLV, intervention cost, timing urgency, expected profit을 결합 |
-| 예산 반영 | 보통 없음. 사람이 엑셀에서 후처리 | 총 예산과 타겟 상한을 입력하면 타겟 고객과 액션이 재계산됨 |
-| 시간 개념 | “위험함”만 표시 | 14일 이내, 15~30일, 31~60일 등 연락 타이밍으로 변환 |
-| 추천 액션 | 보통 없음 또는 룰 기반 | 쿠폰/상담/푸시/대기 등 액션별 기대 손익 비교 |
-| 운영화 | 배치 리포트 중심 | PostgreSQL Live DB, 이벤트 API, 실시간 재채점, action queue 포함 |
+| Primary Outputs | Churn probabilities and lists of at-risk customers | Churn risk, predicted churn timing, expected financial loss, intervention effects, expected ROI, and recommended actions |
+| Target Selection | Top N customers ranked by churn probability | Combines churn thresholds, uplift, CLV, intervention costs, timing urgency, and expected incremental profit |
+| Budget Awareness | Often requires separate analysis or manual spreadsheet processing | Automatically recalculates target customers and actions based on budget and targeting constraints |
+| Timing Awareness | Primarily identifies whether a customer is at risk | Converts churn predictions into actionable intervention windows, such as within 14 days, 15–30 days, or 31–60 days |
+| Recommended Actions | Often absent or based on predefined rules | Compares expected financial outcomes across coupons, support calls, push notifications, and waiting |
+| Operational Integration | Primarily focused on batch reports | Includes PostgreSQL Live DB integration, event APIs, real-time rescoring, and an operational action queue |
 
-핵심 차이는 모델이 아니라 **결정 단위**다. 일반 dashboard는 “고객을 보여주는 도구”에 가깝고, 이 플랫폼은 “예산을 배정하고 액션을 큐에 올리는 도구”에 가깝다.
+### Key Differentiator
+
+The fundamental difference lies not merely in the predictive model, but in the **unit of decision-making**.
+
+Traditional churn dashboards primarily help operators understand which customers are at risk.
+
+Retention ROI Agent goes further by helping operators determine **how to allocate budgets, which interventions to execute, and when those interventions should occur**.
 
 ---
 
-## 2. GA4 / Amplitude / Mixpanel류 행동 분석 도구와의 차이
+## 2. Comparison with Behavioral Analytics Platforms (GA4, Amplitude, Mixpanel)
 
-GA4, Amplitude, Mixpanel류 제품은 이벤트 기반 행동 분석, 퍼널, 리텐션 차트, 코호트 분석에 강하다. 그러나 보통 다음과 같은 의사결정은 별도 분석이나 CRM 시스템으로 넘어간다.
+Behavioral analytics platforms such as Google Analytics 4 (GA4), Amplitude, and Mixpanel provide powerful capabilities for:
 
-- 어떤 고객에게 마케팅 비용을 쓸 것인가?
-- 고객별 예상 incremental profit은 얼마인가?
-- 쿠폰을 주는 것이 무개입보다 나은가?
-- 동일 예산에서 고객 500명을 뽑을지 1,500명을 뽑을지 어떻게 판단할 것인가?
+- Event-based behavioral analytics
+- Funnel analysis
+- Retention tracking
+- Cohort analysis
+- User journey analysis
 
-Retention ROI Agent는 이벤트 분석에서 출발하지만, 최종 출력은 이벤트 지표가 아니라 **고객별 실행 후보**다.
+However, customer-level financial optimization and intervention selection may require additional analytics workflows or integrations with CRM systems.
+
+Examples of such decisions include:
+
+- Which customers should receive marketing investment?
+- What is the expected incremental profit for each customer?
+- Is offering a coupon more profitable than taking no action?
+- Given a fixed budget, should the company target 500 customers or 1,500 customers?
+
+Retention ROI Agent begins with behavioral event analysis, but its final output is not simply an analytical metric.
+
+Instead, it generates **customer-level intervention candidates optimized for operational decision-making**.
+
+### Decision Pipeline
 
 ```text
-이벤트 로그 → 고객 피처 → churn/uplift/CLV/timing → 예산 제약 최적화 → action queue
+Event Logs
+    ↓
+Customer Feature Engineering
+    ↓
+Churn / Uplift / CLV / Timing Prediction
+    ↓
+Budget-Constrained Optimization
+    ↓
+Action Queue
 ```
 
-즉, “분석 도구”가 아니라 **리텐션 의사결정 layer**에 초점을 둔다.
+In other words, the platform emphasizes a **retention decision-making layer** rather than functioning solely as a behavioral analytics tool.
 
 ---
 
-## 3. Salesforce Marketing Cloud / Braze / HubSpot류 CRM 자동화 도구와의 차이
+## 3. Comparison with CRM Automation Platforms (Salesforce Marketing Cloud, Braze, HubSpot)
 
-CRM 자동화 도구는 메시지 발송, 캠페인 journey, segment rule, 채널 자동화에 강하다. 반면 Retention ROI Agent는 “발송 전 의사결정”에 초점을 둔다.
+CRM automation platforms are particularly effective at:
 
-| 질문 | CRM 자동화 도구에서 흔한 접근 | Retention ROI Agent의 접근 |
+- Message delivery
+- Campaign journey orchestration
+- Rule-based customer segmentation
+- Multichannel communication
+- Automated marketing workflows
+
+Retention ROI Agent focuses primarily on the **decision-making process before intervention execution**.
+
+| Decision Question | Common CRM Automation Approach | Retention ROI Agent Approach |
 | --- | --- | --- |
-| 누구에게 보낼까? | 룰 기반 세그먼트, 최근 행동 조건 | churn risk, uplift, CLV, expected ROI, timing을 결합한 타겟 선정 |
-| 무엇을 보낼까? | 캠페인/템플릿/브랜치 설정 | 고객별 recommended action과 intervention intensity 제안 |
-| 예산은 충분한가? | 캠페인 단위 집행 후 비용 집계 | 집행 전 budget cap, target cap, marginal ROI 계산 |
-| 과잉 혜택은 어떻게 막을까? | frequency cap 또는 룰 | coupon fatigue, discount pressure, high-intensity cap, Sleeping Dogs 제외 |
-| 신규 이벤트 후 큐는 바뀌나? | 자동화 룰에 따라 journey 이동 | 새 이벤트 수신 → 재채점 → expected ROI 재계산 → action queue 갱신 |
+| Who should receive an intervention? | Rule-based segments and recent behavioral conditions | Target selection combining churn risk, uplift, CLV, expected ROI, and timing |
+| What should be delivered? | Campaign templates, journey branches, and predefined workflows | Customer-specific recommended actions and intervention intensity levels |
+| Is the budget sufficient? | Campaign-level spending management and post-execution cost reporting | Pre-execution budget caps, target caps, and marginal ROI estimation |
+| How can excessive incentives be prevented? | Frequency caps and rule-based restrictions | Coupon fatigue, discount pressure, high-intensity intervention caps, and exclusion of Sleeping Dogs segments |
+| Does the action queue change after new events? | Journey transitions based on automation rules | Event ingestion, customer rescoring, expected ROI recalculation, and action queue updates |
 
-이 플랫폼은 CRM 발송 시스템을 대체한다기보다, 그 앞단에서 “누구에게 어떤 비용을 쓰는 것이 맞는가”를 계산하는 **decision engine** 역할을 한다.
+### Key Differentiator
 
----
+Retention ROI Agent is not intended to replace CRM campaign delivery systems.
 
-## 4. Tableau / Power BI류 BI 대시보드와의 차이
+Instead, it serves as a **decision engine positioned upstream of CRM execution**, estimating which customers should receive which interventions and how much should be spent.
 
-BI 대시보드는 이미 발생한 결과를 설명하는 데 강하다. Retention ROI Agent는 현황 리포팅을 넘어 운영자가 조건을 바꿀 때 의사결정 결과가 바뀌도록 만든다.
-
-- 이탈 임계값을 0.50에서 0.60으로 바꾸면 위험 고객군과 최종 타겟이 바뀐다.
-- 예산을 500만 원에서 700만 원으로 늘리면 타겟 수, 예상 순이익, marginal ROI, 포화 구간이 바뀐다.
-- 최대 타겟 고객 수를 줄이면 고효율 고객 중심으로 다시 선별된다.
-- 개인화 추천 화면은 저장된 후보를 그대로 보여주지 않고 현재 조건의 최종 타겟에게 새 추천을 생성한다.
-
-따라서 대시보드는 정적인 KPI판이 아니라 **what-if 의사결정 콘솔**에 가깝다.
+This allows retention strategies to be evaluated economically before operational resources are committed.
 
 ---
 
-## 5. AutoML / Kaggle churn notebook과의 차이
+## 4. Comparison with BI Dashboards (Tableau, Power BI)
 
-AutoML이나 Kaggle식 churn notebook은 모델링 실력을 보여주기 좋지만, 실제 조직에서 쓰기에는 다음 단계가 비어 있는 경우가 많다.
+Business intelligence platforms such as Tableau and Power BI are widely used to analyze business performance, visualize metrics, and support reporting.
 
-- 업로드 데이터의 컬럼명이 달라도 처리되는가?
-- 금융/이커머스처럼 도메인 언어가 바뀌어도 설명이 자연스러운가?
-- 모델 점수를 실시간 운영 DB에 반영할 수 있는가?
-- 점수만 아니라 action queue까지 만들 수 있는가?
-- 운영자가 예산을 바꾸며 의사결정을 실험할 수 있는가?
-- LLM이 현재 화면 맥락으로 질문에 답할 수 있는가?
+Retention ROI Agent extends beyond descriptive reporting by allowing operators to change analytical constraints and immediately observe how retention decisions are affected.
 
-Retention ROI Agent는 모델 학습 파이프라인뿐 아니라, 업로드 wizard, live DB seed, 이벤트 API, 실시간 모니터, 화면 기반 LLM 챗봇까지 포함한다. 그래서 “모델 프로젝트”보다 “작동하는 데이터 제품”에 가깝다.
+### Interactive Decision Scenarios
+
+- **Changing the churn threshold from 0.50 to 0.60** updates the at-risk customer population and final retention targets.
+- **Increasing the marketing budget from KRW 5 million to KRW 7 million** recalculates the number of targeted customers, expected net profit, marginal ROI, and budget saturation ranges.
+- **Reducing the maximum target customer count** triggers reselection based on customer-level economic efficiency.
+- **Opening the personalized recommendation view** generates recommendations for the currently selected targets rather than simply displaying previously stored recommendation candidates.
+
+### Key Differentiator
+
+Rather than operating as a static KPI dashboard, Retention ROI Agent functions as an interactive **what-if decision-making console**.
+
+Operators can test alternative budget and targeting strategies and evaluate their expected financial consequences before execution.
 
 ---
 
-## 6. 경진대회/데모에서 강하게 보이는 포인트
+## 5. Comparison with AutoML and Kaggle-Style Churn Prediction Projects
 
-### A. 예산 민감도 표
+AutoML pipelines and Kaggle-style churn prediction notebooks are valuable for demonstrating machine learning capabilities.
 
-단순히 “ROI가 높다”가 아니라, 예산 구간별로 다음 항목을 보여준다.
+However, many modeling-focused projects do not fully address the requirements of real-world operational deployment.
 
-- 현재 입력 예산
-- 현재 집행 예산
-- 현재 타겟 고객 수
-- 현재 기대 순이익
-- 현재 평균 ROI
-- 현재 구간 marginal ROI
-- 예산 100만 원 추가 시 기대 순이익 증가
-- 예산 포화점
-- 저효율 예산 구간
+Important questions include:
 
-심사위원 입장에서는 이 기능이 “실제 의사결정에 쓰일 수 있겠다”는 인상을 준다.
+- Can the system process uploaded datasets with different column names and schemas?
+- Can it provide natural, domain-specific explanations for both financial services and e-commerce?
+- Can model scores be integrated into a live operational database?
+- Can the system generate actionable intervention queues rather than prediction scores alone?
+- Can operators experiment with alternative budgets and targeting constraints?
+- Can an LLM answer questions using the context of the currently displayed dashboard view?
+
+Retention ROI Agent addresses these requirements through an integrated architecture that includes:
+
+- Data upload and onboarding wizard
+- Automatic column mapping and event standardization
+- Model training and inference pipelines
+- Budget-constrained retention optimization
+- PostgreSQL Live DB initialization
+- Real-time event APIs
+- Operational monitoring dashboard
+- Context-aware LLM chatbot
+
+### Key Differentiator
+
+The platform is designed as an **operational data product**, rather than solely a machine learning experiment.
+
+Its value lies in connecting predictive modeling with actual business decision workflows.
+
+---
+
+## 6. Key Strengths for Competitions and Demonstrations
+
+### A. Budget Sensitivity Map
+
+Instead of merely claiming that the model achieves high ROI, the platform illustrates how business outcomes change across different budget levels.
+
+The sensitivity analysis includes:
+
+- Current budget
+- Allocated budget
+- Number of targeted customers
+- Expected incremental net profit
+- Average ROI
+- Marginal ROI at the current budget level
+- Expected profit increase from an additional KRW 1 million
+- Budget saturation point
+- Low-efficiency budget ranges
+
+### Why It Matters
+
+This feature demonstrates that the platform supports practical financial decisions rather than simply generating predictions.
+
+For example, operators can identify when increasing the budget produces meaningful additional profit and when diminishing returns make further spending inefficient.
+
+In competitions and product demonstrations, this helps communicate the platform's operational relevance and economic value.
+
+---
 
 ### B. Counterfactual Retention Lab
 
-고객별로 무개입, 혜택, 상담, 푸시, 대기 시나리오를 비교한다. 이는 단순 추천보다 설득력이 높다.
+The Counterfactual Retention Lab compares multiple intervention scenarios for the same customer.
+
+These include:
+
+- No intervention
+- Incentive or coupon
+- Customer support call
+- Push notification or email
+- Waiting before intervention
+
+Rather than presenting an unexplained recommendation, the system provides an economic rationale for selecting a particular action.
+
+### Example Recommendation
 
 ```text
-추천 액션: 상담 전화
-이유: 무개입보다 기대 순이익이 높고, 고객 가치와 단기 이탈 위험이 높으며, 쿠폰보다 상담 채널의 fit이 더 높음
+Recommended Action: Customer Support Call
+
+Reason:
+The expected net profit is higher than under
+the no-intervention scenario.
+
+The customer has high lifetime value and
+elevated short-term churn risk.
+
+A support call is estimated to be a better
+intervention fit than a coupon.
 ```
 
-이 방식은 “왜 이 고객에게 이 액션인가?”라는 질문에 답한다.
+### Why It Matters
 
-### C. Live Action Queue
+This approach addresses a fundamental question in retention operations:
 
-CSV 기반 분석 결과를 PostgreSQL에 seed하고, 신규 이벤트가 들어오면 고객 상태와 score가 바뀌며 action queue가 갱신된다. 이는 단순 분석 산출물이 아니라 운영 시스템으로 확장 가능한 구조임을 보여준다.
+**"Why should this particular customer receive this particular action?"**
 
-### D. 화면 기반 LLM 챗봇
+By comparing multiple possible outcomes, the platform makes retention recommendations more transparent and economically interpretable.
 
-LLM은 현재 화면의 지표·표·그래프에서 추린 payload를 바탕으로 답한다. 즉, dashboard와 분리된 범용 챗봇이 아니라 **대시보드 해석 보조자**다.
+The counterfactual values remain predictive estimates and require experimental validation before being treated as established causal effects.
 
 ---
 
-## 7. 왜 이 플랫폼이 차별화되어 있는가
+### C. Live Action Queue
 
-한 문장으로 요약하면, Retention ROI Agent는 다음 다섯 가지를 한 화면 흐름으로 묶는다.
+The Live Action Queue demonstrates how the platform can evolve beyond static, CSV-based analytics.
+
+The workflow begins by seeding batch analysis results into PostgreSQL.
+
+When new customer events arrive, the system:
+
+1. Updates the corresponding customer feature state.
+2. Recalculates churn risk and related prediction scores.
+3. Updates expected ROI.
+4. Reevaluates intervention eligibility.
+5. Creates or updates the appropriate action queue entries.
+
+### Why It Matters
+
+This demonstrates an architecture capable of connecting analytical outputs with operational systems.
+
+Instead of generating a one-time list of retention targets, the platform can adapt intervention priorities as customer behavior changes.
+
+---
+
+### D. Context-Aware LLM Chatbot
+
+The LLM chatbot generates responses based on structured payloads derived from the current dashboard view, including relevant:
+
+- Metrics
+- Tables
+- Charts
+- Customer segments
+- Budget allocation results
+- Recommendation and action queue information
+
+Rather than functioning as a generic chatbot disconnected from the analytics environment, it serves as a **context-aware dashboard interpretation assistant**.
+
+### Why It Matters
+
+Operators can ask questions about the information they are viewing without manually extracting or interpreting every analytical result.
+
+This improves the accessibility and usability of complex retention analytics for non-technical business users.
+
+---
+
+## 7. Why Retention ROI Agent Is Different
+
+Retention ROI Agent integrates five essential components into a unified decision-making workflow.
 
 ```text
-위험도 예측 + 이탈 시점 + 개입 반응 가능성 + 고객 가치 + 예산 제약
+Churn Risk Prediction
+        +
+Churn Timing Prediction
+        +
+Intervention Response Potential
+        +
+Customer Lifetime Value
+        +
+Budget Constraints
+        ↓
+Economically Optimized Retention Decisions
 ```
 
-이 다섯 가지가 함께 있어야 실제 리텐션 의사결정이 가능하다.
+These components are interdependent.
 
-- 위험하지만 반응 가능성이 낮은 고객에게 큰 비용을 쓰면 손해다.
-- 반응 가능성이 있어도 CLV가 낮으면 비용 대비 이익이 작을 수 있다.
-- CLV가 높아도 이탈 시점이 멀면 지금 당장 고비용 상담을 할 필요가 없을 수 있다.
-- 예산이 적으면 ROI가 높은 고객부터, 예산이 커지면 marginal ROI가 떨어지는 구간을 봐야 한다.
-- 이벤트가 새로 들어오면 기존 타겟 리스트가 더 이상 최적이 아닐 수 있다.
+A retention strategy based on only one or two of them may lead to inefficient decisions.
 
-이 프로젝트는 바로 이 복합 의사결정을 제품 UI와 파이프라인으로 구현했다는 점에서 차별화된다.
+### 1. Churn Risk Alone Is Insufficient
+
+A customer may have high churn probability but very low intervention responsiveness.
+
+Spending heavily on such a customer may generate negative incremental returns.
+
+### 2. Response Potential Must Be Evaluated Alongside Customer Value
+
+Even when an intervention is likely to prevent churn, its economic value may be limited if the customer's expected lifetime value is low.
+
+### 3. Customer Value Must Be Considered Alongside Timing
+
+A high-value customer whose predicted churn date is far away may not require an immediate, expensive intervention.
+
+In contrast, another customer with a lower CLV but urgent churn risk may deserve higher short-term operational priority.
+
+### 4. Budget Constraints Affect Optimal Target Selection
+
+Under limited budgets, the platform prioritizes economically attractive customer-action combinations.
+
+As the budget increases, additional candidates become eligible, but their marginal ROI may decline.
+
+This makes budget sensitivity and saturation analysis essential for determining when additional spending is justified.
+
+### 5. Retention Decisions Must Adapt to New Events
+
+Customer behavior changes over time.
+
+New purchases, visits, searches, or other events may alter churn probability, expected customer value, and intervention effectiveness.
+
+As a result, previously selected retention targets may no longer represent the most economically efficient allocation of resources.
+
+The platform addresses this challenge through event-driven rescoring and action queue updates.
+
+---
+
+## 8. Final Summary
+
+The primary differentiation of Retention ROI Agent is its ability to connect **predictive analytics, customer value estimation, intervention effectiveness, timing intelligence, and budget-constrained optimization** within a single operational platform.
+
+Rather than stopping at the question:
+
+**"Which customers are likely to churn?"**
+
+The platform is designed to answer:
+
+**"Which customers should we intervene with, when should we act, what should we offer, and how can we maximize expected incremental profit within a limited budget?"**
+
+Its defining contribution is the implementation of this multidimensional decision-making process through an integrated product interface and analytical pipeline.
+
+Ultimately, Retention ROI Agent aims to transform customer churn prediction from a standalone machine learning task into a **continuous, economically driven retention decision-making workflow**.
